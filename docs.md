@@ -201,6 +201,19 @@ node dist/index.js --help
 
 Prints the built-in help.
 
+### `--refresh` — force re-download cached data
+
+```bash
+node dist/index.js --dir "./mydp" --refresh
+```
+
+All version data (command trees, registries, breaking changes) is **cached
+locally for 24 hours** so re-runs are fast and work offline. Use `--refresh`
+to discard the cache and fetch everything fresh (e.g. right after a new
+Minecraft version releases).
+
+---
+
 ---
 
 ## 6. Reading the report
@@ -342,13 +355,25 @@ In plain terms:
    keyword, not an entity type).
 
 5. **Apply knowledge rules.** Some features are version-gated in ways the tree
-   alone doesn't show (e.g. item components need 1.20.5). A curated rule list
-   (**the knowledge base**) overrides the lenient walker and reports these as
-   breaks on older versions.
+    alone doesn't show (e.g. item components need 1.20.5). A curated rule list
+    (**the knowledge base**) overrides the lenient walker and reports these as
+    breaks on older versions.
 
-6. **Combine with `pack.mcmeta`.** The declared load range tells us which
-   versions Minecraft will even *load* the pack on. The content check tells us
-   where it would *break*. Together they produce the final verdict.
+6. **Pull breaking changes.** For each version checked, the tool fetches
+    community-curated breaking changes from
+    [misode/technical-changes](https://github.com/misode/technical-changes)
+    (tagged `breaking`) and shows them as informational notes — telling you what
+    changes when updating *to* that version. This data is maintained by the
+    community and updates automatically; no code change is needed for new
+    Minecraft versions.
+
+7. **Combine with `pack.mcmeta`.** The declared load range tells us which
+    versions Minecraft will even *load* the pack on. The content check tells us
+    where it would *break*. Together they produce the final verdict.
+
+8. **Cache everything.** Command trees, registries, and breaking changes are
+    cached locally for 24 hours (in your system temp dir). Re-runs are fast and
+    work offline. Use `--refresh` to force a fresh download.
 
 ### Why `pack.mcmeta` is used but not trusted
 
@@ -484,11 +509,14 @@ Then rebuild (`npm run build`) and test against a real datapack.
 
 ### Data source
 
-All version data comes from the Spyglass API:
+All version data comes from these live sources (fetched at runtime, cached locally):
 
-- `GET https://api.spyglassmc.com/mcje/versions`
-- `GET https://api.spyglassmc.com/mcje/versions/{id}/commands`
-- `GET https://api.spyglassmc.com/mcje/versions/{id}/registries`
+- **Spyglass API** — command trees and registries:
+  - `GET https://api.spyglassmc.com/mcje/versions`
+  - `GET https://api.spyglassmc.com/mcje/versions/{id}/commands`
+  - `GET https://api.spyglassmc.com/mcje/versions/{id}/registries`
+- **misode/technical-changes** — community-curated breaking-change notes per version
+  (fetched via the GitHub API tree + raw markdown files, filtered by the `breaking` tag).
 
 ---
 

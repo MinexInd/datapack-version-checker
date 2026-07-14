@@ -6,6 +6,7 @@ import { checkJsonFile } from './json-check.js'
 import { tokenizeCommand } from './tokenizer.js'
 import { FEATURE_RULES, type FeatureRule } from './knowledge.js'
 import { isVersionAtLeast, versionNameToDataVersion } from './version.js'
+import { getBreakingChanges } from './technical-changes.js'
 import { readPackMcmeta } from './pack-mcmeta.js'
 import type {
   McmetaVersion,
@@ -194,6 +195,14 @@ export async function checkCompatibilityContentBased(
   const compatible: VersionCompatibility[] = []
   const incompatible: VersionCompatibility[] = []
 
+  // Pull community-curated breaking changes (misode/technical-changes) per version.
+  let breakingMap: Record<string, string[]> = {}
+  try {
+    breakingMap = await getBreakingChanges(relevantVersions)
+  } catch {
+    breakingMap = {}
+  }
+
   for (const ver of relevantVersions) {
     const inLoadRange = loadRange
       ? ver.data_pack_version >= loadRange.min && ver.data_pack_version <= loadRange.max
@@ -262,6 +271,7 @@ export async function checkCompatibilityContentBased(
       in_load_range: inLoadRange,
       mcfunction_issues: [...mcfunctionIssues, ...knowledgeIssues],
       registry_issues: registryIssues,
+      breaking_changes: breakingMap[ver.name] ?? [],
     }
 
     if (inLoadRange && !hasContentIssues) compatible.push(result)

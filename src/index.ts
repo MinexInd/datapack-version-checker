@@ -2,6 +2,7 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { checkCompatibilityContentBased } from './engine.js'
+import { clearCache } from './cache.js'
 import type { VersionCompatibility, McfunctionIssue, RegistryIssue } from './types.js'
 
 interface CliOptions {
@@ -9,6 +10,7 @@ interface CliOptions {
   all: boolean
   json: boolean
   strict: boolean
+  refresh: boolean
   versions?: string[]
 }
 
@@ -26,6 +28,7 @@ function printHelp() {
     dpcheck --versions "1.21,1.20.4"   Check specific versions
     dpcheck --all                Check all versions including snapshots
     dpcheck --json               Output as JSON (for scripting)
+    dpcheck --refresh            Re-download all cached version data
     dpcheck --help               Show this help
 
   WHAT IT DOES:
@@ -34,7 +37,8 @@ function printHelp() {
     2. Validates all JSON files against each version's registries
     3. Cross-references community knowledge of version changes (e.g. item
        components need 1.20.5, /random needs 1.20.2)
-    4. Reports which versions fully work + exactly what breaks where
+    4. Shows community-curated breaking changes per version (misode/technical-changes)
+    5. Reports which versions fully work + exactly what breaks where
 
   EXAMPLES:
     dpcheck --dir ./my-datapack
@@ -45,7 +49,7 @@ function printHelp() {
 
 function parseArgs(): CliOptions {
   const args = process.argv.slice(2)
-  const result: CliOptions = { dir: process.cwd(), all: false, json: false, strict: false }
+  const result: CliOptions = { dir: process.cwd(), all: false, json: false, strict: false, refresh: false }
   let dirSet = false
 
   if (args.includes('--help') || args.includes('-h')) {
@@ -71,9 +75,10 @@ function parseArgs(): CliOptions {
         }
       }
       result.versions = versions
-    } else if (arg === '--json') result.json = true
+    }     else if (arg === '--json') result.json = true
     else if (arg === '--all') result.all = true
     else if (arg === '--strict') result.strict = true
+    else if (arg === '--refresh') result.refresh = true
     else if (!arg.startsWith('-') && !dirSet) result.dir = resolve(arg)
   }
   return result
@@ -102,7 +107,7 @@ function printDetailedIssues(versions: VersionCompatibility[]) {
       ...v.mcfunction_issues,
       ...v.registry_issues,
     ]
-    if (issues.length === 0) continue
+    if (issues.length === 0 && !(v.breaking_changes && v.breaking_changes.length)) continue
     hasIssues = true
     console.log(`\n  ▶ ${v.version.name}`)
     console.log(`  ${'─'.repeat(60)}`)
@@ -138,8 +143,23 @@ function printPortingGuide(hits: { rule: { id: string; description: string; minV
   }
 }
 
+function printBreakingChanges(versions: VersionCompatibility[]) {
+  const withChanges = versions.filter(v => v.breaking_changes && v.breaking_changes.length > 0)
+  if (withChanges.length === 0) return
+  console.log(`\n\n  KNOWN BREAKING CHANGES BY VERSION (misode/technical-changes)`)
+  console.log(`  ${'═'.repeat(68)}`)
+  console.log(`  (Informational — what changes when updating TO each version)`)
+  for (const v of withChanges) {
+    console.log(`\n  ▶ ${v.version.name}`)
+    for (const b of v.breaking_changes!.slice(0, 12)) {
+      console.log(`      ⚠ ${b}`)
+    }
+  }
+}
+
 async function main() {
   const opts = parseArgs()
+  if (opts.refresh) clearCache()
   const dir = opts.dir
 
   if (!existsSync(dir)) {
@@ -158,7 +178,7 @@ async function main() {
     return
   }
 
-  console.log(`\n  ⚡ Datapack Version Checker v0.2.0 (content + load-range)`)
+  console.log(`\n  ⚡ Datapack Version Checker v0.2.1 (content + load-range + breaking changes)`)
   console.log(`  ${'═'.repeat(50)}`)
   console.log()
   if (result.load_range) {
@@ -184,9 +204,10 @@ async function main() {
   }
 
   printPortingGuide(result.knowledge_hits)
+  printBreakingChanges([...result.compatible, ...result.incompatible])
 
   console.log(`  ${'═'.repeat(50)}`)
-  console.log(`  Data from: api.spyglassmc.com/mcje + community knowledge`)
+  console.log(`  Data from: api.spyglassmc.com/mcje + misode/technical-changes + community knowledge`)
   console.log()
 }
 

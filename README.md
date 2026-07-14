@@ -27,7 +27,9 @@ This tool answers that question by:
 - ✅ Community knowledge rules for version-gated features
 - ✅ Detects when `pack.mcmeta` is **wrong** (e.g. declares 1.19.3 but uses 1.20.5 features)
 - ✅ Lists the exact file + line of every break, with a suggested fix
+- ✅ Shows **community-curated breaking changes** per version (from [misode/technical-changes](https://github.com/misode/technical-changes)) — so you know what changes when updating to each version
 - ✅ Works on releases **and** snapshots
+- ✅ **Local caching** of all version data (fast re-runs, works offline) with `--refresh` to force re-download
 - ✅ JSON output (`--json`) for scripting/CI
 
 ---
@@ -82,6 +84,7 @@ node dist/index.js [options]
 | `--all` | | Check **every** version (releases + snapshots). Slower. |
 | `--json` | | Print raw JSON instead of a human report (good for scripts). |
 | `--strict` | | Use strict command validation (root **and** every sub-command must exist in the tree). More thorough but reports more false positives on some vanilla quirks. |
+| `--refresh` | | Re-download all cached version data (otherwise data is reused for 24h). |
 | `--help` | `-h` | Show help. |
 
 ### Examples
@@ -132,7 +135,7 @@ Each break lists the **file + line** and a **fix** suggestion:
       ✗ Uses The /item command (replace/modify) overhaul requires 1.20.5+ — needs >= 1.20.5 but this is 1.20.4
 ```
 
-At the end, a **"WHY THIS VERSION RANGE"** section explains which community-known features set the minimum version.
+At the end, a **"WHY THIS VERSION RANGE"** section explains which community-known features set the minimum version, and a **"KNOWN BREAKING CHANGES BY VERSION"** section lists curated breaking changes for each version you checked (what changes when updating *to* that version).
 
 ---
 
@@ -142,7 +145,10 @@ At the end, a **"WHY THIS VERSION RANGE"** section explains which community-know
 2. **Tokenize** each command line and walk it against the target version's Brigadier command tree (following redirects like `tp` → `teleport`).
 3. **Validate** JSON string values against the target version's registries (entity types, items, etc.), with guards against common false positives.
 4. **Apply knowledge rules** — a feature that was added in a later version overrides the lenient walker and is reported as a break on older versions.
-5. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range?
+5. **Pull breaking changes** per version from [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated, auto-updating) and show them as informational notes.
+6. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range?
+
+All downloaded data is **cached locally** (24h) so re-runs are fast and work offline; use `--refresh` to force an update.
 
 See [`docs.md`](./docs.md) for the full technical details.
 
@@ -151,6 +157,7 @@ See [`docs.md`](./docs.md) for the full technical details.
 ## Data source & credits
 
 - Command trees and registries: [Spyglass API](https://api.spyglassmc.com/mcje/) (`api.spyglassmc.com/mcje/versions`).
+- Breaking-change notes: [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated technical changelogs).
 - Version-change knowledge: community datapack-porting experience and the [Minecraft Wiki command history](https://minecraft.wiki/w/Commands).
 
 ---

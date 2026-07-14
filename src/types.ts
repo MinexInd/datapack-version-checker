@@ -31,6 +31,7 @@ export interface VersionCompatibility {
   in_load_range?: boolean
   mcfunction_issues: McfunctionIssue[]
   registry_issues: RegistryIssue[]
+  breaking_changes?: string[]
 }
 
 export interface McfunctionIssue {

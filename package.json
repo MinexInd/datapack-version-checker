@@ -1,6 +1,6 @@
 {
   "name": "datapack-version-checker",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "CLI tool to check Minecraft datapack compatibility across versions from real content + community knowledge (Spyglass API)",
   "type": "module",
   "bin": {
