@@ -1,0 +1,17 @@
+{
+  "name": "datapack-version-checker",
+  "version": "0.2.0",
+  "description": "CLI tool to check Minecraft datapack compatibility across versions from real content + community knowledge (Spyglass API)",
+  "type": "module",
+  "bin": {
+    "dpcheck": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

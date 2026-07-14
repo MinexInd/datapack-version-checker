@@ -1,0 +1,283 @@
+import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
+import { join, relative } from 'node:path'
+import { fetchVersions, fetchCommandTree, fetchRegistries } from './api.js'
+import { validateCommand } from './walker.js'
+import { checkJsonFile } from './json-check.js'
+import { tokenizeCommand } from './tokenizer.js'
+import { FEATURE_RULES, type FeatureRule } from './knowledge.js'
+import { isVersionAtLeast, versionNameToDataVersion } from './version.js'
+import { readPackMcmeta } from './pack-mcmeta.js'
+import type {
+  McmetaVersion,
+  VersionCompatibility,
+  McfunctionIssue,
+  RegistryIssue,
+  CommandTreeNode,
+  CheckResult,
+} from './types.js'
+
+interface CommandLine {
+  file: string
+  line: number
+  text: string
+  root: string
+}
+
+function findMcfunctionFiles(dir: string): string[] {
+  const files: string[] = []
+  try {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) files.push(...findMcfunctionFiles(full))
+      else if (entry.endsWith('.mcfunction')) files.push(full)
+    }
+  } catch { }
+  return files
+}
+
+function findJsonFiles(dir: string): string[] {
+  const files: string[] = []
+  try {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) files.push(...findJsonFiles(full))
+      else if (entry.endsWith('.json') && entry !== 'pack.mcmeta') files.push(full)
+    }
+  } catch { }
+  return files
+}
+
+function scanCommands(files: string[], baseDir: string): CommandLine[] {
+  const cmds: CommandLine[] = []
+  for (const file of files) {
+    const content = readFileSync(file, 'utf-8')
+    const lines = content.split('\n')
+    const rel = relative(baseDir, file)
+    lines.forEach((line, i) => {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) return
+      const tokens = tokenizeCommand(trimmed)
+      if (tokens.length === 0) return
+      cmds.push({
+        file: rel,
+        line: i + 1,
+        text: trimmed,
+        root: tokens[0].value.replace(/^\//, ''),
+      })
+    })
+  }
+  return cmds
+}
+
+interface KnowledgeHit {
+  rule: FeatureRule
+  file?: string
+  line?: number
+  text?: string
+}
+
+function applyKnowledgeRules(
+  commands: CommandLine[],
+  jsonFiles: string[],
+): KnowledgeHit[] {
+  const hits: KnowledgeHit[] = []
+  for (const cmd of commands) {
+    for (const rule of FEATURE_RULES) {
+      if (rule.type === 'command') {
+        if (cmd.root === rule.match || cmd.root.replace(/^\//, '') === rule.match) {
+          hits.push({ rule, file: cmd.file, line: cmd.line, text: cmd.text })
+        }
+      } else if (rule.type === 'command_pattern') {
+        if (new RegExp(rule.match).test(cmd.text)) {
+          hits.push({ rule, file: cmd.file, line: cmd.line, text: cmd.text })
+        }
+      } else if (rule.type === 'function_macro') {
+        if (new RegExp(rule.match).test(cmd.text)) {
+          hits.push({ rule, file: cmd.file, line: cmd.line, text: cmd.text })
+        }
+      }
+    }
+  }
+  for (const file of jsonFiles) {
+    const rel = relative(process.cwd(), file).replace(/\\/g, '/')
+    const content = readFileSync(file, 'utf-8')
+    for (const rule of FEATURE_RULES) {
+      if (rule.type === 'registry') {
+        // Registry features are detected by the datapack file path
+        // (e.g. data/<ns>/enchantment/foo.json) or by referencing the
+        // registry in content as a path-style reference (enchantment/foo)
+        if (rel.includes(`/${rule.match}/`) || content.includes(`${rule.match}/`)) {
+          hits.push({ rule, file: rel })
+        }
+      }
+    }
+  }
+  return hits
+}
+
+function knowledgeMinDataVersion(hits: KnowledgeHit[], versions: McmetaVersion[]): number {
+  let min = 0
+  for (const hit of hits) {
+    const dv = versionNameToDataVersion(hit.rule.minVersion, versions)
+    if (dv !== null && dv > min) min = dv
+  }
+  return min
+}
+
+export async function checkCompatibilityContentBased(
+  datapackDir: string,
+  targetVersions?: string[],
+  allVersionsFlag: boolean = false,
+  strict: boolean = false,
+): Promise<CheckResult & {
+  min_version: string | null
+  knowledge_hits: KnowledgeHit[]
+  load_range: { min: number; max: number; min_name: string | null; max_name: string | null } | null
+}> {
+  const allVersions = await fetchVersions()
+  const mcfuncDir = join(datapackDir, 'data')
+  const mcfunctionFiles = findMcfunctionFiles(mcfuncDir)
+  const jsonFiles = findJsonFiles(mcfuncDir)
+
+  const commands = scanCommands(mcfunctionFiles, datapackDir)
+  const knowledgeHits = applyKnowledgeRules(commands, jsonFiles)
+  const minDv = knowledgeMinDataVersion(knowledgeHits, allVersions)
+  const minVersionName = minDv > 0
+    ? allVersions.find(v => v.data_version === minDv)?.name ?? null
+    : null
+
+  // Read pack.mcmeta to get the LOAD range (what Minecraft will actually load).
+  // This is the authoritative "will it load" signal; content analysis finds breaks.
+  let loadRange: { min: number; max: number; min_name: string | null; max_name: string | null } | null = null
+  const pmPath = join(datapackDir, 'pack.mcmeta')
+  if (existsSync(pmPath)) {
+    try {
+      const { supported_formats } = readPackMcmeta(datapackDir)
+      if (supported_formats) {
+        const minVer = allVersions.find(v => v.data_pack_version === supported_formats.min)
+        const maxVer = allVersions.find(v => v.data_pack_version === supported_formats.max)
+        loadRange = {
+          min: supported_formats.min,
+          max: supported_formats.max,
+          min_name: minVer?.name ?? null,
+          max_name: maxVer?.name ?? null,
+        }
+      }
+    } catch { }
+  }
+
+  const releases = allVersions
+    .filter(v => v.type === 'release')
+    .sort((a, b) => a.data_version - b.data_version)
+  let relevantVersions: McmetaVersion[]
+
+  if (targetVersions) {
+    relevantVersions = allVersions.filter(v => targetVersions.includes(v.id) || targetVersions.includes(v.name))
+  } else if (allVersionsFlag) {
+    relevantVersions = allVersions
+  } else if (loadRange) {
+    // Candidate versions: a window (in pack-format units) around BOTH the
+    // declared load range AND the content-minimum version, so we surface
+    // breaks inside and just outside the declared range.
+    const contentMinVer = minVersionName
+      ? allVersions.find(v => v.name === minVersionName) : undefined
+    const contentMinPack = contentMinVer?.data_pack_version ?? loadRange.min
+    const loPack = Math.min(loadRange.min, contentMinPack) - 5
+    const hiPack = Math.max(loadRange.max, contentMinPack) + 5
+    relevantVersions = releases.filter(v =>
+      v.data_pack_version >= loPack && v.data_pack_version <= hiPack)
+  } else {
+    // No pack.mcmeta: fall back to content-based (knowledge minimum)
+    relevantVersions = releases.filter(v => v.data_version >= minDv)
+  }
+
+  const compatible: VersionCompatibility[] = []
+  const incompatible: VersionCompatibility[] = []
+
+  for (const ver of relevantVersions) {
+    const inLoadRange = loadRange
+      ? ver.data_pack_version >= loadRange.min && ver.data_pack_version <= loadRange.max
+      : true
+
+    const mcfunctionIssues: McfunctionIssue[] = []
+    const registryIssues: RegistryIssue[] = []
+
+    // Validate commands against this version's command tree
+    let tree: CommandTreeNode | null = null
+    try {
+      tree = await fetchCommandTree(ver.id)
+      for (const cmd of commands) {
+        const res = validateCommand(cmd.text, tree, !strict)
+        if (!res.valid) {
+          mcfunctionIssues.push({
+            file: cmd.file,
+            line: cmd.line,
+            command: cmd.root,
+            issue: `Invalid in ${ver.name}: ${res.reason ?? 'syntax error'}`,
+          })
+        }
+      }
+    } catch (e) {
+      mcfunctionIssues.push({
+        file: '(api)',
+        line: 0,
+        command: '',
+        issue: `Could not fetch command tree: ${e}`,
+      })
+    }
+
+    // Validate JSON against this version's registries
+    try {
+      const regs = await fetchRegistries(ver.id)
+      for (const file of jsonFiles) {
+        const issues = checkJsonFile(file, regs)
+        registryIssues.push(...issues)
+      }
+    } catch { }
+
+    // Knowledge-based issues: "what people say" — a feature requires a newer
+    // version than this one. This OVERRIDES the lenient walker, which tolerates
+    // tree gaps and would otherwise miss version-gating features.
+    const knowledgeIssues: McfunctionIssue[] = []
+    const seenRules = new Set<string>()
+    for (const hit of knowledgeHits) {
+      const ruleMinDv = versionNameToDataVersion(hit.rule.minVersion, allVersions)
+      if (ruleMinDv !== null && ver.data_version < ruleMinDv && !seenRules.has(hit.rule.id)) {
+        seenRules.add(hit.rule.id)
+        knowledgeIssues.push({
+          file: hit.file ?? '(content)',
+          line: hit.line ?? 0,
+          command: hit.rule.id,
+          issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
+        })
+      }
+    }
+
+    const hasContentIssues =
+      mcfunctionIssues.length > 0 || registryIssues.length > 0 || knowledgeIssues.length > 0
+    const result: VersionCompatibility = {
+      version: ver,
+      pack_format_match: inLoadRange ? 'exact' : 'none',
+      status: hasContentIssues ? 'content_issues' : (inLoadRange ? 'compatible' : 'outside_load_range'),
+      in_load_range: inLoadRange,
+      mcfunction_issues: [...mcfunctionIssues, ...knowledgeIssues],
+      registry_issues: registryIssues,
+    }
+
+    if (inLoadRange && !hasContentIssues) compatible.push(result)
+    else incompatible.push(result)
+
+    tree = null
+  }
+
+  return {
+    target_version_id: loadRange ? `${loadRange.min}-${loadRange.max}` : 'content-based',
+    pack_format: loadRange?.min ?? 0,
+    versions_checked: relevantVersions.length,
+    compatible,
+    incompatible,
+    min_version: minVersionName,
+    knowledge_hits: knowledgeHits,
+    load_range: loadRange,
+  }
+}
