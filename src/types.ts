@@ -31,6 +31,7 @@ export interface VersionCompatibility {
   in_load_range?: boolean
   mcfunction_issues: McfunctionIssue[]
   registry_issues: RegistryIssue[]
+  structural_issues?: StructuralIssue[]
   breaking_changes?: string[]
 }
 
@@ -45,6 +46,11 @@ export interface RegistryIssue {
   file: string
   registry: string
   entry: string
+  issue: string
+}
+
+export interface StructuralIssue {
+  file: string
   issue: string
 }
 

@@ -13,9 +13,10 @@ Datapack authors usually only test on one version. When someone asks *"does this
 This tool answers that question by:
 
 1. Reading your `.mcfunction` files and checking every command against the **real Brigadier command tree** of each version (from the [Spyglass](https://github.com/SpyglassMC/Spyglass) API).
-2. Reading your `.json` files and checking values against each version's **real registries** (entity types, items, biomes, etc.).
-3. Cross-referencing a **knowledge base** of version changes (e.g. item components need 1.20.5+, `/random` needs 1.20.2, `/dialog` needs 1.21.6).
-4. Reporting which versions **fully work**, which **break**, and **what to change** for each break.
+ 2. Reading your `.json` files and checking values against each version's **real registries** (entity types, items, biomes, etc.).
+ 3. **Structurally validating** datapack JSON (`recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`) against the real [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema, with full `#[since]`/`#[until]` version gating — so it catches things like a `crafting_dye` recipe (added in 26.1), a `random_sequence` loot-table field (added in 1.20), or an advancement `icon` using the post-1.20.5 `ItemStackTemplate` format.
+ 4. Cross-referencing a **knowledge base** of version changes (e.g. item components need 1.20.5+, `/random` needs 1.20.2, `/dialog` needs 1.21.6).
+ 5. Reporting which versions **fully work**, which **break**, and **what to change** for each break.
 
 ---
 
@@ -24,6 +25,7 @@ This tool answers that question by:
 - ✅ Content-based checking (does **not** trust `pack.mcmeta` alone)
 - ✅ Real per-version command-tree validation (via Spyglass API)
 - ✅ Real per-version registry validation for JSON
+- ✅ Real **structural** JSON validation via [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) — field names, dispatch `type` values, and `#[since]`/`#[until]` version gating for `recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`
 - ✅ Community knowledge rules for version-gated features
 - ✅ Detects when `pack.mcmeta` is **wrong** (e.g. declares 1.19.3 but uses 1.20.5 features)
 - ✅ Lists the exact file + line of every break, with a suggested fix
@@ -84,7 +86,7 @@ node dist/index.js [options]
 | `--all` | | Check **every** version (releases + snapshots). Slower. |
 | `--json` | | Print raw JSON instead of a human report (good for scripts). |
 | `--strict` | | Use strict command validation (root **and** every sub-command must exist in the tree). More thorough but reports more false positives on some vanilla quirks. |
-| `--refresh` | | Re-download all cached version data (otherwise data is reused for 24h). |
+| `--refresh` | | Re-download all cached version data, including the vanilla-mcdoc schema (otherwise data is reused for 24h). |
 | `--help` | `-h` | Show help. |
 
 ### Examples
@@ -108,7 +110,7 @@ node dist/index.js --dir "./my-datapack" --json > report.json
 ## How to read the report
 
 ```
-⚡ Datapack Version Checker v0.2.0 (content + load-range)
+⚡ Datapack Version Checker v0.3.0 (content + load-range + structural)
 ══════════════════════════════════════════════════════════
 
 📦 Declared load range (pack.mcmeta): 1.19.3 – 1.19.3
@@ -141,12 +143,13 @@ At the end, a **"WHY THIS VERSION RANGE"** section explains which community-know
 
 ## How it works (short version)
 
-1. **Scan** all `data/**/*.mcfunction` and `data/**/*.json` files.
-2. **Tokenize** each command line and walk it against the target version's Brigadier command tree (following redirects like `tp` → `teleport`).
-3. **Validate** JSON string values against the target version's registries (entity types, items, etc.), with guards against common false positives.
-4. **Apply knowledge rules** — a feature that was added in a later version overrides the lenient walker and is reported as a break on older versions.
-5. **Pull breaking changes** per version from [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated, auto-updating) and show them as informational notes.
-6. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range?
+ 1. **Scan** all `data/**/*.mcfunction` and `data/**/*.json` files.
+ 2. **Tokenize** each command line and walk it against the target version's Brigadier command tree (following redirects like `tp` → `teleport`).
+ 3. **Validate** JSON string values against the target version's registries (entity types, items, etc.), with guards against common false positives.
+ 4. **Structurally validate** datapack JSON (`recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`) against the target version's [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema: it checks that top-level and nested fields actually exist in that version, that dispatch `type` values (e.g. `minecraft:crafting_shaped`) are valid for that version, and that `#[since]`/`#[until]` version gates are respected. The full mcdoc schema is downloaded once (auto-updating) and cached.
+ 5. **Apply knowledge rules** — a feature that was added in a later version overrides the lenient walker and is reported as a break on older versions.
+ 6. **Pull breaking changes** per version from [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated, auto-updating) and show them as informational notes.
+ 7. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range?
 
 All downloaded data is **cached locally** (24h) so re-runs are fast and work offline; use `--refresh` to force an update.
 
@@ -157,6 +160,7 @@ See [`docs.md`](./docs.md) for the full technical details.
 ## Data source & credits
 
 - Command trees and registries: [Spyglass API](https://api.spyglassmc.com/mcje/) (`api.spyglassmc.com/mcje/versions`).
+- Structural JSON schema: [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) (fetched live as a tarball via the Spyglass dependency loader).
 - Breaking-change notes: [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated technical changelogs).
 - Version-change knowledge: community datapack-porting experience and the [Minecraft Wiki command history](https://minecraft.wiki/w/Commands).
 
@@ -165,7 +169,8 @@ See [`docs.md`](./docs.md) for the full technical details.
 ## Limitations
 
 - Command argument-level validation is **lenient by default** (the root command must exist; gaps in sub-commands are tolerated because the Spyglass tree has some holes). Use `--strict` for stricter checks.
-- NBT *structure* is not deeply validated yet (only item-component syntax and a few known component fields).
+- Structural JSON validation covers `recipe`, `loot_table`, `advancement`, `predicate`, and `item_modifier` files. It tolerates mcdoc constructs it can't parse yet (treating them as "allowed"), so it aims to report **real** breaks without false positives rather than exhaustively proving correctness. Tags, dimensions, worldgen, and other JSON types are not deeply validated yet.
+- NBT *structure* is not deeply validated yet (only JSON structure via vanilla-mcdoc).
 - The knowledge base covers the most common breaking changes; it is not an exhaustive list of every MC change. Contributions welcome.
 
 ---

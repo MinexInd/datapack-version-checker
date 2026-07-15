@@ -349,12 +349,29 @@ In plain terms:
    that version. It follows redirects (for example `tp` is really `teleport`),
    handles greedy arguments, and tolerates small tree gaps (lenient mode).
 
-4. **Check JSON.** For each JSON value, it checks whether the string is a valid
-   entry in that version's registries (e.g. an entity type like `minecraft:pig`).
-   It has guards to avoid false positives (for example `this` is a selector
-   keyword, not an entity type).
+ 4. **Check JSON (values).** For each JSON value, it checks whether the string is a
+    valid entry in that version's registries (e.g. an entity type like `minecraft:pig`).
+    It has guards to avoid false positives (for example `this` is a selector
+    keyword, not an entity type).
 
-5. **Apply knowledge rules.** Some features are version-gated in ways the tree
+ 4b. **Check JSON (structure).** For datapack JSON of type `recipe`, `loot_table`,
+    `advancement`, `predicate`, and `item_modifier`, the tool validates the file's
+    **structure** against the official [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc)
+    schema for that exact version. The full mcdoc schema is downloaded live (as a
+    tarball) from Spyglass and cached. For each version it:
+
+    - confirms that top-level and nested **field names** actually exist in that
+      version (e.g. a loot table `random_sequence` field only exists since 1.20);
+    - confirms that **dispatch `type` values** are valid for that version (e.g. a
+      `minecraft:crafting_dye` recipe only exists since 26.1, and an advancement
+      `icon` using the `ItemStackTemplate` format only works since 1.20.5);
+    - respects every `#[since]` / `#[until]` version gate in the schema.
+
+    The parser is deliberately tolerant: mcdoc constructs it can't fully parse are
+    treated as "allowed", so the tool reports **real** breaks rather than
+    fabricating false positives.
+
+ 5. **Apply knowledge rules.** Some features are version-gated in ways the tree
     alone doesn't show (e.g. item components need 1.20.5). A curated rule list
     (**the knowledge base**) overrides the lenient walker and reports these as
     breaks on older versions.

@@ -35,10 +35,13 @@ function printHelp() {
     1. Scans all .mcfunction files and validates every command against each
        version's real command tree (from Spyglass API)
     2. Validates all JSON files against each version's registries
-    3. Cross-references community knowledge of version changes (e.g. item
-       components need 1.20.5, /random needs 1.20.2)
-    4. Shows community-curated breaking changes per version (misode/technical-changes)
-    5. Reports which versions fully work + exactly what breaks where
+     3. Cross-references community knowledge of version changes (e.g. item
+        components need 1.20.5, /random needs 1.20.2)
+     4. Validates JSON structure against vanilla-mcdoc (field names, dispatch
+        type values, and since/until version gating) for recipe,
+        loot_table, advancement, predicate and item_modifier files
+     5. Shows community-curated breaking changes per version (misode/technical-changes)
+     6. Reports which versions fully work + exactly what breaks where
 
   EXAMPLES:
     dpcheck --dir ./my-datapack
@@ -95,7 +98,10 @@ function printTable(versions: VersionCompatibility[], label: string) {
     const name = `${ver.name}`.padEnd(22)
     const funcIssues = v.mcfunction_issues.length
     const regIssues = v.registry_issues.length
-    const issues = funcIssues + regIssues > 0 ? `${funcIssues} cmd, ${regIssues} reg` : 'none'
+    const structIssues = v.structural_issues?.length ?? 0
+    const issues = funcIssues + regIssues + structIssues > 0
+      ? `${funcIssues} cmd, ${regIssues} reg, ${structIssues} struct`
+      : 'none'
     console.log(`  ${name} ${issues}`)
   }
 }
@@ -103,9 +109,10 @@ function printTable(versions: VersionCompatibility[], label: string) {
 function printDetailedIssues(versions: VersionCompatibility[]) {
   let hasIssues = false
   for (const v of versions) {
-    const issues: (McfunctionIssue | RegistryIssue)[] = [
+    const issues: (McfunctionIssue | RegistryIssue | { file: string; issue: string })[] = [
       ...v.mcfunction_issues,
       ...v.registry_issues,
+      ...(v.structural_issues ?? []),
     ]
     if (issues.length === 0 && !(v.breaking_changes && v.breaking_changes.length)) continue
     hasIssues = true
@@ -116,6 +123,9 @@ function printDetailedIssues(versions: VersionCompatibility[]) {
         console.log(`    ${issue.file}:${issue.line}`)
         console.log(`      ✗ ${issue.issue}`)
       } else if ('registry' in issue && issue.registry) {
+        console.log(`    ${issue.file}`)
+        console.log(`      ✗ ${issue.issue}`)
+      } else {
         console.log(`    ${issue.file}`)
         console.log(`      ✗ ${issue.issue}`)
       }
@@ -178,7 +188,7 @@ async function main() {
     return
   }
 
-  console.log(`\n  ⚡ Datapack Version Checker v0.2.1 (content + load-range + breaking changes)`)
+  console.log(`\n  ⚡ Datapack Version Checker v0.3.0 (content + load-range + structural + breaking changes)`)
   console.log(`  ${'═'.repeat(50)}`)
   console.log()
   if (result.load_range) {
@@ -207,7 +217,7 @@ async function main() {
   printBreakingChanges([...result.compatible, ...result.incompatible])
 
   console.log(`  ${'═'.repeat(50)}`)
-  console.log(`  Data from: api.spyglassmc.com/mcje + misode/technical-changes + community knowledge`)
+  console.log(`  Data from: api.spyglassmc.com/mcje + vanilla-mcdoc + misode/technical-changes + community knowledge`)
   console.log()
 }
 

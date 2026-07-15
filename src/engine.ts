@@ -8,11 +8,13 @@ import { FEATURE_RULES, type FeatureRule } from './knowledge.js'
 import { isVersionAtLeast, versionNameToDataVersion } from './version.js'
 import { getBreakingChanges } from './technical-changes.js'
 import { readPackMcmeta } from './pack-mcmeta.js'
+import { getMcdocSymbols, checkMcdocFile, fileKindFromPath } from './mcdoc-check.js'
 import type {
   McmetaVersion,
   VersionCompatibility,
   McfunctionIssue,
   RegistryIssue,
+  StructuralIssue,
   CommandTreeNode,
   CheckResult,
 } from './types.js'
@@ -203,6 +205,18 @@ export async function checkCompatibilityContentBased(
     breakingMap = {}
   }
 
+  // Structural JSON schema (vanilla-mcdoc). Built once, applied per version via
+  // #[since]/#[until] gating. Degrades gracefully if the network is unavailable.
+  let mcdocTable = null
+  try {
+    mcdocTable = await getMcdocSymbols()
+  } catch {
+    mcdocTable = null
+  }
+  const structuralJsonFiles = mcdocTable
+    ? jsonFiles.filter(f => fileKindFromPath(relative(datapackDir, f).replace(/\\/g, '/')))
+    : []
+
   for (const ver of relevantVersions) {
     const inLoadRange = loadRange
       ? ver.data_pack_version >= loadRange.min && ver.data_pack_version <= loadRange.max
@@ -244,6 +258,18 @@ export async function checkCompatibilityContentBased(
       }
     } catch { }
 
+    // Validate JSON structure against vanilla-mcdoc (field names, dispatch
+    // `type` values, and #[since]/#[until] version gating).
+    const structuralIssues: StructuralIssue[] = []
+    if (mcdocTable) {
+      for (const file of structuralJsonFiles) {
+        const rel = relative(datapackDir, file).replace(/\\/g, '/')
+        try {
+          structuralIssues.push(...checkMcdocFile(file, rel, ver.name, mcdocTable))
+        } catch { }
+      }
+    }
+
     // Knowledge-based issues: "what people say" — a feature requires a newer
     // version than this one. This OVERRIDES the lenient walker, which tolerates
     // tree gaps and would otherwise miss version-gating features.
@@ -263,7 +289,8 @@ export async function checkCompatibilityContentBased(
     }
 
     const hasContentIssues =
-      mcfunctionIssues.length > 0 || registryIssues.length > 0 || knowledgeIssues.length > 0
+      mcfunctionIssues.length > 0 || registryIssues.length > 0 ||
+      knowledgeIssues.length > 0 || structuralIssues.length > 0
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inLoadRange ? 'exact' : 'none',
@@ -271,6 +298,7 @@ export async function checkCompatibilityContentBased(
       in_load_range: inLoadRange,
       mcfunction_issues: [...mcfunctionIssues, ...knowledgeIssues],
       registry_issues: registryIssues,
+      structural_issues: structuralIssues,
       breaking_changes: breakingMap[ver.name] ?? [],
     }
 

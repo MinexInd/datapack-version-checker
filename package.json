@@ -1,7 +1,7 @@
 {
   "name": "datapack-version-checker",
-  "version": "0.2.1",
-  "description": "CLI tool to check Minecraft datapack compatibility across versions from real content + community knowledge (Spyglass API)",
+  "version": "0.3.0",
+  "description": "CLI tool to check Minecraft datapack compatibility across versions from real content + vanilla-mcdoc structure + community knowledge",
   "type": "module",
   "bin": {
     "dpcheck": "./dist/index.js"
@@ -13,5 +13,12 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "@spyglassmc/core": "^0.4.52",
+    "@spyglassmc/java-edition": "^0.3.65",
+    "@spyglassmc/json": "^0.3.56",
+    "@spyglassmc/mcdoc": "^0.3.56",
+    "@spyglassmc/nbt": "^0.3.58"
   }
 }
