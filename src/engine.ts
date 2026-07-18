@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fetchVersions, fetchCommandTree, fetchRegistries } from './api.js'
 import { validateCommand } from './walker.js'
-import { checkJsonFile } from './json-check.js'
+import { checkJsonFile, checkDeprecatedRegistryEntries } from './json-check.js'
 import { tokenizeCommand } from './tokenizer.js'
 import { FEATURE_RULES, type FeatureRule } from './knowledge.js'
 import { isVersionAtLeast, versionNameToDataVersion } from './version.js'
@@ -14,6 +14,7 @@ import type {
   VersionCompatibility,
   McfunctionIssue,
   RegistryIssue,
+  RegistryDeprecation,
   StructuralIssue,
   CommandTreeNode,
   CheckResult,
@@ -217,6 +218,21 @@ export async function checkCompatibilityContentBased(
     ? jsonFiles.filter(f => fileKindFromPath(relative(datapackDir, f).replace(/\\/g, '/')))
     : []
 
+  // Fetch source version registries for deprecation detection.
+  // The source is the max of the declared load range (the latest version the
+  // datapack was designed for). If no load range, we skip deprecation checking.
+  let sourceRegistries: Record<string, string[]> | null = null
+  let sourceVersionDv = 0
+  if (loadRange) {
+    try {
+      const sourceVer = allVersions.find(v => v.data_pack_version === loadRange.max)
+      if (sourceVer) {
+        sourceRegistries = await fetchRegistries(sourceVer.id)
+        sourceVersionDv = sourceVer.data_version
+      }
+    } catch { }
+  }
+
   for (const ver of relevantVersions) {
     const inLoadRange = loadRange
       ? ver.data_pack_version >= loadRange.min && ver.data_pack_version <= loadRange.max
@@ -250,13 +266,23 @@ export async function checkCompatibilityContentBased(
     }
 
     // Validate JSON against this version's registries
+    const deprecationIssues: RegistryDeprecation[] = []
+    let targetRegs: Record<string, string[]> | null = null
     try {
-      const regs = await fetchRegistries(ver.id)
+      targetRegs = await fetchRegistries(ver.id)
       for (const file of jsonFiles) {
-        const issues = checkJsonFile(file, regs)
+        const issues = checkJsonFile(file, targetRegs)
         registryIssues.push(...issues)
       }
     } catch { }
+
+    // Detect registry deprecations: entries that existed in the source version
+    // but were REMOVED by this (newer) target version.
+    if (sourceRegistries && targetRegs && ver.data_version > sourceVersionDv) {
+      for (const file of jsonFiles) {
+        deprecationIssues.push(...checkDeprecatedRegistryEntries(file, sourceRegistries, targetRegs))
+      }
+    }
 
     // Validate JSON structure against vanilla-mcdoc (field names, dispatch
     // `type` values, and #[since]/#[until] version gating).
@@ -290,7 +316,8 @@ export async function checkCompatibilityContentBased(
 
     const hasContentIssues =
       mcfunctionIssues.length > 0 || registryIssues.length > 0 ||
-      knowledgeIssues.length > 0 || structuralIssues.length > 0
+      knowledgeIssues.length > 0 || structuralIssues.length > 0 ||
+      deprecationIssues.length > 0
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inLoadRange ? 'exact' : 'none',
@@ -299,6 +326,7 @@ export async function checkCompatibilityContentBased(
       mcfunction_issues: [...mcfunctionIssues, ...knowledgeIssues],
       registry_issues: registryIssues,
       structural_issues: structuralIssues,
+      deprecation_issues: deprecationIssues.length > 0 ? deprecationIssues : undefined,
       breaking_changes: breakingMap[ver.name] ?? [],
     }
 

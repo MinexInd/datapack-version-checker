@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import type { RegistryIssue } from './types.js'
+import type { RegistryIssue, RegistryDeprecation } from './types.js'
 
 /** Maps common JSON field names to Spyglass registry keys */
 const FIELD_TO_REGISTRY: Record<string, string> = {
@@ -88,6 +88,63 @@ export function checkJsonFile(
     walkJson(data, registries, issues, file, '$')
   } catch {
     // ignore parse errors (Spyglass handles those)
+  }
+  return issues
+}
+
+/**
+ * Walk a JSON file and find registry entries that existed in a *source*
+ * version's registries but are absent from the *target* version's registries.
+ * This only reports when porting forward (target >= source), i.e. entries
+ * that were REMOVED between source and target.
+ */
+function walkDeprecations(
+  obj: unknown,
+  sourceRegs: Record<string, string[]>,
+  targetRegs: Record<string, string[]>,
+  issues: RegistryDeprecation[],
+  file: string,
+  path: string,
+): void {
+  if (obj === null || obj === undefined) return
+
+  if (Array.isArray(obj)) {
+    obj.forEach((item, i) => walkDeprecations(item, sourceRegs, targetRegs, issues, file, `${path}[${i}]`))
+    return
+  }
+
+  if (typeof obj === 'object') {
+    for (const [key, value] of Object.entries(obj)) {
+      const regKey = FIELD_TO_REGISTRY[key]
+      if (regKey && typeof value === 'string' && sourceRegs[regKey] && targetRegs[regKey]) {
+        const stripped = stripNs(value)
+        if (stripped === 'this' || stripped.startsWith('@')) continue
+        if (sourceRegs[regKey].includes(stripped) && !targetRegs[regKey].includes(stripped)) {
+          issues.push({
+            file,
+            registry: `minecraft:${regKey}`,
+            entry: value,
+            issue: `'${value}' was available in source but REMOVED from registry minecraft:${regKey} (path: ${path}.${key})`,
+          })
+        }
+      }
+      walkDeprecations(value, sourceRegs, targetRegs, issues, file, `${path}.${key}`)
+    }
+  }
+}
+
+export function checkDeprecatedRegistryEntries(
+  file: string,
+  sourceRegistries: Record<string, string[]>,
+  targetRegistries: Record<string, string[]>,
+): RegistryDeprecation[] {
+  const issues: RegistryDeprecation[] = []
+  try {
+    const content = readFileSync(file, 'utf-8')
+    const data = JSON.parse(content)
+    walkDeprecations(data, sourceRegistries, targetRegistries, issues, file, '$')
+  } catch {
+    // ignore parse errors
   }
   return issues
 }

@@ -4,7 +4,7 @@ import { relative, resolve } from 'node:path'
 import { checkCompatibilityContentBased } from './engine.js'
 import { fixDatapack } from './fixer.js'
 import { clearCache } from './cache.js'
-import type { VersionCompatibility, McfunctionIssue, RegistryIssue } from './types.js'
+import type { VersionCompatibility, McfunctionIssue, RegistryIssue, RegistryDeprecation } from './types.js'
 
 interface CliOptions {
   dir: string
@@ -113,8 +113,9 @@ function printTable(versions: VersionCompatibility[], label: string) {
     const funcIssues = v.mcfunction_issues.length
     const regIssues = v.registry_issues.length
     const structIssues = v.structural_issues?.length ?? 0
-    const issues = funcIssues + regIssues + structIssues > 0
-      ? `${funcIssues} cmd, ${regIssues} reg, ${structIssues} struct`
+    const depIssues = v.deprecation_issues?.length ?? 0
+    const issues = funcIssues + regIssues + structIssues + depIssues > 0
+      ? `${funcIssues} cmd, ${regIssues} reg, ${structIssues} struct, ${depIssues} deprec`
       : 'none'
     console.log(`  ${name} ${issues}`)
   }
@@ -123,10 +124,11 @@ function printTable(versions: VersionCompatibility[], label: string) {
 function printDetailedIssues(versions: VersionCompatibility[]) {
   let hasIssues = false
   for (const v of versions) {
-    const issues: (McfunctionIssue | RegistryIssue | { file: string; issue: string })[] = [
+    const issues: (McfunctionIssue | RegistryIssue | RegistryDeprecation | { file: string; issue: string })[] = [
       ...v.mcfunction_issues,
       ...v.registry_issues,
       ...(v.structural_issues ?? []),
+      ...(v.deprecation_issues ?? []),
     ]
     if (issues.length === 0 && !(v.breaking_changes && v.breaking_changes.length)) continue
     hasIssues = true
@@ -137,8 +139,9 @@ function printDetailedIssues(versions: VersionCompatibility[]) {
         console.log(`    ${issue.file}:${issue.line}`)
         console.log(`      ✗ ${issue.issue}`)
       } else if ('registry' in issue && issue.registry) {
+        const icon = issue.issue.includes('REMOVED') ? '⚠' : '✗'
         console.log(`    ${issue.file}`)
-        console.log(`      ✗ ${issue.issue}`)
+        console.log(`      ${icon} ${issue.issue}`)
       } else {
         console.log(`    ${issue.file}`)
         console.log(`      ✗ ${issue.issue}`)

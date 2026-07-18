@@ -27,6 +27,7 @@ This tool answers that question by:
 - ✅ Real per-version registry validation for JSON
 - ✅ Real **structural** JSON validation via [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) — field names, dispatch `type` values, and `#[since]`/`#[until]` version gating for `recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`
 - ✅ Community knowledge rules for version-gated features
+- ✅ **Registry deprecation detection** — detects registry entries (items, entities, biomes, etc.) that existed in the datapack's source version but were REMOVED in the target version
 - ✅ Detects when `pack.mcmeta` is **wrong** (e.g. declares 1.19.3 but uses 1.20.5 features)
 - ✅ Lists the exact file + line of every break, with a suggested fix
 - ✅ Shows **community-curated breaking changes** per version (from [misode/technical-changes](https://github.com/misode/technical-changes)) — so you know what changes when updating to each version
@@ -120,7 +121,7 @@ node dist/index.js --dir "./my-datapack" --fix 1.20.4 --from-version 1.21 --outp
 ## How to read the report
 
 ```
-⚡ Datapack Version Checker v0.4.0 (content + load-range + structural + auto-fix)
+⚡ Datapack Version Checker v0.5.0 (content + load-range + structural + registry deprecation + auto-fix)
 ══════════════════════════════════════════════════════════
 
 📦 Declared load range (pack.mcmeta): 1.19.3 – 1.19.3
@@ -181,6 +182,7 @@ See [`docs.md`](./docs.md) for the full technical details.
 - Command argument-level validation is **lenient by default** (the root command must exist; gaps in sub-commands are tolerated because the Spyglass tree has some holes). Use `--strict` for stricter checks.
 - Structural JSON validation covers `recipe`, `loot_table`, `advancement`, `predicate`, and `item_modifier` files. It tolerates mcdoc constructs it can't parse yet (treating them as "allowed"), so it aims to report **real** breaks without false positives rather than exhaustively proving correctness. Tags, dimensions, worldgen, and other JSON types are not deeply validated yet.
 - NBT *structure* is not deeply validated yet (only JSON structure via vanilla-mcdoc).
+- Registry deprecation detection only fires when checking versions NEWER than the datapack's declared `pack.mcmeta` range. When the source version is unknown (no `pack.mcmeta` range), deprecation detection is skipped.
 - The knowledge base covers the most common breaking changes; it is not an exhaustive list of every MC change. Contributions welcome.
 - **Auto-fix mode** (`--fix`) rewrites commands and JSON based on known patterns. It is conservative (comments out unavailable commands rather than deleting them). Complex migrations (e.g. `/execute if/unless` subconditions → `/testfor` + conditional) are not automated; the tool tells you what to change, leaving the final logic to you.
 

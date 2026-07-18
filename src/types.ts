@@ -32,6 +32,7 @@ export interface VersionCompatibility {
   mcfunction_issues: McfunctionIssue[]
   registry_issues: RegistryIssue[]
   structural_issues?: StructuralIssue[]
+  deprecation_issues?: RegistryDeprecation[]
   breaking_changes?: string[]
 }
 
@@ -51,6 +52,13 @@ export interface RegistryIssue {
 
 export interface StructuralIssue {
   file: string
+  issue: string
+}
+
+export interface RegistryDeprecation {
+  file: string
+  registry: string
+  entry: string
   issue: string
 }
 

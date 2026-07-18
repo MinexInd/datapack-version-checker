@@ -382,7 +382,14 @@ In plain terms:
     It has guards to avoid false positives (for example `this` is a selector
     keyword, not an entity type).
 
- 4b. **Check JSON (structure).** For datapack JSON of type `recipe`, `loot_table`,
+  4b. **Check JSON (registry deprecations).** When a datapack's `pack.mcmeta` declares
+     a source version range, the tool also fetches the **source version's registries**
+     and compares them against each target version's registries. If an entry (item,
+     entity type, biome, etc.) exists in the source but was REMOVED from the target,
+     it's reported as a **registry deprecation** — meaning the datapack uses something
+     that used to exist but no longer does.
+
+  4c. **Check JSON (structure).** For datapack JSON of type `recipe`, `loot_table`,
     `advancement`, `predicate`, and `item_modifier`, the tool validates the file's
     **structure** against the official [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc)
     schema for that exact version. The full mcdoc schema is downloaded live (as a
