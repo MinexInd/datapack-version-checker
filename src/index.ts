@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { relative, resolve } from 'node:path'
 import { checkCompatibilityContentBased } from './engine.js'
+import { fixDatapack } from './fixer.js'
 import { clearCache } from './cache.js'
 import type { VersionCompatibility, McfunctionIssue, RegistryIssue } from './types.js'
 
@@ -11,6 +12,9 @@ interface CliOptions {
   json: boolean
   strict: boolean
   refresh: boolean
+  fix?: string
+  fromVersion?: string
+  outputDir?: string
   versions?: string[]
 }
 
@@ -20,33 +24,39 @@ function printHelp() {
 
   Determines compatibility from ACTUAL datapack content (commands, JSON) +
   community knowledge of version changes — NOT from pack.mcmeta (which is
-  often wrong).
+  often wrong). Can also auto-fix/port datapacks between versions.
 
   USAGE:
-    dpcheck                      Check current directory
-    dpcheck --dir <path>         Check a specific datapack directory
-    dpcheck --versions "1.21,1.20.4"   Check specific versions
-    dpcheck --all                Check all versions including snapshots
-    dpcheck --json               Output as JSON (for scripting)
-    dpcheck --refresh            Re-download all cached version data
-    dpcheck --help               Show this help
+    dpcheck                              Check current directory
+    dpcheck --dir <path>                 Check a specific datapack directory
+    dpcheck --versions "1.21,1.20.4"     Check specific versions
+    dpcheck --all                        Check all versions including snapshots
+    dpcheck --json                       Output as JSON (for scripting)
+    dpcheck --refresh                    Re-download all cached version data
+    dpcheck --fix <target>               Port datapack to target version
+    dpcheck --fix <target> --from <ver>  Specify source version explicitly
+    dpcheck --fix <target> --output <dir>  Custom output directory
+    dpcheck --help                       Show this help
 
   WHAT IT DOES:
     1. Scans all .mcfunction files and validates every command against each
        version's real command tree (from Spyglass API)
     2. Validates all JSON files against each version's registries
-     3. Cross-references community knowledge of version changes (e.g. item
-        components need 1.20.5, /random needs 1.20.2)
-     4. Validates JSON structure against vanilla-mcdoc (field names, dispatch
-        type values, and since/until version gating) for recipe,
-        loot_table, advancement, predicate and item_modifier files
-     5. Shows community-curated breaking changes per version (misode/technical-changes)
-     6. Reports which versions fully work + exactly what breaks where
+    3. Cross-references community knowledge of version changes (e.g. item
+       components need 1.20.5, /random needs 1.20.2)
+    4. Validates JSON structure against vanilla-mcdoc (field names, dispatch
+       type values, and since/until version gating) for recipe,
+       loot_table, advancement, predicate and item_modifier files
+    5. Shows community-curated breaking changes per version (misode/technical-changes)
+    6. AUTO-FIX: port datapack to a target version by rewriting commands,
+       fixing JSON structure, updating advancement icons, and updating pack.mcmeta
 
   EXAMPLES:
     dpcheck --dir ./my-datapack
     dpcheck --versions "1.20.4,1.21,1.21.1"
     dpcheck --all --json > report.json
+    dpcheck --dir ./my-datapack --fix 1.21
+    dpcheck --dir ./my-datapack --fix 1.20.4 --from-version 1.21 --output ./ported
 `)
 }
 
@@ -66,8 +76,6 @@ function parseArgs(): CliOptions {
       result.dir = resolve(args[++i])
       dirSet = true
     } else if (arg === '--versions' || arg === '-v') {
-      // Accept either a single comma-separated token OR subsequent
-      // space-separated tokens that are not flags.
       const versions: string[] = []
       const first = args[++i]
       if (first !== undefined) {
@@ -78,7 +86,13 @@ function parseArgs(): CliOptions {
         }
       }
       result.versions = versions
-    }     else if (arg === '--json') result.json = true
+    } else if (arg === '--fix') {
+      result.fix = args[++i]
+    } else if (arg === '--from-version' || arg === '--from') {
+      result.fromVersion = args[++i]
+    } else if (arg === '--output' || arg === '--output-dir' || arg === '-o') {
+      result.outputDir = resolve(args[++i])
+    } else if (arg === '--json') result.json = true
     else if (arg === '--all') result.all = true
     else if (arg === '--strict') result.strict = true
     else if (arg === '--refresh') result.refresh = true
@@ -181,6 +195,45 @@ async function main() {
     process.exit(1)
   }
 
+  // ---- FIX MODE ----
+  if (opts.fix) {
+    const targetVersion = opts.fix
+    const outputDir = opts.outputDir ?? resolve(dir + '_fixed_' + targetVersion.replace(/[^a-zA-Z0-9._-]/g, '_'))
+    console.log(`\n  🔧 Datapack Version Checker v0.4.0 — Auto-Fix Mode`)
+    console.log(`  ${'═'.repeat(50)}`)
+    console.log(`  📂 Source: ${dir}`)
+    console.log(`  🎯 Target: ${targetVersion}`)
+    console.log(`  📁 Output: ${outputDir}`)
+    console.log()
+
+    const fixResult = await fixDatapack({
+      datapackDir: dir,
+      outputDir,
+      targetVersion,
+      sourceVersion: opts.fromVersion,
+    })
+
+    if (fixResult.summary.errors.length > 0) {
+      for (const err of fixResult.summary.errors) {
+        console.error(`  ✗ Error: ${err}`)
+      }
+      if (fixResult.results.length === 0) process.exit(1)
+    }
+
+    console.log(`  ✅ Fix complete: ${fixResult.summary.filesFixed} files patched (${fixResult.summary.totalPatches} changes)`)
+    for (const r of fixResult.results) {
+      console.log(`     • ${r.file} (${r.patches} patches)`)
+      for (const d of r.details) {
+        console.log(`        ${d}`)
+      }
+    }
+    console.log(`  ${'═'.repeat(50)}`)
+    console.log(`  Data from: api.spyglassmc.com/mcje + vanilla-mcdoc + misode/technical-changes + community knowledge`)
+    console.log()
+    return
+  }
+
+  // ---- CHECK MODE ----
   const result = await checkCompatibilityContentBased(dir, opts.versions, opts.all, opts.strict)
 
   if (opts.json) {
@@ -188,7 +241,7 @@ async function main() {
     return
   }
 
-  console.log(`\n  ⚡ Datapack Version Checker v0.3.0 (content + load-range + structural + breaking changes)`)
+  console.log(`\n  ⚡ Datapack Version Checker v0.4.0 (content + load-range + structural + breaking changes)`)
   console.log(`  ${'═'.repeat(50)}`)
   console.log()
   if (result.load_range) {

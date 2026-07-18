@@ -193,6 +193,34 @@ by small gaps in the command data.
 is more thorough but may report some false positives for vanilla quirks, so use
 it when you want to dig deeper.
 
+### `--fix <target-version>` — auto-fix / porting mode
+
+```bash
+node dist/index.js --dir "./mydp" --fix 1.21
+```
+
+Ports the datapack to the target version by:
+- Rewriting commands that don't exist in the target version (e.g. `/dialog` → commented out note)
+- Converting between syntax formats (e.g. `/place feature` → `/placefeature`)
+- Fixing JSON structure (e.g. advancement icons from post-1.20.5 `ItemStackTemplate` format → pre-1.20.5 `{item,nbt}` format)
+- Updating `pack.mcmeta`'s `pack_format` to match the target version
+
+The source version is **auto-detected from `pack.mcmeta`**. You can override it:
+
+```bash
+node dist/index.js --dir "./mydp" --fix 1.20.4 --from-version 1.21
+```
+
+Output goes to `{datapack}_fixed_{version}/` by default. Customize with `--output`:
+
+```bash
+node dist/index.js --dir "./mydp" --fix 1.20.4 --output "./my-ported-pack"
+```
+
+Fixes are **conservative**: commands that can't be rewritten are commented out
+(with `## FIXED(...): original command`) rather than deleted. You can review
+and manually adjust the output.
+
 ### `--help` / `-h`
 
 ```bash
@@ -221,7 +249,7 @@ Minecraft version releases).
 Here is a typical report, annotated:
 
 ```
-⚡ Datapack Version Checker v0.2.0 (content + load-range)
+⚡ Datapack Version Checker v0.4.0 (content + load-range + structural + auto-fix)
 ══════════════════════════════════════════════════════════
 
 📦 Declared load range (pack.mcmeta): 1.19.3 – 1.19.3
@@ -480,13 +508,17 @@ datapack-version-checker/
 ├── src/
 │   ├── index.ts          # CLI entry point + argument parsing
 │   ├── engine.ts         # Main compatibility engine
+│   ├── fixer.ts          # Auto-fix / porting engine
 │   ├── api.ts            # Spyglass API client
 │   ├── tokenizer.ts      # Command line tokenizer
 │   ├── walker.ts         # Brigadier command-tree walker
 │   ├── json-check.ts     # JSON registry validation
+│   ├── mcdoc-check.ts    # vanilla-mcdoc structural validator
 │   ├── knowledge.ts      # Community version-change rules (FEATURE_RULES)
 │   ├── version.ts        # Version comparison helpers
+│   ├── technical-changes.ts # misode/technical-changes fetcher
 │   ├── pack-mcmeta.ts    # pack.mcmeta reader (load range only)
+│   ├── cache.ts          # Local cache for API data
 │   └── types.ts          # Shared TypeScript interfaces
 └── dist/                 # Compiled output (after npm run build)
 ```

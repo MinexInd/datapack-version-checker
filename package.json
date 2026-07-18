@@ -1,7 +1,7 @@
 {
   "name": "datapack-version-checker",
-  "version": "0.3.0",
-  "description": "CLI tool to check Minecraft datapack compatibility across versions from real content + vanilla-mcdoc structure + community knowledge",
+  "version": "0.4.0",
+  "description": "CLI tool to check & auto-fix Minecraft datapack compatibility across versions — content + structural + community knowledge + auto-porting",
   "type": "module",
   "bin": {
     "dpcheck": "./dist/index.js"

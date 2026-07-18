@@ -30,6 +30,7 @@ This tool answers that question by:
 - ✅ Detects when `pack.mcmeta` is **wrong** (e.g. declares 1.19.3 but uses 1.20.5 features)
 - ✅ Lists the exact file + line of every break, with a suggested fix
 - ✅ Shows **community-curated breaking changes** per version (from [misode/technical-changes](https://github.com/misode/technical-changes)) — so you know what changes when updating to each version
+- ✅ **Auto-fix / porting** — `--fix <target>` rewrites commands, converts JSON structures, and updates pack.mcmeta to port your datapack to any target version
 - ✅ Works on releases **and** snapshots
 - ✅ **Local caching** of all version data (fast re-runs, works offline) with `--refresh` to force re-download
 - ✅ JSON output (`--json`) for scripting/CI
@@ -87,6 +88,9 @@ node dist/index.js [options]
 | `--json` | | Print raw JSON instead of a human report (good for scripts). |
 | `--strict` | | Use strict command validation (root **and** every sub-command must exist in the tree). More thorough but reports more false positives on some vanilla quirks. |
 | `--refresh` | | Re-download all cached version data, including the vanilla-mcdoc schema (otherwise data is reused for 24h). |
+| `--fix <version>` | | **Auto-fix mode:** port the datapack to the target version. Detects source version from `pack.mcmeta` (override with `--from`). Rewrites commands, fixes JSON structure, converts advancement icons, updates `pack.mcmeta`. Outputs to `{dir}_fixed_{version}/` (override with `--output`). |
+| `--from-version <ver>` | `--from` | Explicit source version for fix mode (default: auto-detected from `pack.mcmeta`). |
+| `--output <path>` | `-o` | Output directory for fix mode (default: `{dir}_fixed_{version}`). |
 | `--help` | `-h` | Show help. |
 
 ### Examples
@@ -103,6 +107,12 @@ node dist/index.js --dir "./my-datapack" --all
 
 # Get machine-readable output for a script
 node dist/index.js --dir "./my-datapack" --json > report.json
+
+# Auto-fix: port a datapack to 1.21 (auto-detects source from pack.mcmeta)
+node dist/index.js --dir "./my-datapack" --fix 1.21
+
+# Auto-fix: port from a specific source version with custom output
+node dist/index.js --dir "./my-datapack" --fix 1.20.4 --from-version 1.21 --output ./ported
 ```
 
 ---
@@ -110,7 +120,7 @@ node dist/index.js --dir "./my-datapack" --json > report.json
 ## How to read the report
 
 ```
-⚡ Datapack Version Checker v0.3.0 (content + load-range + structural)
+⚡ Datapack Version Checker v0.4.0 (content + load-range + structural + auto-fix)
 ══════════════════════════════════════════════════════════
 
 📦 Declared load range (pack.mcmeta): 1.19.3 – 1.19.3
@@ -172,6 +182,7 @@ See [`docs.md`](./docs.md) for the full technical details.
 - Structural JSON validation covers `recipe`, `loot_table`, `advancement`, `predicate`, and `item_modifier` files. It tolerates mcdoc constructs it can't parse yet (treating them as "allowed"), so it aims to report **real** breaks without false positives rather than exhaustively proving correctness. Tags, dimensions, worldgen, and other JSON types are not deeply validated yet.
 - NBT *structure* is not deeply validated yet (only JSON structure via vanilla-mcdoc).
 - The knowledge base covers the most common breaking changes; it is not an exhaustive list of every MC change. Contributions welcome.
+- **Auto-fix mode** (`--fix`) rewrites commands and JSON based on known patterns. It is conservative (comments out unavailable commands rather than deleting them). Complex migrations (e.g. `/execute if/unless` subconditions → `/testfor` + conditional) are not automated; the tool tells you what to change, leaving the final logic to you.
 
 ---
 
