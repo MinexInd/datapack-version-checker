@@ -262,7 +262,7 @@ export default function App() {
                   onChange={e => setVersionSearch(e.target.value)}
                   style={{ marginBottom: 10 }}
                 />
-                <div className="scl-list scl-5">
+                <div className="scl-list" style={{ maxHeight: 145 }}>
                   {filteredVersions.map(v => (
                     <div
                       key={v.id}

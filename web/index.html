@@ -333,6 +333,7 @@
       overflow: hidden;
       background: var(--bg-elev-2);
       transition: border-color 0.15s;
+      flex-shrink: 0;
     }
     .vrow:hover { border-color: var(--text-faint); }
     .vhead {
@@ -372,10 +373,12 @@
     }
     .vrow.open .vbody { max-height: 5000px; }
     .vbody-inner { padding: 0 16px 16px; border-top: 1px solid var(--border-soft); }
-    .vlist-5 { display: flex; flex-direction: column; gap: 10px; max-height: 290px; overflow-y: auto; }
-    .klist-5 { display: flex; flex-direction: column; gap: 8px; max-height: 430px; overflow-y: auto; }
+
+    /* scrollable list container */
+    .scl-box { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+
+    /* version selector scroll */
     .scl-list { overflow-y: auto; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg); }
-    .scl-5 { max-height: 145px; }
     .scl-row {
       display: flex; align-items: center; gap: 8px; padding: 4px 10px; cursor: pointer;
       border-bottom: 1px solid var(--border-soft); transition: background 0.1s; height: 28px;
@@ -393,6 +396,95 @@
     .scl-tag.snap { background: var(--purple); color: #1a0b2e; }
 
     .hint { font-size: 0.76rem; color: var(--text-faint); margin-top: 6px; }
+
+    /* ---------- Issue groups (inside expanded version rows) ---------- */
+    .issue-group { margin-top: 14px; }
+    .issue-group:first-child { margin-top: 12px; }
+    .issue-group-title {
+      font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; margin-bottom: 8px;
+    }
+    .issue-group-title.cmd { color: var(--red); }
+    .issue-group-title.reg { color: var(--amber); }
+    .issue-group-title.struct { color: var(--blue); }
+    .issue-group-title.dep { color: var(--purple); }
+    .issue-group-title.bc { color: var(--amber); }
+
+    .issue {
+      font-size: 0.82rem;
+      line-height: 1.5;
+      padding: 8px 12px;
+      margin-bottom: 6px;
+      border-radius: 7px;
+      background: var(--bg);
+      border: 1px solid var(--border-soft);
+      border-left-width: 3px;
+    }
+    .issue:last-child { margin-bottom: 0; }
+    .issue.cmd { border-left-color: var(--red); }
+    .issue.reg { border-left-color: var(--amber); }
+    .issue.struct { border-left-color: var(--blue); }
+    .issue.dep { border-left-color: var(--purple); }
+    .issue .loc { font-family: var(--mono); color: var(--text-dim); font-size: 0.78rem; }
+    .issue .ln { color: var(--text-faint); }
+    .issue .msg { color: var(--text); }
+
+    .breaking {
+      font-size: 0.82rem; line-height: 1.5; padding: 8px 12px; margin-bottom: 6px;
+      border-radius: 7px; background: var(--amber-bg); border: 1px solid var(--amber-border);
+      color: var(--text);
+    }
+    .breaking:last-child { margin-bottom: 0; }
+
+    .badge {
+      font-size: 0.68rem; font-weight: 700; padding: 3px 9px; border-radius: 20px;
+      text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    .badge.outside { background: var(--amber-bg); color: var(--amber); }
+
+    /* ---------- Knowledge cards ---------- */
+    .krule {
+      padding: 14px 16px;
+      border-radius: 10px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent-strong);
+      flex-shrink: 0;
+    }
+    .kfeat { font-weight: 650; font-size: 0.88rem; color: var(--text); margin-bottom: 6px; }
+    .kmin {
+      display: inline-block; font-size: 0.74rem; font-weight: 700; color: var(--blue);
+      background: var(--blue-bg); border: 1px solid var(--blue-border);
+      padding: 2px 9px; border-radius: 20px; margin-bottom: 6px;
+    }
+    .kfix { font-size: 0.82rem; color: var(--green); margin-top: 4px; }
+    .kfound { font-family: var(--mono); font-size: 0.76rem; color: var(--text-faint); margin-top: 6px; }
+
+    /* ---------- Empty states ---------- */
+    .empty-sm { font-size: 0.85rem; color: var(--text-faint); padding: 8px 2px; }
+
+    /* ---------- Progress / error banners ---------- */
+    .progress-bar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 18px; margin-bottom: 20px;
+      background: var(--blue-bg); border: 1px solid var(--blue-border);
+      border-radius: var(--radius); color: var(--text); font-size: 0.88rem; font-weight: 500;
+    }
+    .error {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 18px; margin-bottom: 20px;
+      background: var(--red-bg); border: 1px solid var(--red-border);
+      border-radius: var(--radius); color: var(--text); font-size: 0.88rem;
+    }
+    .error span:first-child { color: var(--red); font-size: 1.1rem; }
+
+    /* ---------- Spinner ---------- */
+    .spinner {
+      width: 15px; height: 15px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.25); border-top-color: #fff;
+      animation: spin 0.7s linear infinite; display: inline-block; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
