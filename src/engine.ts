@@ -10,6 +10,7 @@ import { isVersionAtLeast, versionNameToDataVersion } from './version.js'
 import { getBreakingChanges } from './technical-changes.js'
 import { readPackMcmeta } from './pack-mcmeta.js'
 import { getMcdocSymbols, checkMcdocFile, fileKindFromPath } from './mcdoc-check.js'
+import { getLogger } from './logger.js'
 import type {
   McmetaVersion,
   VersionCompatibility,
@@ -139,6 +140,8 @@ export async function checkCompatibilityContentBased(
   knowledge_hits: KnowledgeHit[]
   load_range: { min: number; max: number; min_name: string | null; max_name: string | null } | null
 }> {
+  const log = getLogger()
+  log.time('checkCompatibilityContentBased')
   const allVersions = await fetchVersions()
   const mcfuncDir = join(datapackDir, 'data')
   const mcfunctionFiles = findMcfunctionFiles(mcfuncDir)
@@ -168,7 +171,9 @@ export async function checkCompatibilityContentBased(
           max_name: maxVer?.name ?? null,
         }
       }
-    } catch { }
+    } catch (e) {
+      log.debug('Failed to resolve load range:', e)
+    }
   }
 
   const releases = allVersions
@@ -202,8 +207,11 @@ export async function checkCompatibilityContentBased(
   // Pull community-curated breaking changes (misode/technical-changes) per version.
   let breakingMap: Record<string, string[]> = {}
   try {
+    log.debug('Fetching breaking changes...')
     breakingMap = await getBreakingChanges(relevantVersions)
-  } catch {
+    log.debug(`Breaking changes: ${Object.keys(breakingMap).length} versions`)
+  } catch (e) {
+    log.debug('Failed to fetch breaking changes:', e)
     breakingMap = {}
   }
 
@@ -211,8 +219,11 @@ export async function checkCompatibilityContentBased(
   // #[since]/#[until] gating. Degrades gracefully if the network is unavailable.
   let mcdocTable = null
   try {
+    log.debug('Fetching mcdoc symbols...')
     mcdocTable = await getMcdocSymbols()
-  } catch {
+    log.debug(`Mcdoc symbols loaded: ${mcdocTable ? 'yes' : 'no'}`)
+  } catch (e) {
+    log.debug('Failed to fetch mcdoc symbols:', e)
     mcdocTable = null
   }
   const structuralJsonFiles = mcdocTable
@@ -228,11 +239,17 @@ export async function checkCompatibilityContentBased(
     try {
       const sourceVer = allVersions.find(v => v.data_pack_version === loadRange.max)
       if (sourceVer) {
+        log.debug(`Fetching source registries for deprecation: ${sourceVer.name}`)
         sourceRegistries = await fetchRegistries(sourceVer.id)
         sourceVersionDv = sourceVer.data_version
       }
-    } catch { }
+    } catch (e) {
+      log.debug('Failed to fetch source registries:', e)
+    }
   }
+
+  log.info(`Checking ${relevantVersions.length} versions...`)
+  log.time('version-loop')
 
   for (const ver of relevantVersions) {
     const inLoadRange = loadRange
@@ -245,7 +262,9 @@ export async function checkCompatibilityContentBased(
     // Validate commands against this version's command tree
     let tree: CommandTreeNode | null = null
     try {
+      log.time(`command-tree:${ver.id}`)
       tree = await fetchCommandTree(ver.id)
+      log.timeEnd(`command-tree:${ver.id}`)
       for (const cmd of commands) {
         const res = validateCommand(cmd.text, tree, !strict)
         if (!res.valid) {
@@ -258,6 +277,7 @@ export async function checkCompatibilityContentBased(
         }
       }
     } catch (e) {
+      log.warn(`Failed to check commands for ${ver.name}:`, e)
       mcfunctionIssues.push({
         file: '(api)',
         line: 0,
@@ -270,12 +290,16 @@ export async function checkCompatibilityContentBased(
     const deprecationIssues: RegistryDeprecation[] = []
     let targetRegs: Record<string, string[]> | null = null
     try {
+      log.time(`registries:${ver.id}`)
       targetRegs = await fetchRegistries(ver.id)
+      log.timeEnd(`registries:${ver.id}`)
       for (const file of jsonFiles) {
         const issues = checkJsonFile(file, targetRegs)
         registryIssues.push(...issues)
       }
-    } catch { }
+    } catch (e) {
+      log.warn(`Failed to check registries for ${ver.name}:`, e)
+    }
 
     // Detect registry deprecations: entries that existed in the source version
     // but were REMOVED by this (newer) target version.
@@ -293,7 +317,9 @@ export async function checkCompatibilityContentBased(
         const rel = relative(datapackDir, file).replace(/\\/g, '/')
         try {
           structuralIssues.push(...checkMcdocFile(file, rel, ver.name, mcdocTable))
-        } catch { }
+        } catch (e) {
+          log.debug(`mcdoc validation error for ${rel}:`, e)
+        }
       }
     }
 
@@ -336,6 +362,9 @@ export async function checkCompatibilityContentBased(
 
     tree = null
   }
+
+  log.timeEnd('version-loop', `checked ${relevantVersions.length} versions`)
+  log.timeEnd('checkCompatibilityContentBased')
 
   return {
     target_version_id: loadRange ? `${loadRange.min}-${loadRange.max}` : 'content-based',
@@ -433,6 +462,8 @@ export async function checkResourcePack(
   knowledge_hits: KnowledgeHit[]
   load_range: { min: number; max: number; min_name: string | null; max_name: string | null } | null
 }> {
+  const log = getLogger()
+  log.time('checkResourcePack')
   const allVersions = await fetchVersions()
   const assetsDir = join(resourceDir, 'assets')
 
@@ -472,11 +503,23 @@ export async function checkResourcePack(
 
   // Breaking changes
   let breakingMap: Record<string, string[]> = {}
-  try { breakingMap = await getBreakingChanges(relevantVersions) } catch { breakingMap = {} }
+  try {
+    log.debug('Fetching breaking changes...')
+    breakingMap = await getBreakingChanges(relevantVersions)
+  } catch (e) {
+    log.debug('Failed to fetch breaking changes:', e)
+    breakingMap = {}
+  }
 
   // mcdoc symbols for resource types
   let mcdocTable = null
-  try { mcdocTable = await getMcdocSymbols() } catch { mcdocTable = null }
+  try {
+    log.debug('Fetching mcdoc symbols...')
+    mcdocTable = await getMcdocSymbols()
+  } catch (e) {
+    log.debug('Failed to fetch mcdoc symbols:', e)
+    mcdocTable = null
+  }
   const structuralJsonFiles = mcdocTable
     ? jsonFiles.filter(f => fileKindFromPath(relative(resourceDir, f).replace(/\\/g, '/')))
     : []
@@ -488,11 +531,17 @@ export async function checkResourcePack(
     try {
       const sourceVer = allVersions.find(v => v.resource_pack_version === loadRange.max)
       if (sourceVer) {
+        log.debug(`Fetching source registries for deprecation: ${sourceVer.name}`)
         sourceRegistries = await fetchRegistries(sourceVer.id)
         sourceVersionDv = sourceVer.data_version
       }
-    } catch { }
+    } catch (e) {
+      log.debug('Failed to fetch source registries:', e)
+    }
   }
+
+  log.info(`Checking ${relevantVersions.length} versions...`)
+  log.time('rp-version-loop')
 
   for (const ver of relevantVersions) {
     const inLoadRange = loadRange
@@ -512,7 +561,9 @@ export async function checkResourcePack(
         const issues = checkJsonFile(file, targetRegs)
         registryIssues.push(...issues)
       }
-    } catch { }
+    } catch (e) {
+      log.warn(`Failed to check registries for ${ver.name}:`, e)
+    }
 
     // Deprecation detection
     if (sourceRegistries && targetRegs && ver.data_version > sourceVersionDv) {
@@ -528,7 +579,9 @@ export async function checkResourcePack(
         const rel = relative(resourceDir, file).replace(/\\/g, '/')
         try {
           structuralIssues.push(...checkMcdocFile(file, rel, ver.name, mcdocTable))
-        } catch { }
+        } catch (e) {
+          log.debug(`mcdoc validation error for ${rel}:`, e)
+        }
       }
     }
 
@@ -566,6 +619,9 @@ export async function checkResourcePack(
     if (inLoadRange && !hasContentIssues) compatible.push(result)
     else incompatible.push(result)
   }
+
+  log.timeEnd('rp-version-loop')
+  log.timeEnd('checkResourcePack')
 
   return {
     target_version_id: loadRange ? `${loadRange.min}-${loadRange.max}` : 'content-based',

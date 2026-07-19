@@ -1,36 +1,42 @@
 import { getCache, setCache } from './cache.js'
+import { getLogger } from './logger.js'
 import type { McmetaVersion, CommandTreeNode } from './types.js'
 
 const BASE = 'https://api.spyglassmc.com/mcje'
 
-export async function fetchVersions(): Promise<McmetaVersion[]> {
-  const cached = getCache<McmetaVersion[]>('mcje_versions')
-  if (cached) return cached
-  const res = await fetch(`${BASE}/versions`)
-  if (!res.ok) throw new Error(`Failed to fetch versions: ${res.status}`)
-  const data = (await res.json()) as McmetaVersion[]
-  setCache('mcje_versions', data)
+const log = getLogger().child('api')
+
+async function doFetch<T>(url: string, cacheKey: string, label: string): Promise<T> {
+  const cached = getCache<T>(cacheKey)
+  if (cached) {
+    log.debug(`Cache HIT ${label}`)
+    return cached
+  }
+  log.debug(`Cache MISS ${label} — fetching ${url}`)
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`${label}: HTTP ${res.status}`)
+  const data = (await res.json()) as T
+  setCache(cacheKey, data)
+  log.debug(`Fetched ${label} (${Array.isArray(data) ? data.length : 'object'} items)`)
   return data
+}
+
+export async function fetchVersions(): Promise<McmetaVersion[]> {
+  return doFetch<McmetaVersion[]>(`${BASE}/versions`, 'mcje_versions', 'versions')
 }
 
 export async function fetchCommandTree(versionId: string): Promise<CommandTreeNode> {
-  const key = 'mcje_commands_' + versionId
-  const cached = getCache<CommandTreeNode>(key)
-  if (cached) return cached
-  const res = await fetch(`${BASE}/versions/${encodeURIComponent(versionId)}/commands`)
-  if (!res.ok) throw new Error(`Failed to fetch commands for ${versionId}: ${res.status}`)
-  const data = (await res.json()) as CommandTreeNode
-  setCache(key, data)
-  return data
+  return doFetch<CommandTreeNode>(
+    `${BASE}/versions/${encodeURIComponent(versionId)}/commands`,
+    'mcje_commands_' + versionId,
+    `command-tree:${versionId}`,
+  )
 }
 
 export async function fetchRegistries(versionId: string): Promise<Record<string, string[]>> {
-  const key = 'mcje_registries_' + versionId
-  const cached = getCache<Record<string, string[]>>(key)
-  if (cached) return cached
-  const res = await fetch(`${BASE}/versions/${encodeURIComponent(versionId)}/registries`)
-  if (!res.ok) throw new Error(`Failed to fetch registries for ${versionId}: ${res.status}`)
-  const data = (await res.json()) as Record<string, string[]>
-  setCache(key, data)
-  return data
+  return doFetch<Record<string, string[]>>(
+    `${BASE}/versions/${encodeURIComponent(versionId)}/registries`,
+    'mcje_registries_' + versionId,
+    `registries:${versionId}`,
+  )
 }

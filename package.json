@@ -27,6 +27,7 @@
     "@spyglassmc/mcdoc": "^0.3.56",
     "@spyglassmc/nbt": "^0.3.58",
     "adm-zip": "^0.6.0",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "jszip": "^3.10.1"
   }
 }

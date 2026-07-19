@@ -249,6 +249,21 @@ Fixes are **conservative**: commands that can't be rewritten are commented out
 (with `## FIXED(...): original command`) rather than deleted. You can review
 and manually adjust the output.
 
+### `serve` — launch the web GUI
+
+```bash
+node dist/index.js serve
+```
+
+Opens a local web server (default port **3001**) with a professional dark-themed GUI. Open `http://localhost:3001/` in your browser for a visual interface with:
+
+- **Drag-and-drop** pack upload (folder or `.zip`)
+- **Searchable, scrollable version selector** — filter versions by name, ID, or type
+- **All check options** — mode, specific versions, all versions, strict mode
+- **Full results display** — summary cards, expandable version rows with every issue type (commands, registries, structural/mcdoc, deprecations, breaking changes)
+- **Auto-fix/port** — select source + target version; downloads a ported `.zip`
+- Knowledge hits and load-range info
+
 ### `--help` / `-h`
 
 ```bash
@@ -538,6 +553,10 @@ own.
 You pointed `--dir` at the wrong folder. Point it at the folder that contains
 `pack.mcmeta`.
 
+**GUI shows nothing / blank screen after running a check**
+The pack may have no `deprecation_issues` field. This was fixed in v0.6.0+.
+Rebuild with `npm run build` and make sure your browser cache is cleared.
+
 **"Could not fetch command tree" / network errors**
 The tool needs internet access to reach `api.spyglassmc.com`. Check your
 connection or firewall.
@@ -563,10 +582,13 @@ That's expected — the underlying command data has small gaps. Use the default
 
 ```
 datapack-version-checker/
-├── package.json          # npm scripts: build, start
+├── package.json          # npm scripts: build, start, serve
 ├── tsconfig.json         # TypeScript config (NodeNext / ESM)
+├── docs.md               # Detailed documentation
+├── README.md             # Quick-start README
 ├── src/
-│   ├── index.ts          # CLI entry point + argument parsing
+│   ├── index.ts          # CLI entry point + argument parsing + serve
+│   ├── server.ts         # Express web server (GUI backend + API)
 │   ├── engine.ts         # Main compatibility engine
 │   ├── fixer.ts          # Auto-fix / porting engine
 │   ├── api.ts            # Spyglass API client
@@ -580,8 +602,20 @@ datapack-version-checker/
 │   ├── technical-changes.ts # misode/technical-changes fetcher
 │   ├── pack-mcmeta.ts    # pack.mcmeta reader (load range only)
 │   ├── cache.ts          # Local cache for API data
+│   ├── logger.ts         # Structured logger (stderr-based, level-configurable)
 │   └── types.ts          # Shared TypeScript interfaces
-└── dist/                 # Compiled output (after npm run build)
+├── web/
+│   ├── package.json      # React / Vite dev dependencies
+│   ├── vite.config.ts    # Vite config with /api proxy
+│   ├── index.html        # Frontend HTML + embedded CSS
+│   └── src/
+│       ├── main.tsx      # React entry point
+│       ├── App.tsx       # Main app component (tabs, file upload, version picker)
+│       ├── api.ts        # Frontend API client + TypeScript types
+│       └── components/
+│           └── Results.tsx  # Results display (version rows, issues, knowledge)
+├── web/dist/             # Built frontend (served by `serve` command)
+└── dist/                 # Compiled server (after npm run build)
 ```
 
 ### Build & run

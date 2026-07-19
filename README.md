@@ -96,7 +96,31 @@ node dist/index.js [options]
 | `--fix <version>` | | **Auto-fix mode:** port the datapack to the target version. Detects source version from `pack.mcmeta` (override with `--from`). Rewrites commands, fixes JSON structure, converts advancement icons, updates `pack.mcmeta`. Outputs to `{dir}_fixed_{version}/` (override with `--output`). Datapack mode only. |
 | `--from-version <ver>` | `--from` | Explicit source version for fix mode (default: auto-detected from `pack.mcmeta`). |
 | `--output <path>` | `-o` | Output directory for fix mode (default: `{dir}_fixed_{version}`). |
+| `serve` | | Start the **web GUI server** on port 3001. Open `http://localhost:3001/` in a browser. |
 | `--help` | `-h` | Show help. |
+
+## Web GUI (browser-based)
+
+dpcheck includes a **professional web GUI** that exposes every CLI feature through a polished dark-mode interface:
+
+```bash
+npm run serve
+```
+
+Open **http://localhost:3001/** in your browser.
+
+### Features
+
+| Tab | What it does |
+|-----|-------------|
+| **Check** | Upload a datapack/resource pack (drag-and-drop folder or `.zip`), select target versions via a searchable scrollable list, choose mode (auto/datapack/resourcepack), run the check, and see all results with expandable version rows showing every issue type. |
+| **Fix** | Upload a pack, pick a source + target version, and download a ported `.zip` with rewritten commands, fixed JSON, and updated `pack.mcmeta`. |
+
+The Check results show:
+- **Summary cards** — compatible, broken, outside-range, and total-issue counts
+- **Version rows** — expand each version to see **command issues**, **registry issues**, **structural (mcdoc) issues**, **registry deprecations**, and **breaking changes**
+- **Knowledge hits** — community rules that set the minimum version
+- All lists are **scrollable** (showing 5 items) with custom dark scrollbars
 
 ### Examples
 

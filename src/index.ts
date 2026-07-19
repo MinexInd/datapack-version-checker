@@ -4,6 +4,7 @@ import { join, relative, resolve } from 'node:path'
 import { checkCompatibilityContentBased, checkResourcePack } from './engine.js'
 import { fixDatapack } from './fixer.js'
 import { clearCache } from './cache.js'
+import { setLogLevel, getLogger } from './logger.js'
 import type { VersionCompatibility, McfunctionIssue, RegistryIssue, RegistryDeprecation } from './types.js'
 
 type Mode = 'datapack' | 'resourcepack' | 'auto'
@@ -14,6 +15,8 @@ interface CliOptions {
   json: boolean
   strict: boolean
   refresh: boolean
+  verbose: boolean
+  debug: boolean
   fix?: string
   fromVersion?: string
   outputDir?: string
@@ -43,6 +46,8 @@ function printHelp() {
     dpcheck --help                       Show this help
     dpcheck --dir <path> --mode resourcepack  Check a resource pack
     dpcheck --mode auto                  Auto-detect pack type
+    dpcheck --verbose                    Show detailed progress and timing
+    dpcheck --debug                      Show all debug messages (very verbose)
     dpcheck serve                        Start GUI web server on localhost:3001
 
   WHAT IT DOES:
@@ -72,7 +77,7 @@ function printHelp() {
 
 function parseArgs(): CliOptions {
   const args = process.argv.slice(2)
-  const result: CliOptions = { dir: process.cwd(), all: false, json: false, strict: false, refresh: false, mode: 'auto' }
+  const result: CliOptions = { dir: process.cwd(), all: false, json: false, strict: false, refresh: false, verbose: false, debug: false, mode: 'auto' }
   let dirSet = false
 
   if (args.includes('--help') || args.includes('-h')) {
@@ -115,6 +120,8 @@ function parseArgs(): CliOptions {
     else if (arg === '--all') result.all = true
     else if (arg === '--strict') result.strict = true
     else if (arg === '--refresh') result.refresh = true
+    else if (arg === '--verbose') result.verbose = true
+    else if (arg === '--debug') result.debug = true
     else if (!arg.startsWith('-') && !dirSet) result.dir = resolve(arg)
   }
   return result
@@ -213,6 +220,14 @@ function detectMode(dir: string): Mode {
 
 async function main() {
   const opts = parseArgs()
+
+  if (opts.debug) setLogLevel('debug')
+  else if (opts.verbose) setLogLevel('info')
+  else setLogLevel('warn')
+
+  const logger = getLogger()
+  logger.time('total')
+
   if (opts.serve) {
     const { startServer } = await import('./server.js')
     startServer()
@@ -322,6 +337,8 @@ async function main() {
     printPortingGuide((result as any).knowledge_hits)
   }
   printBreakingChanges([...result.compatible, ...result.incompatible])
+
+  logger.timeEnd('total', `(${result.versions_checked} versions)`)
 
   console.log(`  ${'═'.repeat(50)}`)
   console.log(`  Data from: api.spyglassmc.com/mcje + vanilla-mcdoc + misode/technical-changes + community knowledge`)
