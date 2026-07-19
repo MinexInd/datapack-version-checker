@@ -19,6 +19,7 @@ interface CliOptions {
   outputDir?: string
   mode: Mode
   versions?: string[]
+  serve?: boolean
 }
 
 function printHelp() {
@@ -42,6 +43,7 @@ function printHelp() {
     dpcheck --help                       Show this help
     dpcheck --dir <path> --mode resourcepack  Check a resource pack
     dpcheck --mode auto                  Auto-detect pack type
+    dpcheck serve                        Start GUI web server on localhost:3001
 
   WHAT IT DOES:
     1. Scans all .mcfunction files and validates every command against each
@@ -76,6 +78,11 @@ function parseArgs(): CliOptions {
   if (args.includes('--help') || args.includes('-h')) {
     printHelp()
     process.exit(0)
+  }
+
+  if (args[0] === 'serve') {
+    result.serve = true
+    return result
   }
 
   for (let i = 0; i < args.length; i++) {
@@ -206,6 +213,11 @@ function detectMode(dir: string): Mode {
 
 async function main() {
   const opts = parseArgs()
+  if (opts.serve) {
+    const { startServer } = await import('./server.js')
+    startServer()
+    return
+  }
   if (opts.refresh) clearCache()
   const dir = opts.dir
 

@@ -7,10 +7,15 @@
     "dpcheck": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js"
+    "build": "tsc && cd web && npm run build",
+    "build:ts": "tsc",
+    "build:web": "cd web && npm install && npm run build",
+    "start": "node dist/index.js",
+    "serve": "node dist/index.js serve",
+    "dev:web": "cd web && npm run dev"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
   },
@@ -19,6 +24,7 @@
     "@spyglassmc/java-edition": "^0.3.65",
     "@spyglassmc/json": "^0.3.56",
     "@spyglassmc/mcdoc": "^0.3.56",
-    "@spyglassmc/nbt": "^0.3.58"
+    "@spyglassmc/nbt": "^0.3.58",
+    "express": "^5.2.1"
   }
 }
