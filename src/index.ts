@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs'
-import { relative, resolve } from 'node:path'
-import { checkCompatibilityContentBased } from './engine.js'
+import { join, relative, resolve } from 'node:path'
+import { checkCompatibilityContentBased, checkResourcePack } from './engine.js'
 import { fixDatapack } from './fixer.js'
 import { clearCache } from './cache.js'
 import type { VersionCompatibility, McfunctionIssue, RegistryIssue, RegistryDeprecation } from './types.js'
+
+type Mode = 'datapack' | 'resourcepack' | 'auto'
 
 interface CliOptions {
   dir: string
@@ -15,6 +17,7 @@ interface CliOptions {
   fix?: string
   fromVersion?: string
   outputDir?: string
+  mode: Mode
   versions?: string[]
 }
 
@@ -37,6 +40,8 @@ function printHelp() {
     dpcheck --fix <target> --from <ver>  Specify source version explicitly
     dpcheck --fix <target> --output <dir>  Custom output directory
     dpcheck --help                       Show this help
+    dpcheck --dir <path> --mode resourcepack  Check a resource pack
+    dpcheck --mode auto                  Auto-detect pack type
 
   WHAT IT DOES:
     1. Scans all .mcfunction files and validates every command against each
@@ -50,6 +55,8 @@ function printHelp() {
     5. Shows community-curated breaking changes per version (misode/technical-changes)
     6. AUTO-FIX: port datapack to a target version by rewriting commands,
        fixing JSON structure, updating advancement icons, and updating pack.mcmeta
+    7. RESOURCE PACK MODE: scan assets/ for models, textures, sounds, blockstates,
+       particles, fonts, shaders, atlases, and language files
 
   EXAMPLES:
     dpcheck --dir ./my-datapack
@@ -57,12 +64,13 @@ function printHelp() {
     dpcheck --all --json > report.json
     dpcheck --dir ./my-datapack --fix 1.21
     dpcheck --dir ./my-datapack --fix 1.20.4 --from-version 1.21 --output ./ported
+    dpcheck --dir ./my-resource-pack --mode resourcepack
 `)
 }
 
 function parseArgs(): CliOptions {
   const args = process.argv.slice(2)
-  const result: CliOptions = { dir: process.cwd(), all: false, json: false, strict: false, refresh: false }
+  const result: CliOptions = { dir: process.cwd(), all: false, json: false, strict: false, refresh: false, mode: 'auto' }
   let dirSet = false
 
   if (args.includes('--help') || args.includes('-h')) {
@@ -92,6 +100,10 @@ function parseArgs(): CliOptions {
       result.fromVersion = args[++i]
     } else if (arg === '--output' || arg === '--output-dir' || arg === '-o') {
       result.outputDir = resolve(args[++i])
+    } else if (arg === '--mode') {
+      const val = args[++i]
+      if (val === 'datapack' || val === 'resourcepack' || val === 'auto') result.mode = val
+      else { console.error(`Error: Invalid mode "${val}". Use datapack, resourcepack, or auto.`); process.exit(1) }
     } else if (arg === '--json') result.json = true
     else if (arg === '--all') result.all = true
     else if (arg === '--strict') result.strict = true
@@ -184,6 +196,14 @@ function printBreakingChanges(versions: VersionCompatibility[]) {
   }
 }
 
+function detectMode(dir: string): Mode {
+  const hasData = existsSync(join(dir, 'data'))
+  const hasAssets = existsSync(join(dir, 'assets'))
+  if (hasData && !hasAssets) return 'datapack'
+  if (hasAssets && !hasData) return 'resourcepack'
+  return 'datapack' // default to datapack when both or neither
+}
+
 async function main() {
   const opts = parseArgs()
   if (opts.refresh) clearCache()
@@ -194,12 +214,20 @@ async function main() {
     process.exit(1)
   }
   if (!existsSync(`${dir}/pack.mcmeta`)) {
-    console.error(`Error: No pack.mcmeta found in '${dir}' (needed to locate datapack)`)
+    console.error(`Error: No pack.mcmeta found in '${dir}'`)
     process.exit(1)
   }
 
+  // Resolve mode
+  const mode = opts.mode === 'auto' ? detectMode(dir) : (opts.mode || detectMode(dir))
+  const isRp = mode === 'resourcepack'
+
   // ---- FIX MODE ----
   if (opts.fix) {
+    if (isRp) {
+      console.error(`Error: Auto-fix mode is not yet supported for resource packs`)
+      process.exit(1)
+    }
     const targetVersion = opts.fix
     const outputDir = opts.outputDir ?? resolve(dir + '_fixed_' + targetVersion.replace(/[^a-zA-Z0-9._-]/g, '_'))
     console.log(`\n  🔧 Datapack Version Checker v0.4.0 — Auto-Fix Mode`)
@@ -237,21 +265,30 @@ async function main() {
   }
 
   // ---- CHECK MODE ----
-  const result = await checkCompatibilityContentBased(dir, opts.versions, opts.all, opts.strict)
+  const isRpMode = mode === 'resourcepack'
+  const banner = isRpMode
+    ? '\n  ⚡ Resource Pack Checker v0.5.0 (content + load-range + structural + breaking changes)'
+    : '\n  ⚡ Datapack Version Checker v0.4.0 (content + load-range + structural + breaking changes)'
+
+  const result = isRpMode
+    ? await checkResourcePack(dir, opts.versions, opts.all)
+    : await checkCompatibilityContentBased(dir, opts.versions, opts.all, opts.strict)
 
   if (opts.json) {
     console.log(JSON.stringify(result, null, 2))
     return
   }
 
-  console.log(`\n  ⚡ Datapack Version Checker v0.4.0 (content + load-range + structural + breaking changes)`)
+  console.log(banner)
   console.log(`  ${'═'.repeat(50)}`)
   console.log()
-  if (result.load_range) {
-    const lr = result.load_range
+  if ('load_range' in result && result.load_range) {
+    const lr = (result as any).load_range
     console.log(`  📦 Declared load range (pack.mcmeta): ${lr.min_name ?? lr.min} – ${lr.max_name ?? lr.max}`)
   }
-  console.log(`  📋 Minimum version from content: ${result.min_version ?? 'any (no version-specific features detected)'}`)
+  if ('min_version' in result && result.min_version !== undefined) {
+    console.log(`  📋 Minimum version from content: ${(result as any).min_version ?? 'any (no version-specific features detected)'}`)
+  }
   console.log(`  🔍 Versions checked: ${result.versions_checked}`)
   console.log(`  ✅ Fully compatible: ${result.compatible.length}`)
   console.log(`  ❌ Breaks / outside range: ${result.incompatible.length}`)
@@ -269,7 +306,9 @@ async function main() {
     printDetailedIssues(broken)
   }
 
-  printPortingGuide(result.knowledge_hits)
+  if ('knowledge_hits' in result) {
+    printPortingGuide((result as any).knowledge_hits)
+  }
   printBreakingChanges([...result.compatible, ...result.incompatible])
 
   console.log(`  ${'═'.repeat(50)}`)

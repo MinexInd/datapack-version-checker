@@ -1,8 +1,8 @@
-# Datapack Version Checker (`dpcheck`)
+# Datapack / Resource Pack Version Checker (`dpcheck`)
 
-> Check whether a Minecraft **Java Edition datapack** works on a given game version — and find out *exactly what breaks* so you can port it faster.
+> Check whether a Minecraft **Java Edition datapack or resource pack** works on a given game version — and find out *exactly what breaks* so you can port it faster.
 
-`dpcheck` looks at the **real content** of your datapack (the actual commands and JSON files) and validates it against the real command tree and registries of each Minecraft version. It also uses a curated list of community-known version changes (the "what people say" layer) — because `pack.mcmeta` is **often wrong** about which versions a datapack really supports.
+`dpcheck` looks at the **real content** of your pack (the actual commands, JSON files, models, sounds, textures) and validates it against the real command tree, registries, and mcdoc schemas of each Minecraft version. It also uses a curated list of community-known version changes (the "what people say" layer) — because `pack.mcmeta` is **often wrong** about which versions a pack really supports.
 
 ---
 
@@ -22,12 +22,15 @@ This tool answers that question by:
 
 ## Features
 
+- ✅ **Datapack mode** — scans `data/` for `.mcfunction` commands + `.json` registries
+- ✅ **Resource pack mode** — scans `assets/` for models, blockstates, sounds, atlases, particles, fonts, lang, shaders, and textures
+- ✅ Auto-detection of pack type (`--mode auto`)
 - ✅ Content-based checking (does **not** trust `pack.mcmeta` alone)
 - ✅ Real per-version command-tree validation (via Spyglass API)
 - ✅ Real per-version registry validation for JSON
-- ✅ Real **structural** JSON validation via [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) — field names, dispatch `type` values, and `#[since]`/`#[until]` version gating for `recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`
-- ✅ Community knowledge rules for version-gated features
-- ✅ **Registry deprecation detection** — detects registry entries (items, entities, biomes, etc.) that existed in the datapack's source version but were REMOVED in the target version
+- ✅ Real **structural** JSON validation via [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) — field names, dispatch `type` values, and `#[since]`/`#[until]` version gating for datapack types (`recipe`, `loot_table`, `advancement`, etc.) **and** resource pack types (`model`, `block_definition`, `sounds`, `atlas`, `particle`, `font`, `shader`, `lang`, `texture_meta`, `item_model`, etc.)
+- ✅ Community knowledge rules for version-gated features (datapack **and** resource pack)
+- ✅ **Registry deprecation detection** — detects registry entries (items, entities, biomes, etc.) that existed in the pack's source version but were REMOVED in the target version
 - ✅ Detects when `pack.mcmeta` is **wrong** (e.g. declares 1.19.3 but uses 1.20.5 features)
 - ✅ Lists the exact file + line of every break, with a suggested fix
 - ✅ Shows **community-curated breaking changes** per version (from [misode/technical-changes](https://github.com/misode/technical-changes)) — so you know what changes when updating to each version
@@ -83,13 +86,14 @@ node dist/index.js [options]
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--dir <path>` | `-d` | Path to the datapack folder (the one containing `pack.mcmeta`). Default: current directory. |
+| `--dir <path>` | `-d` | Path to the pack folder (the one containing `pack.mcmeta`). Default: current directory. |
+| `--mode <type>` | | Pack type: `datapack`, `resourcepack`, or `auto` (detect from folder contents). Default: `auto`. |
 | `--versions <v1> [v2 ...]` | `-v` | Check **specific** versions, e.g. `-v 1.20.4 1.21 1.21.1`. |
 | `--all` | | Check **every** version (releases + snapshots). Slower. |
 | `--json` | | Print raw JSON instead of a human report (good for scripts). |
-| `--strict` | | Use strict command validation (root **and** every sub-command must exist in the tree). More thorough but reports more false positives on some vanilla quirks. |
+| `--strict` | | Use strict command validation (root **and** every sub-command must exist in the tree). More thorough but reports more false positives on some vanilla quirks. Datapack mode only. |
 | `--refresh` | | Re-download all cached version data, including the vanilla-mcdoc schema (otherwise data is reused for 24h). |
-| `--fix <version>` | | **Auto-fix mode:** port the datapack to the target version. Detects source version from `pack.mcmeta` (override with `--from`). Rewrites commands, fixes JSON structure, converts advancement icons, updates `pack.mcmeta`. Outputs to `{dir}_fixed_{version}/` (override with `--output`). |
+| `--fix <version>` | | **Auto-fix mode:** port the datapack to the target version. Detects source version from `pack.mcmeta` (override with `--from`). Rewrites commands, fixes JSON structure, converts advancement icons, updates `pack.mcmeta`. Outputs to `{dir}_fixed_{version}/` (override with `--output`). Datapack mode only. |
 | `--from-version <ver>` | `--from` | Explicit source version for fix mode (default: auto-detected from `pack.mcmeta`). |
 | `--output <path>` | `-o` | Output directory for fix mode (default: `{dir}_fixed_{version}`). |
 | `--help` | `-h` | Show help. |
@@ -114,6 +118,15 @@ node dist/index.js --dir "./my-datapack" --fix 1.21
 
 # Auto-fix: port from a specific source version with custom output
 node dist/index.js --dir "./my-datapack" --fix 1.20.4 --from-version 1.21 --output ./ported
+
+# Check a resource pack
+node dist/index.js --dir "./my-resource-pack" --mode resourcepack
+
+# Check a resource pack against specific versions
+node dist/index.js --dir "./my-resource-pack" --mode resourcepack -v 1.21.4 1.21.5 26.1
+
+# Auto-detect pack type (uses data/ for datapack, assets/ for resource pack)
+node dist/index.js --dir "./my-pack" --mode auto
 ```
 
 ---
@@ -152,15 +165,24 @@ At the end, a **"WHY THIS VERSION RANGE"** section explains which community-know
 
 ---
 
-## How it works (short version)
+ ## How it works (short version)
 
+ **Datapack mode** (`data/`):
  1. **Scan** all `data/**/*.mcfunction` and `data/**/*.json` files.
  2. **Tokenize** each command line and walk it against the target version's Brigadier command tree (following redirects like `tp` → `teleport`).
  3. **Validate** JSON string values against the target version's registries (entity types, items, etc.), with guards against common false positives.
- 4. **Structurally validate** datapack JSON (`recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`) against the target version's [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema: it checks that top-level and nested fields actually exist in that version, that dispatch `type` values (e.g. `minecraft:crafting_shaped`) are valid for that version, and that `#[since]`/`#[until]` version gates are respected. The full mcdoc schema is downloaded once (auto-updating) and cached.
+ 4. **Structurally validate** datapack JSON (`recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`) against the target version's [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema.
  5. **Apply knowledge rules** — a feature that was added in a later version overrides the lenient walker and is reported as a break on older versions.
+
+ **Resource pack mode** (`assets/`):
+ 1. **Scan** all `assets/**/*.json`, `*.png`, and `*.mcmeta` files.
+ 2. **Validate** JSON string values against the target version's registries.
+ 3. **Structurally validate** resource pack JSON (`model`, `block_definition`, `sounds`, `atlas`, `particle`, `font`, `shader`, `lang`, `texture_meta`, `item_model`, etc.) against the target version's mcdoc schema.
+ 4. **Apply resource knowledge rules** — model features, atlas sources, font provider fields, etc.
+
+ **Both modes:**
  6. **Pull breaking changes** per version from [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated, auto-updating) and show them as informational notes.
- 7. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range?
+ 7. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range.
 
 All downloaded data is **cached locally** (24h) so re-runs are fast and work offline; use `--refresh` to force an update.
 

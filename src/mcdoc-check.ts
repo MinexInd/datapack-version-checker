@@ -739,10 +739,29 @@ const KIND_TO_RESOURCE: Record<string, string> = {
   advancement: 'advancement',
   predicate: 'predicate',
   item_modifier: 'item_modifier',
+  // Resource pack types
+  models: 'model',
+  blockstates: 'block_definition',
+  atlases: 'atlas',
+  particles: 'particle',
+  lang: 'lang',
+  font: 'font',
+  shaders: 'shader',
+}
+
+/** Map sounds.json filename and .mcmeta extension */
+const FILE_TO_RESOURCE: Record<string, string> = {
+  'sounds.json': 'sounds',
 }
 
 export function fileKindFromPath(relPath: string): string | null {
   const segs = relPath.split('/')
+  // Check for specific filenames (sounds.json)
+  const fileName = segs[segs.length - 1]
+  if (fileName in FILE_TO_RESOURCE) return FILE_TO_RESOURCE[fileName]
+  // Check for .mcmeta files (texture metadata) — treat as texture_meta
+  if (fileName.endsWith('.png.mcmeta')) return 'texture_meta'
+  // Check directory segments (models/, blockstates/, etc.)
   for (const seg of segs) {
     if (seg in KIND_TO_RESOURCE) return seg
   }
