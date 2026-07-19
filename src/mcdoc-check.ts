@@ -734,12 +734,62 @@ function validateObject(
 // ---------------------------------------------------------------------------
 
 const KIND_TO_RESOURCE: Record<string, string> = {
+  // === Datapack types (already covered) ===
   recipe: 'recipe',
   loot_table: 'loot_table',
   advancement: 'advancement',
   predicate: 'predicate',
   item_modifier: 'item_modifier',
-  // Resource pack types
+
+  // === New datapack types (simple registry file types) ===
+  damage_type: 'damage_type',
+  enchantment: 'enchantment',
+  jukebox_song: 'jukebox_song',
+  chat_type: 'chat_type',
+  trim_pattern: 'trim_pattern',
+  trim_material: 'trim_material',
+  banner_pattern: 'banner_pattern',
+  wolf_variant: 'wolf_variant',
+  pig_variant: 'pig_variant',
+  cat_variant: 'cat_variant',
+  frog_variant: 'frog_variant',
+  painting_variant: 'painting_variant',
+  instrument: 'instrument',
+  dimension_type: 'dimension_type',
+  dimension: 'dimension',
+  trial_spawner: 'trial_spawner',
+  trade_set: 'trade_set',
+  villager_trade: 'villager_trade',
+  dialog: 'dialog',
+  enchantment_provider: 'enchantment_provider',
+  decorated_pot_pattern: 'decorated_pot_pattern',
+  cow_variant: 'cow_variant',
+  chicken_variant: 'chicken_variant',
+
+  // === Worldgen types (two-level paths, quoted tags in mcdoc) ===
+  'worldgen/world_preset': '"worldgen/world_preset"',
+  'worldgen/template_pool': '"worldgen/template_pool"',
+  'worldgen/structure_set': '"worldgen/structure_set"',
+  'worldgen/structure': '"worldgen/structure"',
+  'worldgen/processor_list': '"worldgen/processor_list"',
+  'worldgen/placed_feature': '"worldgen/placed_feature"',
+  'worldgen/noise_settings': '"worldgen/noise_settings"',
+  'worldgen/noise': '"worldgen/noise"',
+  'worldgen/multi_noise_biome_source_parameter_list': '"worldgen/multi_noise_biome_source_parameter_list"',
+  'worldgen/material_rule': '"worldgen/material_rule"',
+  'worldgen/material_condition': '"worldgen/material_condition"',
+  'worldgen/flat_level_generator_preset': '"worldgen/flat_level_generator_preset"',
+  'worldgen/feature': '"worldgen/feature"',
+  'worldgen/density_function': '"worldgen/density_function"',
+  'worldgen/configured_surface_builder': '"worldgen/configured_surface_builder"',
+  'worldgen/configured_structure_feature': '"worldgen/configured_structure_feature"',
+  'worldgen/configured_feature': '"worldgen/configured_feature"',
+  'worldgen/configured_carver': '"worldgen/configured_carver"',
+  'worldgen/carver': '"worldgen/carver"',
+  'worldgen/biome': '"worldgen/biome"',
+  'worldgen/biome_source': '"worldgen/biome_source"',
+
+  // === Resource pack types ===
   models: 'model',
   blockstates: 'block_definition',
   atlases: 'atlas',
@@ -754,14 +804,27 @@ const FILE_TO_RESOURCE: Record<string, string> = {
   'sounds.json': 'sounds',
 }
 
+/** All worldgen prefixes that could precede a sub-type (for multi-segment matching). */
+const WORLDGEN_PREFIXES = new Set(['worldgen'])
+
 export function fileKindFromPath(relPath: string): string | null {
   const segs = relPath.split('/')
-  // Check for specific filenames (sounds.json)
   const fileName = segs[segs.length - 1]
+  // Skip files in tags/ directories — tags have a simple format (values + replace)
+  // and shouldn't be validated against resource schemas.
+  for (let i = 0; i < segs.length; i++) {
+    if (segs[i] === 'tags') return null
+  }
+  // Check for specific filenames (sounds.json)
   if (fileName in FILE_TO_RESOURCE) return FILE_TO_RESOURCE[fileName]
   // Check for .mcmeta files (texture metadata) — treat as texture_meta
   if (fileName.endsWith('.png.mcmeta')) return 'texture_meta'
-  // Check directory segments (models/, blockstates/, etc.)
+  // Check consecutive segment pairs first (worldgen/xxx, etc.)
+  for (let i = 0; i < segs.length - 1; i++) {
+    const pair = segs[i] + '/' + segs[i + 1]
+    if (pair in KIND_TO_RESOURCE) return pair
+  }
+  // Check single segments
   for (const seg of segs) {
     if (seg in KIND_TO_RESOURCE) return seg
   }
