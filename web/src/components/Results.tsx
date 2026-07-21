@@ -124,6 +124,69 @@ function KnowledgeCard({ h, idx }: { h: KnowledgeHit; idx: number }) {
   )
 }
 
+function downloadFile(filename: string, content: string, mime: string) {
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function exportJson(result: CheckResult) {
+  downloadFile('dpcheck-report.json', JSON.stringify(result, null, 2), 'application/json')
+}
+
+function exportMarkdown(result: CheckResult) {
+  const lines: string[] = []
+  lines.push(`# dpcheck Report`)
+  lines.push(``)
+  lines.push(`Versions checked: ${result.versions_checked}`)
+  if (result.load_range) {
+    lines.push(`Load range: ${result.load_range.min_name ?? result.load_range.min} – ${result.load_range.max_name ?? result.load_range.max}`)
+  }
+  if (result.min_version) {
+    lines.push(`Minimum version from content: ${result.min_version}`)
+  }
+  lines.push(``)
+  lines.push(`## Compatible (${result.compatible.length})`)
+  lines.push(``)
+  for (const v of result.compatible) {
+    lines.push(`- **${v.version.name}** (${v.version.type})`)
+  }
+  lines.push(``)
+  lines.push(`## Broken (${result.incompatible.length})`)
+  lines.push(``)
+  for (const v of result.incompatible) {
+    const issues: string[] = []
+    for (const i of v.mcfunction_issues ?? []) issues.push(`- [cmd] ${i.file}:${i.line} — ${i.issue}`)
+    for (const i of v.registry_issues ?? []) issues.push(`- [reg] ${i.file} — ${i.issue}`)
+    for (const i of v.structural_issues ?? []) issues.push(`- [struct] ${i.file} — ${i.issue}`)
+    for (const i of v.deprecation_issues ?? []) issues.push(`- [deprec] ${i.file} — ${i.issue}`)
+    for (const bc of v.breaking_changes ?? []) issues.push(`- [breaking] ${bc}`)
+    if (issues.length === 0) issues.push(`- No specific issues (outside load range)`)
+    lines.push(`### ${v.version.name} (${v.version.type})`)
+    lines.push(``)
+    lines.push(...issues)
+    lines.push(``)
+  }
+  if (result.knowledge_hits?.length) {
+    lines.push(`## Features Setting Minimum Version`)
+    lines.push(``)
+    const seen = new Set<string>()
+    for (const h of result.knowledge_hits) {
+      if (seen.has(h.rule.id)) continue
+      seen.add(h.rule.id)
+      lines.push(`- **${h.rule.description}** — requires ≥ ${h.rule.minVersion}`)
+      if (h.rule.fix) lines.push(`  - Fix: ${h.rule.fix}`)
+      if (h.file) lines.push(`  - Found: ${h.file}${h.line ? ':' + h.line : ''}`)
+    }
+    lines.push(``)
+  }
+  downloadFile('dpcheck-report.md', lines.join('\n'), 'text/markdown')
+}
+
 export default function Results({ result, mode }: Props) {
   if (!result) return null
 
@@ -149,7 +212,7 @@ export default function Results({ result, mode }: Props) {
             Minimum version from content: <b>{result.min_version}</b>
           </div>
         )}
-        <div className="stats" style={{ marginTop: 14 }}>
+          <div className="stats" style={{ marginTop: 14 }}>
           <div className="stat green">
             <div className="num">{compat.length}</div>
             <div className="label">Compatible</div>
@@ -166,6 +229,10 @@ export default function Results({ result, mode }: Props) {
             <div className="num">{totalIssues}</div>
             <div className="label">Total issues</div>
           </div>
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => exportJson(result)}>⬇ Export JSON</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => exportMarkdown(result)}>⬇ Export Markdown</button>
         </div>
       </div>
 

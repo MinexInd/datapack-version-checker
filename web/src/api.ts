@@ -108,6 +108,24 @@ export interface FixRequest {
   sourceVersion?: string
 }
 
+export interface FixFileDetail {
+  file: string
+  patches: number
+  details: string[]
+}
+
+export interface FixSummary {
+  filesFixed: number
+  totalPatches: number
+  errors: string[]
+}
+
+export interface FixPreview {
+  results: FixFileDetail[]
+  summary: FixSummary
+  isRp: boolean
+}
+
 function apiBase(): string {
   return import.meta.env.DEV ? '/api' : '/api'
 }
@@ -120,6 +138,20 @@ export async function fetchVersions(): Promise<McmetaVersion[]> {
 
 export async function runCheck(req: CheckRequest): Promise<CheckResponse> {
   const r = await fetch(`${apiBase()}/check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!r.ok) {
+    let msg = r.statusText
+    try { const j = await r.json(); if (j.error) msg = j.error } catch { const t = await r.text(); if (t) msg = t }
+    throw new Error(msg)
+  }
+  return r.json()
+}
+
+export async function runFixPreview(req: FixRequest): Promise<FixPreview> {
+  const r = await fetch(`${apiBase()}/fix-preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),

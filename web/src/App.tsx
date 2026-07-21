@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import JSZip from 'jszip'
 import type { PackFileMap, CheckResponse, McmetaVersion, Mode } from './api'
-import { runCheck, runFix, fetchVersions } from './api'
+import { runCheck, runFix, runFixPreview, fetchVersions } from './api'
+import type { FixPreview } from './api'
 import Results from './components/Results'
 
 type Tab = 'check' | 'fix'
@@ -36,6 +37,7 @@ export default function App() {
   // Fix mode
   const [fixTarget, setFixTarget] = useState('')
   const [fixSource, setFixSource] = useState('')
+  const [fixPreview, setFixPreview] = useState<FixPreview | null>(null)
 
   const folderRef = useRef<HTMLInputElement>(null)
   const zipRef = useRef<HTMLInputElement>(null)
@@ -149,12 +151,31 @@ export default function App() {
     }
   }, [files, mode, all, strict, selectedVersions])
 
+  const handleFixPreview = useCallback(async () => {
+    if (!files) { setError('Select a pack first'); return }
+    if (!fixTarget) { setError('Choose a target version to port to'); return }
+    setLoading(true)
+    setError('')
+    setFixPreview(null)
+    setProgress('Generating fix preview...')
+    try {
+      const preview = await runFixPreview({ files, targetVersion: fixTarget, sourceVersion: fixSource || undefined })
+      setFixPreview(preview)
+      setProgress('')
+    } catch (err: any) {
+      setError(err.message || String(err))
+    } finally {
+      setLoading(false)
+      setProgress('')
+    }
+  }, [files, fixTarget, fixSource])
+
   const handleFix = useCallback(async () => {
     if (!files) { setError('Select a pack first'); return }
     if (!fixTarget) { setError('Choose a target version to port to'); return }
     setLoading(true)
     setError('')
-    setProgress(`Porting pack to ${fixTarget}...`)
+    setProgress(`Downloading ported pack to ${fixTarget}...`)
     try {
       const blob = await runFix({ files, targetVersion: fixTarget, sourceVersion: fixSource || undefined })
       const url = URL.createObjectURL(blob)
@@ -310,7 +331,7 @@ export default function App() {
           <div className="grid-2">
             <div className="field">
               <label>Target version</label>
-              <select value={fixTarget} onChange={e => setFixTarget(e.target.value)}>
+              <select value={fixTarget} onChange={e => { setFixTarget(e.target.value); setFixPreview(null) }}>
                 <option value="">— select target —</option>
                 {versions.map(v => (
                   <option key={v.id} value={v.name}>{v.name}</option>
@@ -319,7 +340,7 @@ export default function App() {
             </div>
             <div className="field">
               <label>Source version (optional)</label>
-              <select value={fixSource} onChange={e => setFixSource(e.target.value)}>
+              <select value={fixSource} onChange={e => { setFixSource(e.target.value); setFixPreview(null) }}>
                 <option value="">— auto-detect —</option>
                 {versions.map(v => (
                   <option key={v.id} value={v.name}>{v.name}</option>
@@ -328,9 +349,56 @@ export default function App() {
               <div className="hint">Auto-detected from pack.mcmeta load range if blank.</div>
             </div>
           </div>
-          <button className="btn btn-success" onClick={handleFix} disabled={loading || !files || !fixTarget}>
-            {loading ? <><span className="spinner" /> Porting…</> : '🔧 Port & Download .zip'}
-          </button>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button className="btn btn-primary" onClick={handleFixPreview} disabled={loading || !files || !fixTarget}>
+              {loading ? <><span className="spinner" /> Generating…</> : '👁 Preview Changes'}
+            </button>
+            {fixPreview && (
+              <button className="btn btn-success" onClick={handleFix} disabled={loading}>
+                {loading ? <><span className="spinner" /> Downloading…</> : '⬇ Download Ported .zip'}
+              </button>
+            )}
+          </div>
+
+          {fixPreview && (
+            <div style={{ marginTop: 16 }}>
+              <div className="stats" style={{ marginBottom: 14 }}>
+                <div className="stat blue">
+                  <div className="num">{fixPreview.summary.filesFixed}</div>
+                  <div className="label">Files changed</div>
+                </div>
+                <div className="stat blue">
+                  <div className="num">{fixPreview.summary.totalPatches}</div>
+                  <div className="label">Total patches</div>
+                </div>
+              </div>
+              {fixPreview.summary.errors.length > 0 && (
+                <div className="error" style={{ marginBottom: 14 }}>
+                  <span>⚠</span>
+                  <span>{fixPreview.summary.errors.join('; ')}</span>
+                </div>
+              )}
+              {fixPreview.results.length > 0 ? (
+                <div className="scl-box" style={{ maxHeight: 350 }}>
+                  {fixPreview.results.map((r, i) => (
+                    <div key={i} className="issue cmd" style={{ marginBottom: 8 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>
+                        {r.file} <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>({r.patches} patch{r.patches !== 1 ? 'es' : ''})</span>
+                      </div>
+                      {r.details.map((d, j) => (
+                        <div key={j} style={{ fontSize: '0.78rem', color: 'var(--text-dim)', paddingLeft: 12, lineHeight: 1.6 }}>
+                          {d}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-sm">No changes needed — pack is already compatible with {fixTarget}</div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

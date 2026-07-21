@@ -159,6 +159,53 @@ export function createApp() {
     }
   })
 
+  app.post('/api/fix-preview', async (req: Request, res: Response) => {
+    const { files, targetVersion, sourceVersion } = req.body
+    const fileCount = files ? Object.keys(files).length : 0
+    log.info(`POST /api/fix-preview target=${targetVersion} files=${fileCount}`)
+    if (!files || typeof files !== 'object') {
+      res.status(400).json({ error: 'Missing or invalid "files" field' })
+      return
+    }
+    if (!targetVersion) {
+      res.status(400).json({ error: 'Missing "targetVersion" field' })
+      return
+    }
+
+    const tmpDir = join(tmpdir(), 'dpcheck-preview-' + randomUUID())
+    const outDir = join(tmpdir(), 'dpcheck-preview-out-' + randomUUID())
+    try {
+      mkdirSync(tmpDir, { recursive: true })
+      for (const [rel, content] of Object.entries(files as Record<string, string>)) {
+        const full = join(tmpDir, rel)
+        mkdirSync(dirname(full), { recursive: true })
+        writeFileSync(full, content, 'utf-8')
+      }
+
+      if (!existsSync(join(tmpDir, 'pack.mcmeta'))) {
+        res.status(400).json({ error: 'No pack.mcmeta found in uploaded files' })
+        return
+      }
+      const isRp = existsSync(join(tmpDir, 'assets')) && !existsSync(join(tmpDir, 'data'))
+
+      const fixResult = isRp
+        ? await fixResourcePack({ packDir: tmpDir, outputDir: outDir, targetVersion, sourceVersion })
+        : await fixDatapack({ datapackDir: tmpDir, outputDir: outDir, targetVersion, sourceVersion })
+
+      res.json({
+        results: fixResult.results,
+        summary: fixResult.summary,
+        isRp,
+      })
+    } catch (err: any) {
+      log.error('Fix preview failed:', err.message || String(err))
+      res.status(500).json({ error: err.message || String(err) })
+    } finally {
+      try { rmSync(tmpDir, { recursive: true, force: true }) } catch { }
+      try { rmSync(outDir, { recursive: true, force: true }) } catch { }
+    }
+  })
+
   app.get('/{*path}', (_req: Request, res: Response) => {
     const idx = join(__dirname, '..', 'web', 'dist', 'index.html')
     if (existsSync(idx)) {
