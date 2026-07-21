@@ -420,6 +420,165 @@ function getApplicableFixes(
 // Mcfunction file fixing
 // ---------------------------------------------------------------------------
 
+/** Try to apply a single rewrite to a command string. Returns new string or null. */
+function tryApplyRewrite(cmdText: string, rw: CmdRewrite): string | null {
+  const cmdLine = cmdText.startsWith('/') ? cmdText : '/' + cmdText
+  const tokens = tokenizeCommand(cmdLine)
+  if (tokens.length === 0) return null
+  const root = tokens[0].value.replace(/^\//, '')
+  if (root !== rw.matchRoot && rw.matchRoot !== '') return null
+
+  const newLine = cmdLine.replace(rw.pattern, rw.replacement)
+  if (newLine === cmdLine) return null
+  // Normalize: if original had no leading slash, remove it from result
+  return cmdText.startsWith('/') ? newLine : newLine.replace(/^\//, '')
+}
+
+/** Given a tokenized /execute ... run ... line, return { text, start, end } of the sub-command */
+function extractRunSubcommand(tokens: import('./tokenizer.js').Token[]): { text: string; start: number; end: number } | null {
+  if (tokens.length < 3) return null
+  if (tokens[0].value !== '/execute') return null
+  for (let i = 1; i < tokens.length; i++) {
+    if (tokens[i].value === 'run' && i + 1 < tokens.length) {
+      const first = tokens[i + 1]
+      const last = tokens[tokens.length - 1]
+      return {
+        text: tokens.slice(i + 1).map(t => t.value).join(' '),
+        start: first.start,
+        end: last.end,
+      }
+    }
+  }
+  return null
+}
+
+/** Find all `$(...)` macro expressions in a line */
+function extractMacroContent(line: string): { start: number; end: number; content: string }[] {
+  const results: { start: number; end: number; content: string }[] = []
+  let depth = 0
+  let dollarPos = -1
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (c === '$' && i + 1 < line.length && line[i + 1] === '(' && depth === 0) {
+      dollarPos = i
+      depth = 1
+      i++
+      continue
+    }
+    if (depth > 0) {
+      if (c === '(') depth++
+      else if (c === ')') {
+        depth--
+        if (depth === 0 && dollarPos >= 0) {
+          results.push({
+            start: dollarPos,
+            end: i + 1,
+            content: line.slice(dollarPos + 2, i),
+          })
+          dollarPos = -1
+        }
+      }
+    }
+  }
+  return results
+}
+
+/**
+ * Attempt to rewrite sub-commands inside /execute ... run ... or $() macros.
+ * Modifies line in-place via patching. Returns { patched, details } or null.
+ */
+function tryRewriteSubCommands(
+  trimmed: string,
+  rewrites: CmdRewrite[],
+  removals: FeatureRule[],
+  line: string,
+  relPath: string,
+  lineNum: number,
+): { line: string; patches: number; details: string[] } | null {
+  const tokenized = tokenizeCommand(trimmed.startsWith('/') ? trimmed : '/' + trimmed)
+
+  // --- /execute ... run <subcommand> ---
+  const subCmd = extractRunSubcommand(tokenized)
+  if (subCmd) {
+    for (const rw of rewrites) {
+      if (rw.id === 'macro_comment') continue
+      const result = tryApplyRewrite(subCmd.text, rw)
+      if (result !== null) {
+        const indent = line.match(/^\s*/)?.[0] ?? ''
+        if (rw.replacement.includes('## FIXED')) {
+          return {
+            line: `${indent}## FIXED(${rw.description} inside execute run): ${trimmed}`,
+            patches: 1,
+            details: [`${relPath}:${lineNum}: ${rw.description} (inside execute run)`],
+          }
+        }
+        const beforeRun = trimmed.slice(0, subCmd.start)
+        return {
+          line: indent + beforeRun + result,
+          patches: 1,
+          details: [`${relPath}:${lineNum}: ${rw.description} (inside execute run)`],
+        }
+      }
+    }
+    // Check removal rules against sub-command
+    for (const rule of removals) {
+      const subTokens = tokenizeCommand('/' + subCmd.text)
+      if (subTokens.length === 0) continue
+      const root = subTokens[0].value.replace(/^\//, '')
+      if (root === rule.match) {
+        const indent = line.match(/^\s*/)?.[0] ?? ''
+        return {
+          line: `${indent}## FIXED(${rule.match} requires ${rule.minVersion}+ inside execute run): ${trimmed}`,
+          patches: 1,
+          details: [`${relPath}:${lineNum}: Commented out ${rule.match} inside execute run (needs ${rule.minVersion}+)`],
+        }
+      }
+    }
+  }
+
+  // --- $() macro expressions ---
+  const macros = extractMacroContent(trimmed)
+  if (macros.length > 0) {
+    let result = trimmed
+    let linePatched = false
+    const details: string[] = []
+
+    for (const macro of macros) {
+      const macroTrimmed = macro.content.trim()
+      for (const rw of rewrites) {
+        if (rw.id === 'macro_comment') continue
+        const macroCmd = macroTrimmed.startsWith('/') ? macroTrimmed : '/' + macroTrimmed
+        const tokens = tokenizeCommand(macroCmd)
+        if (tokens.length === 0) continue
+        const root = tokens[0].value.replace(/^\//, '')
+        if (root !== rw.matchRoot && rw.matchRoot !== '') continue
+        if (rw.pattern.test(macroCmd)) {
+          // Reconstruct the pattern match safely for use in a macro
+          if (rw.replacement.includes('## FIXED')) {
+            // Comment-out style: wrap the inner command in a FIXED note
+            const inner = `## FIXED(${rw.description}): ${macroTrimmed}`
+            result = result.slice(0, macro.start) + '$(' + inner + ')' + result.slice(macro.end)
+          } else {
+            const replacement = macroCmd.replace(rw.pattern, rw.replacement.replace(/\$0/g, '$$&'))
+            const inner = replacement.startsWith('/') ? replacement.slice(1) : replacement
+            result = result.slice(0, macro.start) + '$(' + inner + ')' + result.slice(macro.end)
+          }
+          linePatched = true
+          details.push(`${relPath}:${lineNum}: ${rw.description} (inside macro)`)
+          break
+        }
+      }
+    }
+
+    if (linePatched) {
+      const indent = line.match(/^\s*/)?.[0] ?? ''
+      return { line: indent + result, patches: details.length, details }
+    }
+  }
+
+  return null
+}
+
 function fixMcfunctionFile(
   content: string,
   relPath: string,
@@ -443,6 +602,7 @@ function fixMcfunctionFile(
     let linePatched = false
     const cmdLine = trimmed.startsWith('/') ? trimmed : '/' + trimmed
 
+    // Pass 1: direct top-level rewrite
     for (const rw of rewrites) {
       if (rw.id === 'macro_comment') {
         if (rw.pattern.test(trimmed)) {
@@ -455,20 +615,13 @@ function fixMcfunctionFile(
         continue
       }
 
-      const tokens = tokenizeCommand(cmdLine)
-      if (tokens.length === 0) continue
-      const root = tokens[0].value.replace(/^\//, '')
-
-      if (root !== rw.matchRoot && rw.matchRoot !== '') continue
-
-      const newLine = cmdLine.replace(rw.pattern, rw.replacement)
-      if (newLine !== cmdLine) {
+      const result = tryApplyRewrite(trimmed, rw)
+      if (result !== null) {
         const indent = line.match(/^\s*/)?.[0] ?? ''
         if (rw.replacement.includes('## FIXED')) {
           fixed = `${indent}## FIXED(${rw.description}): ${trimmed}`
         } else {
-          const resultCmd = trimmed.startsWith('/') ? newLine : newLine.replace(/^\//, '')
-          fixed = indent + resultCmd
+          fixed = indent + result
         }
         linePatched = true
         patches++
@@ -477,6 +630,7 @@ function fixMcfunctionFile(
       }
     }
 
+    // Pass 2: removal rules (first-token matching)
     if (!linePatched) {
       for (const rule of removals) {
         const tokens = tokenizeCommand(cmdLine)
@@ -490,6 +644,17 @@ function fixMcfunctionFile(
           details.push(`${relPath}:${i + 1}: Commented out ${rule.match} (needs ${rule.minVersion}+)`)
           break
         }
+      }
+    }
+
+    // Pass 3: sub-commands inside /execute run and macro $()
+    if (!linePatched) {
+      const subResult = tryRewriteSubCommands(trimmed, rewrites, removals, line, relPath, i + 1)
+      if (subResult) {
+        fixed = subResult.line
+        linePatched = true
+        patches += subResult.patches
+        details.push(...subResult.details)
       }
     }
 
