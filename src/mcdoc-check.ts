@@ -820,6 +820,10 @@ export function fileKindFromPath(relPath: string): string | null {
   for (let i = 0; i < segs.length; i++) {
     if (segs[i] === 'tags') return null
   }
+  // Skip non-minecraft namespaces to avoid false positives on mod content.
+  // Datapack: data/<namespace>/..., Resource pack: assets/<namespace>/...
+  const nsIdx = segs[0] === 'data' || segs[0] === 'assets' ? 1 : -1
+  if (nsIdx >= 0 && segs[nsIdx] && segs[nsIdx] !== 'minecraft') return null
   // Check for specific filenames (sounds.json)
   if (fileName in FILE_TO_RESOURCE) return FILE_TO_RESOURCE[fileName]
   // Check for .mcmeta files (texture metadata) — treat as texture_meta
