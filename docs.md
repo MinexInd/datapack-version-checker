@@ -227,11 +227,20 @@ it when you want to dig deeper.
 node dist/index.js --dir "./mydp" --fix 1.21
 ```
 
-Ports the datapack to the target version by:
-- Rewriting commands that don't exist in the target version (e.g. `/dialog` → commented out note)
-- Converting between syntax formats (e.g. `/place feature` → `/placefeature`)
-- Fixing JSON structure (e.g. advancement icons from post-1.20.5 `ItemStackTemplate` format → pre-1.20.5 `{item,nbt}` format)
-- Updating `pack.mcmeta`'s `pack_format` to match the target version
+Ports a datapack or resource pack to the target version:
+
+**Datapack mode:**
+- Rewrites commands that don't exist in the target version (e.g. `/dialog` → commented out note)
+- Handles commands inside `/execute run` and `$()` macro expressions
+- Converts between syntax formats (e.g. `/place feature` → `/placefeature`)
+- Removes JSON fields invalid for the target version via mcdoc schema validation
+- Fixes advancement icons from post-1.20.5 `ItemStackTemplate` format → pre-1.20.5 `{item,nbt}` format
+- Updates `pack.mcmeta`'s `pack_format` to match the target version
+
+**Resource pack mode:**
+- Removes JSON fields invalid for the target version (e.g. `render_type` in models)
+- Updates `pack.mcmeta`'s `resource_pack_format` to match the target version
+- Copies all other files (PNG, etc.) unchanged
 
 The source version is **auto-detected from `pack.mcmeta`**. You can override it:
 

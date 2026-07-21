@@ -34,7 +34,7 @@ This tool answers that question by:
 - ✅ Detects when `pack.mcmeta` is **wrong** (e.g. declares 1.19.3 but uses 1.20.5 features)
 - ✅ Lists the exact file + line of every break, with a suggested fix
 - ✅ Shows **community-curated breaking changes** per version (from [misode/technical-changes](https://github.com/misode/technical-changes)) — so you know what changes when updating to each version
-- ✅ **Auto-fix / porting** — `--fix <target>` rewrites commands, converts JSON structures, and updates pack.mcmeta to port your datapack to any target version
+- ✅ **Auto-fix / porting** — `--fix <target>` rewrites commands (including inside `/execute run` and `$()` macros), removes invalid JSON fields via mcdoc schemas, converts advancement icons, and updates `pack.mcmeta` to port your datapack **or resource pack** to any target version
 - ✅ Works on releases **and** snapshots
 - ✅ **Local caching** of all version data (fast re-runs, works offline) with `--refresh` to force re-download
 - ✅ JSON output (`--json`) for scripting/CI
@@ -93,7 +93,7 @@ node dist/index.js [options]
 | `--json` | | Print raw JSON instead of a human report (good for scripts). |
 | `--strict` | | Use strict command validation (root **and** every sub-command must exist in the tree). More thorough but reports more false positives on some vanilla quirks. Datapack mode only. |
 | `--refresh` | | Re-download all cached version data, including the vanilla-mcdoc schema (otherwise data is reused for 24h). |
-| `--fix <version>` | | **Auto-fix mode:** port the datapack to the target version. Detects source version from `pack.mcmeta` (override with `--from`). Rewrites commands, fixes JSON structure, converts advancement icons, updates `pack.mcmeta`. Outputs to `{dir}_fixed_{version}/` (override with `--output`). Datapack mode only. |
+| `--fix <version>` | | **Auto-fix mode:** port the datapack or resource pack to the target version. Detects source version from `pack.mcmeta` (override with `--from`). Rewrites commands (including nested inside `/execute run` and `$()` macros), removes invalid JSON fields via mcdoc schemas, converts advancement icons, updates `pack.mcmeta`. Outputs to `{dir}_fixed_{version}/` (override with `--output`). |
 | `--from-version <ver>` | `--from` | Explicit source version for fix mode (default: auto-detected from `pack.mcmeta`). |
 | `--output <path>` | `-o` | Output directory for fix mode (default: `{dir}_fixed_{version}`). |
 | `serve` | | Start the **web GUI server** on port 3001. Open `http://localhost:3001/` in a browser. |
@@ -142,6 +142,9 @@ node dist/index.js --dir "./my-datapack" --fix 1.21
 
 # Auto-fix: port from a specific source version with custom output
 node dist/index.js --dir "./my-datapack" --fix 1.20.4 --from-version 1.21 --output ./ported
+
+# Auto-fix: port a resource pack to 1.21.4
+node dist/index.js --dir "./my-resource-pack" --mode resourcepack --fix 1.21.4
 
 # Check a resource pack
 node dist/index.js --dir "./my-resource-pack" --mode resourcepack
@@ -230,7 +233,7 @@ See [`docs.md`](./docs.md) for the full technical details.
 - NBT *structure* is not deeply validated yet (only JSON structure via vanilla-mcdoc).
 - Registry deprecation detection only fires when checking versions NEWER than the datapack's declared `pack.mcmeta` range. When the source version is unknown (no `pack.mcmeta` range), deprecation detection is skipped.
 - The knowledge base covers the most common breaking changes; it is not an exhaustive list of every MC change. Contributions welcome.
-- **Auto-fix mode** (`--fix`) rewrites commands and JSON based on known patterns. It is conservative (comments out unavailable commands rather than deleting them). Complex migrations (e.g. `/execute if/unless` subconditions → `/testfor` + conditional) are not automated; the tool tells you what to change, leaving the final logic to you.
+- **Auto-fix mode** (`--fix`) rewrites commands and JSON based on known patterns, including commands nested inside `/execute run` and `$()` macros. It is conservative — commands that can't be rewritten are commented out (with `## FIXED(...): original command`) rather than deleted. JSON structural fixes remove fields invalid for the target version using the mcdoc schema. Works for both datapacks and resource packs.
 
 ---
 
