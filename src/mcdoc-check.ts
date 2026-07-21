@@ -516,6 +516,11 @@ export async function getMcdocSymbols(): Promise<SymbolTable | null> {
 // Validation
 // ---------------------------------------------------------------------------
 
+export interface FixMcdocResult {
+  data: unknown
+  removed: string[]
+}
+
 export interface StructuralIssue {
   file: string
   issue: string
@@ -882,4 +887,173 @@ export function checkMcdocFile(
 
 function attachFile(issues: StructuralIssue[], relPath: string): void {
   for (const iss of issues) iss.file = relPath
+}
+
+// ---------------------------------------------------------------------------
+// Fix: walk JSON and remove fields invalid for target version
+// ---------------------------------------------------------------------------
+
+function fixObjectInPlace(
+  obj: Record<string, unknown>,
+  def: StructDef,
+  version: string,
+  path: string,
+  table: SymbolTable,
+  removed: string[],
+  depth = 0,
+): void {
+  if (depth > 10) return
+
+  const { fields, allowUnknown, dispatchSpreads } = collectFields(def, version, table, new Set())
+
+  // resolve dispatch spreads so variant fields are known
+  const merged = new Map(fields)
+  for (const ds of dispatchSpreads) {
+    const keyVal = obj[ds.key]
+    if (typeof keyVal === 'string') {
+      const vstruct = resolveDispatch(table, ds.dispatch, keyVal, version, true)
+      if (vstruct) {
+        const sub = collectFields(vstruct, version, table, new Set())
+        for (const [k, v] of sub.fields) merged.set(k, v)
+      }
+    }
+  }
+
+  // check each key in the object
+  const keysToDelete: string[] = []
+  for (const key of Object.keys(obj)) {
+    if (dispatchSpreads.some(d => d.key === key)) continue
+    const spec = merged.get(key)
+
+    if (!spec) {
+      if (!allowUnknown) {
+        keysToDelete.push(key)
+        removed.push(`${path}.${key}: removed (not valid in ${version})`)
+      }
+    } else if (!inRange(version, spec.since, spec.until)) {
+      // Field exists in schema but is version-gated out for this version
+      const reason = spec.since && cmpVer(version, spec.since) < 0
+        ? `requires >= ${spec.since}`
+        : `was removed in ${spec.until}`
+      keysToDelete.push(key)
+      removed.push(`${path}.${key}: removed (${reason}, this is ${version})`)
+    }
+  }
+
+  // apply deletions
+  for (const key of keysToDelete) {
+    delete obj[key]
+  }
+
+  // recurse into remaining values
+  for (const [key, val] of Object.entries(obj)) {
+    if (dispatchSpreads.some(d => d.key === key)) continue
+    const spec = merged.get(key)
+    if (!spec) continue
+    if (val && typeof val === 'object') {
+      fixValueInPlace(val, spec.type, version, `${path}.${key}`, table, removed, depth + 1)
+    }
+  }
+}
+
+function fixValueInPlace(
+  val: unknown,
+  type: TypeExpr,
+  version: string,
+  path: string,
+  table: SymbolTable,
+  removed: string[],
+  depth: number,
+): void {
+  if (depth > 10 || val === null || val === undefined) return
+
+  if (type.t === 'list') {
+    if (Array.isArray(val)) {
+      for (let i = 0; i < val.length; i++) {
+        fixValueInPlace(val[i], type.of, version, `${path}[${i}]`, table, removed, depth + 1)
+      }
+    }
+    return
+  }
+
+  if (type.t === 'union') {
+    for (const opt of type.opts) {
+      if (inRange(version, opt.since, opt.until)) {
+        fixValueInPlace(val, opt.of, version, path, table, removed, depth + 1)
+        return
+      }
+    }
+    return
+  }
+
+  if (type.t === 'ref') {
+    const alias = table.typeAliases.get(type.name)
+    if (alias) {
+      fixValueInPlace(val, alias, version, path, table, removed, depth + 1)
+      return
+    }
+    const sdef = table.structs.get(type.name)
+    if (sdef && typeof val === 'object' && !Array.isArray(val)) {
+      fixObjectInPlace(val as Record<string, unknown>, sdef, version, path, table, removed, depth)
+    }
+    return
+  }
+
+  // prim / literal -> nothing to fix
+}
+
+export function fixMcdocFileData(
+  data: unknown,
+  relPath: string,
+  version: string,
+  table: SymbolTable,
+): FixMcdocResult {
+  const removed: string[] = []
+  const kind = fileKindFromPath(relPath)
+  if (!kind) return { data, removed }
+  if (!data || typeof data !== 'object') return { data, removed }
+
+  const dd = table.dispatches.get('minecraft:resource')
+  if (!dd) return { data, removed }
+
+  // try both direct and quoted lookup for the resource dispatch tag
+  let resourceTag = KIND_TO_RESOURCE[kind]
+  let variant = dd.variants.get(resourceTag)
+
+  if (!variant) {
+    resourceTag = `"${kind}"`
+    variant = dd.variants.get(resourceTag)
+  }
+
+  if (!variant) return { data, removed }
+
+  // resolve root struct for target version
+  let rootStruct: StructDef | null = null
+  for (const opt of variant.opts) {
+    if (inRange(version, opt.since, opt.until)) {
+      if (opt.struct) rootStruct = opt.struct
+      else if (opt.ref) rootStruct = resolveStruct(opt.ref, table)
+      break
+    }
+  }
+
+  if (!rootStruct) {
+    // union/alias root (e.g. predicate = LootCondition | [LootCondition])
+    for (const opt of variant.opts) {
+      if (inRange(version, opt.since, opt.until)) {
+        if (opt.ref) {
+          const alias = table.typeAliases.get(opt.ref)
+          if (alias) {
+            fixValueInPlace(data, alias, version, '$', table, removed, 0)
+            return { data, removed }
+          }
+        }
+        break
+      }
+    }
+    return { data, removed }
+  }
+
+  fixObjectInPlace(data as Record<string, unknown>, rootStruct, version, '$', table, removed)
+  return { data, removed }
 }

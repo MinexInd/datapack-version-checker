@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { join, relative, dirname } from 'node:path'
 import { readPackMcmeta } from './pack-mcmeta.js'
 import { fetchVersions } from './api.js'
-import { getMcdocSymbols, checkMcdocFile, cmpVer } from './mcdoc-check.js'
+import { getMcdocSymbols, checkMcdocFile, cmpVer, fixMcdocFileData } from './mcdoc-check.js'
 import { FEATURE_RULES, type FeatureRule } from './knowledge.js'
 import { tokenizeCommand } from './tokenizer.js'
 import { versionNameToDataVersion } from './version.js'
@@ -500,20 +500,6 @@ function fixMcfunctionFile(
 }
 
 // ---------------------------------------------------------------------------
-// JSON file fixing (structural issues from mcdoc)
-// ---------------------------------------------------------------------------
-
-function fixJsonStructure(
-  data: unknown,
-  version: string,
-  mcdocTable: any,
-  relPath: string,
-): { data: unknown; issues: { removed: string[] } } {
-  const removed: string[] = []
-  return { data, issues: { removed } }
-}
-
-// ---------------------------------------------------------------------------
 // Pack.mcmeta updater
 // ---------------------------------------------------------------------------
 
@@ -737,13 +723,24 @@ export async function fixDatapack(options: FixOptions): Promise<{
         const ruleMinDv = versionNameToDataVersion(rule.minVersion, allVersions)
         if (ruleMinDv === null) continue
         if (svDv >= ruleMinDv && tvDv < ruleMinDv) {
-          // Fix references to this registry
           const searchStr = `${rule.match}/`
           const contentStr = JSON.stringify(currentData)
           if (contentStr.includes(searchStr)) {
             const fixed = contentStr.replace(new RegExp(`"${searchStr}`, 'g'), `"## FIXED(${rule.match} not available in ${targetName})/`)
             try { currentData = JSON.parse(fixed); patches++; details.push(`${rel}: Replaced ${rule.match} references`) } catch { }
           }
+        }
+      }
+    }
+
+    // Structural mcdoc fix: remove fields invalid for target version
+    if (mcdocTable) {
+      const structResult = fixMcdocFileData(currentData, rel, targetName, mcdocTable)
+      if (structResult.removed.length > 0) {
+        currentData = structResult.data
+        patches += structResult.removed.length
+        for (const r of structResult.removed) {
+          details.push(`${rel}: ${r}`)
         }
       }
     }
