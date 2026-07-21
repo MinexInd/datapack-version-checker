@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { checkCompatibilityContentBased, checkResourcePack } from './engine.js'
-import { fixDatapack } from './fixer.js'
+import { fixDatapack, fixResourcePack } from './fixer.js'
 import { fetchVersions } from './api.js'
 import { getLogger } from './logger.js'
 import JSZip from 'jszip'
@@ -122,17 +122,11 @@ export function createApp() {
         res.status(400).json({ error: 'No pack.mcmeta found in uploaded files' })
         return
       }
-      if (existsSync(join(tmpDir, 'assets')) && !existsSync(join(tmpDir, 'data'))) {
-        res.status(400).json({ error: 'Auto-fix mode is not yet supported for resource packs' })
-        return
-      }
+      const isRp = existsSync(join(tmpDir, 'assets')) && !existsSync(join(tmpDir, 'data'))
 
-      const fixResult = await fixDatapack({
-        datapackDir: tmpDir,
-        outputDir: outDir,
-        targetVersion,
-        sourceVersion,
-      })
+      const fixResult = isRp
+        ? await fixResourcePack({ packDir: tmpDir, outputDir: outDir, targetVersion, sourceVersion })
+        : await fixDatapack({ datapackDir: tmpDir, outputDir: outDir, targetVersion, sourceVersion })
 
       if (fixResult.summary.errors.length > 0 && fixResult.results.length === 0) {
         res.status(400).json({ error: fixResult.summary.errors.join('; ') })

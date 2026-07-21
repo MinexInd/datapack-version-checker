@@ -2,7 +2,7 @@
 import { existsSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { checkCompatibilityContentBased, checkResourcePack } from './engine.js'
-import { fixDatapack } from './fixer.js'
+import { fixDatapack, fixResourcePack } from './fixer.js'
 import { clearCache } from './cache.js'
 import { setLogLevel, getLogger } from './logger.js'
 import type { VersionCompatibility, McfunctionIssue, RegistryIssue, RegistryDeprecation } from './types.js'
@@ -251,25 +251,19 @@ async function main() {
 
   // ---- FIX MODE ----
   if (opts.fix) {
-    if (isRp) {
-      console.error(`Error: Auto-fix mode is not yet supported for resource packs`)
-      process.exit(1)
-    }
     const targetVersion = opts.fix
     const outputDir = opts.outputDir ?? resolve(dir + '_fixed_' + targetVersion.replace(/[^a-zA-Z0-9._-]/g, '_'))
-    console.log(`\n  🔧 Datapack Version Checker v0.4.0 — Auto-Fix Mode`)
+    const packType = isRp ? 'Resource Pack' : 'Datapack'
+    console.log(`\n  🔧 ${packType} Version Checker — Auto-Fix Mode`)
     console.log(`  ${'═'.repeat(50)}`)
     console.log(`  📂 Source: ${dir}`)
     console.log(`  🎯 Target: ${targetVersion}`)
     console.log(`  📁 Output: ${outputDir}`)
     console.log()
 
-    const fixResult = await fixDatapack({
-      datapackDir: dir,
-      outputDir,
-      targetVersion,
-      sourceVersion: opts.fromVersion,
-    })
+    const fixResult = isRp
+      ? await fixResourcePack({ packDir: dir, outputDir, targetVersion, sourceVersion: opts.fromVersion })
+      : await fixDatapack({ datapackDir: dir, outputDir, targetVersion, sourceVersion: opts.fromVersion })
 
     if (fixResult.summary.errors.length > 0) {
       for (const err of fixResult.summary.errors) {

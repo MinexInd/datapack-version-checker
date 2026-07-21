@@ -979,3 +979,189 @@ export async function fixDatapack(options: FixOptions): Promise<{
     },
   }
 }
+
+// ---------------------------------------------------------------------------
+// Resource pack fix entry point
+// ---------------------------------------------------------------------------
+
+export interface ResourcePackFixOptions {
+  packDir: string
+  outputDir: string
+  targetVersion: string
+  targetPackFormat?: number
+  sourceVersion?: string
+}
+
+export async function fixResourcePack(options: ResourcePackFixOptions): Promise<{
+  results: FixFileResult[]
+  summary: { filesFixed: number; totalPatches: number; errors: string[] }
+}> {
+  const { packDir, outputDir, targetVersion } = options
+  const allVersions = await fetchVersions()
+  const targetVer = allVersions.find(v => v.name === targetVersion || v.id === targetVersion)
+  if (!targetVer) {
+    return { results: [], summary: { filesFixed: 0, totalPatches: 0, errors: [`Target version '${targetVersion}' not found`] } }
+  }
+
+  const targetName = targetVer.name
+
+  // Load mcdoc symbols for structural fixing
+  let mcdocTable: any = null
+  try {
+    mcdocTable = await getMcdocSymbols()
+  } catch { }
+
+  const baseDir = packDir
+  const results: FixFileResult[] = []
+  let totalPatches = 0
+  const errors: string[] = []
+
+  if (!existsSync(outputDir)) {
+    mkdirSync(outputDir, { recursive: true })
+  }
+
+  // Collect JSON files under assets/
+  const jsonFiles: string[] = []
+  const assetsDir = join(packDir, 'assets')
+  if (existsSync(assetsDir)) {
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry)
+        if (statSync(full).isDirectory()) walk(full)
+        else if (entry.endsWith('.json') || entry.endsWith('.mcmeta')) jsonFiles.push(full)
+      }
+    }
+    walk(assetsDir)
+  }
+
+  // Process JSON files with mcdoc structural fixes
+  for (const file of jsonFiles) {
+    const rel = relative(baseDir, file).replace(/\\/g, '/')
+    let content: string
+    try {
+      content = readFileSync(file, 'utf-8')
+    } catch { continue }
+    let data: any
+    try {
+      data = JSON.parse(content)
+    } catch {
+      const outPath = join(outputDir, rel)
+      const outDir = dirname(outPath)
+      if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
+      writeFileSync(outPath, content, 'utf-8')
+      continue
+    }
+
+    const details: string[] = []
+    let patches = 0
+    let currentData = data
+
+    // Structural mcdoc fix
+    if (mcdocTable) {
+      const structResult = fixMcdocFileData(currentData, rel, targetName, mcdocTable)
+      if (structResult.removed.length > 0) {
+        currentData = structResult.data
+        patches += structResult.removed.length
+        for (const r of structResult.removed) {
+          details.push(`${rel}: ${r}`)
+        }
+      }
+    }
+
+    if (patches > 0) {
+      const outPath = join(outputDir, rel)
+      const outDir = dirname(outPath)
+      if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
+      writeFileSync(outPath, JSON.stringify(currentData, null, 2) + '\n', 'utf-8')
+      results.push({ file: rel, patches, details })
+      totalPatches += patches
+    } else {
+      const outPath = join(outputDir, rel)
+      const outDir = dirname(outPath)
+      if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
+      writeFileSync(outPath, content, 'utf-8')
+    }
+  }
+
+  // Copy non-JSON files under assets/ (PNG, etc.)
+  const copyAssets = (dir: string, outBase: string) => {
+    for (const entry of readdirSync(dir)) {
+      const src = join(dir, entry)
+      const dst = join(outBase, entry)
+      if (statSync(src).isDirectory()) {
+        if (!existsSync(dst)) mkdirSync(dst, { recursive: true })
+        copyAssets(src, dst)
+      } else if (!entry.endsWith('.json') && !entry.endsWith('.mcmeta')) {
+        if (!existsSync(dirname(dst))) mkdirSync(dirname(dst), { recursive: true })
+        writeFileSync(dst, readFileSync(src))
+      }
+    }
+  }
+  if (existsSync(assetsDir)) {
+    const outAssets = join(outputDir, 'assets')
+    if (!existsSync(outAssets)) mkdirSync(outAssets, { recursive: true })
+    copyAssets(assetsDir, outAssets)
+  }
+
+  // Update pack.mcmeta with target resource_pack_version
+  const targetPackFormat = options.targetPackFormat ?? targetVer.resource_pack_version
+  try {
+    const pmPath = join(packDir, 'pack.mcmeta')
+    if (existsSync(pmPath)) {
+      const raw = readFileSync(pmPath, 'utf-8')
+      const parsed = JSON.parse(raw)
+      const oldFormat = parsed.pack?.pack_format
+      if (oldFormat !== targetPackFormat) {
+        parsed.pack.pack_format = targetPackFormat
+        if (parsed.pack.supported_formats) delete parsed.pack.supported_formats
+        const outPath = join(outputDir, 'pack.mcmeta')
+        const outDir = dirname(outPath)
+        if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
+        writeFileSync(outPath, JSON.stringify(parsed, null, 2) + '\n', 'utf-8')
+        results.push({ file: 'pack.mcmeta', patches: 1, details: [`Updated pack_format to ${targetPackFormat}`] })
+        totalPatches++
+      } else {
+        const outPath = join(outputDir, 'pack.mcmeta')
+        const outDir = dirname(outPath)
+        if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
+        writeFileSync(outPath, raw, 'utf-8')
+      }
+    }
+  } catch (e: any) {
+    errors.push(`pack.mcmeta: ${e.message}`)
+  }
+
+  // Copy other root files (pack.png, etc.)
+  try {
+    for (const entry of readdirSync(packDir)) {
+      if (entry === 'pack.mcmeta' || entry === 'assets') continue
+      const src = join(packDir, entry)
+      const dst = join(outputDir, entry)
+      if (!existsSync(dst)) {
+        if (statSync(src).isDirectory()) {
+          const copyDir = (d: string, od: string) => {
+            if (!existsSync(od)) mkdirSync(od, { recursive: true })
+            for (const e of readdirSync(d)) {
+              const s = join(d, e)
+              const o = join(od, e)
+              if (statSync(s).isDirectory()) copyDir(s, o)
+              else writeFileSync(o, readFileSync(s))
+            }
+          }
+          copyDir(src, dst)
+        } else {
+          writeFileSync(dst, readFileSync(src))
+        }
+      }
+    }
+  } catch { }
+
+  return {
+    results,
+    summary: {
+      filesFixed: results.length,
+      totalPatches,
+      errors,
+    },
+  }
+}
