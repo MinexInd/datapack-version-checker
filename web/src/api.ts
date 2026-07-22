@@ -1,3 +1,9 @@
+import { fetchVersions as engineFetchVersions } from './engine/api'
+import { checkCompatibilityContentBased, checkResourcePack } from './engine/engine'
+import { fixDatapack, fixResourcePack } from './engine/fixer'
+import type { PackFileMap as EngineFileMap } from './engine/engine'
+import JSZip from 'jszip'
+
 export type PackFileMap = Record<string, string>
 
 export type Mode = 'auto' | 'datapack' | 'resourcepack'
@@ -126,54 +132,85 @@ export interface FixPreview {
   isRp: boolean
 }
 
-function apiBase(): string {
-  return import.meta.env.DEV ? '/api' : '/api'
-}
-
 export async function fetchVersions(): Promise<McmetaVersion[]> {
-  const r = await fetch(`${apiBase()}/versions`)
-  if (!r.ok) throw new Error(`Failed to fetch versions: ${r.statusText}`)
-  return r.json()
+  return engineFetchVersions()
 }
 
 export async function runCheck(req: CheckRequest): Promise<CheckResponse> {
-  const r = await fetch(`${apiBase()}/check`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  })
-  if (!r.ok) {
-    let msg = r.statusText
-    try { const j = await r.json(); if (j.error) msg = j.error } catch { const t = await r.text(); if (t) msg = t }
-    throw new Error(msg)
+  const { mode, versions, all, strict, files } = req
+
+  let result: any
+  let detectedMode = mode
+
+  if (mode === 'auto') {
+    const hasData = Object.keys(files).some(k => k.startsWith('data/'))
+    const hasAssets = Object.keys(files).some(k => k.startsWith('assets/'))
+    if (hasAssets && !hasData) {
+      detectedMode = 'resourcepack'
+    } else {
+      detectedMode = 'datapack'
+    }
   }
-  return r.json()
+
+  const versionList = all ? undefined : versions && versions.length > 0 ? versions : undefined
+
+  try {
+    if (detectedMode === 'resourcepack') {
+      result = await checkResourcePack(files, versionList, all)
+    } else {
+      result = await checkCompatibilityContentBased(files, versionList, all, strict)
+    }
+  } catch (err: any) {
+    throw new Error(err.message || String(err))
+  }
+
+  return { result, mode: detectedMode }
 }
 
 export async function runFixPreview(req: FixRequest): Promise<FixPreview> {
-  const r = await fetch(`${apiBase()}/fix-preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  })
-  if (!r.ok) {
-    let msg = r.statusText
-    try { const j = await r.json(); if (j.error) msg = j.error } catch { const t = await r.text(); if (t) msg = t }
-    throw new Error(msg)
+  const { files, targetVersion, sourceVersion } = req
+  const isRp = Object.keys(files).some(k => k.startsWith('assets/')) &&
+    !Object.keys(files).some(k => k.startsWith('data/'))
+
+  let fixResult: any
+  try {
+    if (isRp) {
+      fixResult = await fixResourcePack({ files, targetVersion, sourceVersion })
+    } else {
+      fixResult = await fixDatapack({ files, targetVersion, sourceVersion })
+    }
+  } catch (err: any) {
+    throw new Error(err.message || String(err))
   }
-  return r.json()
+
+  return {
+    results: fixResult.results,
+    summary: fixResult.summary,
+    isRp,
+  }
 }
 
 export async function runFix(req: FixRequest): Promise<Blob> {
-  const r = await fetch(`${apiBase()}/fix`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  })
-  if (!r.ok) {
-    let msg = r.statusText
-    try { const j = await r.json(); if (j.error) msg = j.error } catch { const t = await r.text(); if (t) msg = t }
-    throw new Error(msg)
+  const { files, targetVersion, sourceVersion } = req
+  const isRp = Object.keys(files).some(k => k.startsWith('assets/')) &&
+    !Object.keys(files).some(k => k.startsWith('data/'))
+
+  let fixResult: any
+  try {
+    if (isRp) {
+      fixResult = await fixResourcePack({ files, targetVersion, sourceVersion })
+    } else {
+      fixResult = await fixDatapack({ files, targetVersion, sourceVersion })
+    }
+  } catch (err: any) {
+    throw new Error(err.message || String(err))
   }
-  return r.blob()
+
+  // Build zip from the output file map
+  const zip = new JSZip()
+  for (const [path, content] of Object.entries(fixResult.files as Record<string, string>)) {
+    zip.file(path, content)
+  }
+
+  return await zip.generateAsync({ type: 'blob' })
 }

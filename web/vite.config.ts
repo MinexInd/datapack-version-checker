@@ -5,5 +5,10 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   build: { outDir: 'dist' },
-  server: { proxy: { '/api': 'http://localhost:3001' } },
+  server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
 })

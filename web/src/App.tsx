@@ -241,7 +241,7 @@ export default function App() {
             <div className="dz-hint">Supports folders (Chrome/Edge) and .zip files</div>
           </div>
         )}
-        <input ref={folderRef} type="file" webkitdirectory="" directory="" onChange={handleFolder} style={{ display: 'none' }} />
+        <input ref={folderRef} type="file" {...{ webkitdirectory: '', directory: '' } as any} onChange={handleFolder} style={{ display: 'none' }} />
         <input ref={zipRef} type="file" accept=".zip" onChange={handleZipInput} style={{ display: 'none' }} />
       </div>
 

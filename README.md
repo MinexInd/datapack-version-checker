@@ -99,9 +99,20 @@ node dist/index.js [options]
 | `serve` | | Start the **web GUI server** on port 3001. Open `http://localhost:3001/` in a browser. |
 | `--help` | `-h` | Show help. |
 
-## Web GUI (browser-based)
+## Web GUI (two ways to use)
 
-dpcheck includes a **professional web GUI** that exposes every CLI feature through a polished dark-mode interface:
+dpcheck includes a **professional web GUI** that exposes every CLI feature through a polished dark-mode interface. You can use it **locally** (needs Node.js) or as a **fully browser-based version** on GitHub Pages (zero setup).
+
+### Option A: GitHub Pages (no install — just visit)
+
+The browser-only version runs **entirely in your browser** — no server, no Node.js, no installation. Just open the URL and drag in your datapack.
+
+**Deploy your own:**
+1. Fork the repo
+2. Enable GitHub Pages in repo Settings → Pages → deploy from `master` + `/web`
+3. Or use the pre-built workflow: push changes to `master` and the [deploy action](.github/workflows/deploy.yml) builds + deploys automatically
+
+### Option B: Local server
 
 ```bash
 npm run serve
