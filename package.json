@@ -3,6 +3,7 @@
   "version": "0.5.0",
   "description": "CLI tool to check & auto-fix Minecraft datapack compatibility across versions — content + structural + registry deprecation + auto-porting",
   "type": "module",
+  "engines": { "node": ">=18" },
   "bin": {
     "dpcheck": "./dist/index.js"
   },

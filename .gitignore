@@ -4,3 +4,5 @@ dist/
 .DS_Store
 report.json
 *.tsbuildinfo
+*.zip
+server.log

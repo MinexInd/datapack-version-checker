@@ -85,6 +85,7 @@ interface KnowledgeHit {
 function applyKnowledgeRules(
   commands: CommandLine[],
   jsonFiles: string[],
+  baseDir: string,
 ): KnowledgeHit[] {
   const hits: KnowledgeHit[] = []
   for (const cmd of commands) {
@@ -105,7 +106,7 @@ function applyKnowledgeRules(
     }
   }
   for (const file of jsonFiles) {
-    const rel = relative(process.cwd(), file).replace(/\\/g, '/')
+    const rel = relative(baseDir, file).replace(/\\/g, '/')
     const content = readFileSync(file, 'utf-8')
     for (const rule of FEATURE_RULES) {
       if (rule.type === 'registry') {
@@ -148,7 +149,7 @@ export async function checkCompatibilityContentBased(
   const jsonFiles = findJsonFiles(mcfuncDir)
 
   const commands = scanCommands(mcfunctionFiles, datapackDir)
-  const knowledgeHits = applyKnowledgeRules(commands, jsonFiles)
+  const knowledgeHits = applyKnowledgeRules(commands, jsonFiles, datapackDir)
   const minDv = knowledgeMinDataVersion(knowledgeHits, allVersions)
   const minVersionName = minDv > 0
     ? allVersions.find(v => v.data_version === minDv)?.name ?? null

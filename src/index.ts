@@ -43,6 +43,7 @@ function printHelp() {
     dpcheck --fix <target>               Port datapack to target version
     dpcheck --fix <target> --from <ver>  Specify source version explicitly
     dpcheck --fix <target> --output <dir>  Custom output directory
+    dpcheck --version                    Show version
     dpcheck --help                       Show this help
     dpcheck --dir <path> --mode resourcepack  Check a resource pack
     dpcheck --mode auto                  Auto-detect pack type
@@ -82,6 +83,11 @@ function parseArgs(): CliOptions {
 
   if (args.includes('--help') || args.includes('-h')) {
     printHelp()
+    process.exit(0)
+  }
+
+  if (args.includes('--version') || args.includes('-V')) {
+    console.log('dpcheck v0.5.0')
     process.exit(0)
   }
 
@@ -289,7 +295,7 @@ async function main() {
   const isRpMode = mode === 'resourcepack'
   const banner = isRpMode
     ? '\n  ⚡ Resource Pack Checker v0.5.0 (content + load-range + structural + breaking changes)'
-    : '\n  ⚡ Datapack Version Checker v0.4.0 (content + load-range + structural + breaking changes)'
+    : '\n  ⚡ Datapack Version Checker v0.5.0 (content + load-range + structural + breaking changes)'
 
   const result = isRpMode
     ? await checkResourcePack(dir, opts.versions, opts.all)

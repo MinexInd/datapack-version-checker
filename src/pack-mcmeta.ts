@@ -34,8 +34,5 @@ export function isPackFormatCompatible(
   if (!supportedFormats) {
     return packFormat === versionDataPackVersion
   }
-  if (versionDataPackVersionMinor > 0) {
-    return versionDataPackVersion >= supportedFormats.min && versionDataPackVersion <= supportedFormats.max
-  }
   return versionDataPackVersion >= supportedFormats.min && versionDataPackVersion <= supportedFormats.max
 }
