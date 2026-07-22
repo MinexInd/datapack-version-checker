@@ -209,7 +209,7 @@ export default function App() {
           <p>Datapack &amp; Resource Pack Version Checker</p>
         </div>
         <div className="spacer" />
-        <span className="header-badge">content-based analysis</span>
+        <span className="header-badge">content-based</span>
       </header>
 
       {/* Pack selection */}
@@ -238,7 +238,7 @@ export default function App() {
           >
             <div className="dz-icon">📁</div>
             <p>Drop a datapack / resource pack here, or click to browse</p>
-            <div className="dz-hint">Supports folders (Chrome/Edge) and .zip files</div>
+            <div className="dz-hint">Drag a folder or .zip file, or click to browse</div>
           </div>
         )}
         <input ref={folderRef} type="file" {...{ webkitdirectory: '', directory: '' } as any} onChange={handleFolder} style={{ display: 'none' }} />
