@@ -250,4 +250,4 @@ See [`docs.md`](./docs.md) for the full technical details.
 
 ## License
 
-MIT (see repository for details).
+MIT — see [LICENSE.md](./LICENSE.md) for details.
