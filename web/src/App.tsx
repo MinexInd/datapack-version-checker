@@ -451,13 +451,19 @@ export default function App() {
 async function readDirectoryEntry(entry: any): Promise<PackFileMap> {
   const files: PackFileMap = {}
   const reader = entry.createReader()
-  const entries = await new Promise<any[]>((resolve) => {
+
+  const readAllEntries = () => new Promise<any[]>((resolve) => {
     const all: any[] = []
-    reader.readEntries((batch: any[]) => {
-      if (batch.length === 0) resolve(all)
-      else all.push(...batch)
-    })
+    const readBatch = () => {
+      reader.readEntries((batch: any[]) => {
+        if (batch.length === 0) resolve(all)
+        else { all.push(...batch); readBatch() }
+      })
+    }
+    readBatch()
   })
+
+  const entries = await readAllEntries()
   for (const e of entries) {
     if (e.isDirectory) {
       const sub = await readDirectoryEntry(e)
