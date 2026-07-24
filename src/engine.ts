@@ -274,55 +274,35 @@ const RESOURCEPACK: PackContext = {
   computeWindow: computeResourcepackWindow,
 }
 
-export async function checkCompatibilityContentBased(
-  datapackDir: string,
+async function checkPackCore(
+  packDir: string,
+  ctx: PackContext,
   targetVersions?: string[],
   allVersionsFlag: boolean = false,
   strict: boolean = false,
 ): Promise<CheckResult & {
   min_version: string | null
   knowledge_hits: KnowledgeHit[]
-  load_range: { min: number; max: number; min_name: string | null; max_name: string | null } | null
+  load_range: LoadRange | null
 }> {
   const log = getLogger()
-  log.time('checkCompatibilityContentBased')
-  const allVersions = await fetchVersions()
-  const mcfuncDir = join(datapackDir, 'data')
-  const mcfunctionFiles = findMcfunctionFiles(mcfuncDir)
-  const jsonFiles = findJsonFiles(mcfuncDir)
+  log.time('checkPackCore')
 
-  const commands = scanCommands(mcfunctionFiles, datapackDir)
-  const knowledgeHits = applyKnowledgeRules(commands, jsonFiles, datapackDir)
+  const allVersions = await fetchVersions()
+  const { mcfunction: mcfunctionFiles, json: jsonFiles } = ctx.scanFiles(packDir)
+
+  const commands = scanCommands(mcfunctionFiles, packDir)
+  const knowledgeHits = ctx.applyKnowledge(commands, jsonFiles, packDir)
   const minDv = knowledgeMinDataVersion(knowledgeHits, allVersions)
   const minVersionName = minDv > 0
     ? allVersions.find(v => v.data_version === minDv)?.name ?? null
     : null
 
-  // Read pack.mcmeta to get the LOAD range (what Minecraft will actually load).
-  // This is the authoritative "will it load" signal; content analysis finds breaks.
-  let loadRange: { min: number; max: number; min_name: string | null; max_name: string | null } | null = null
-  const pmPath = join(datapackDir, 'pack.mcmeta')
-  if (existsSync(pmPath)) {
-    try {
-      const { supported_formats } = readPackMcmeta(datapackDir)
-      if (supported_formats) {
-        const minVer = allVersions.find(v => v.data_pack_version === supported_formats.min)
-        const maxVer = allVersions.find(v => v.data_pack_version === supported_formats.max)
-        loadRange = {
-          min: supported_formats.min,
-          max: supported_formats.max,
-          min_name: minVer?.name ?? null,
-          max_name: maxVer?.name ?? null,
-        }
-      }
-    } catch (e) {
-      log.debug('Failed to resolve load range:', e)
-    }
-  }
+  const loadRange = ctx.buildLoadRange(packDir, allVersions)
 
   const releases = allVersions
     .filter(v => v.type === 'release')
-    .sort((a, b) => a.data_version - b.data_version)
+    .sort((a, b) => (a[ctx.versionField] ?? 0) - (b[ctx.versionField] ?? 0))
   let relevantVersions: McmetaVersion[]
 
   if (targetVersions) {
@@ -330,25 +310,16 @@ export async function checkCompatibilityContentBased(
   } else if (allVersionsFlag) {
     relevantVersions = allVersions
   } else if (loadRange) {
-    // Candidate versions: a window (in pack-format units) around BOTH the
-    // declared load range AND the content-minimum version, so we surface
-    // breaks inside and just outside the declared range.
-    const contentMinVer = minVersionName
-      ? allVersions.find(v => v.name === minVersionName) : undefined
-    const contentMinPack = contentMinVer?.data_pack_version ?? loadRange.min
-    const loPack = Math.min(loadRange.min, contentMinPack) - 5
-    const hiPack = Math.max(loadRange.max, contentMinPack) + 5
+    const { lo, hi } = ctx.computeWindow(loadRange, minVersionName, allVersions)
     relevantVersions = releases.filter(v =>
-      v.data_pack_version >= loPack && v.data_pack_version <= hiPack)
+      (v[ctx.versionField] ?? 0) >= lo && (v[ctx.versionField] ?? 0) <= hi)
   } else {
-    // No pack.mcmeta: fall back to content-based (knowledge minimum)
     relevantVersions = releases.filter(v => v.data_version >= minDv)
   }
 
   const compatible: VersionCompatibility[] = []
   const incompatible: VersionCompatibility[] = []
 
-  // Pull community-curated breaking changes (misode/technical-changes) per version.
   let breakingMap: Record<string, string[]> = {}
   try {
     log.debug('Fetching breaking changes...')
@@ -359,8 +330,6 @@ export async function checkCompatibilityContentBased(
     breakingMap = {}
   }
 
-  // Structural JSON schema (vanilla-mcdoc). Built once, applied per version via
-  // #[since]/#[until] gating. Degrades gracefully if the network is unavailable.
   let mcdocTable = null
   try {
     log.debug('Fetching mcdoc symbols...')
@@ -371,17 +340,14 @@ export async function checkCompatibilityContentBased(
     mcdocTable = null
   }
   const structuralJsonFiles = mcdocTable
-    ? jsonFiles.filter(f => fileKindFromPath(relative(datapackDir, f).replace(/\\/g, '/')))
+    ? jsonFiles.filter(f => fileKindFromPath(relative(packDir, f).replace(/\\/g, '/')))
     : []
 
-  // Fetch source version registries for deprecation detection.
-  // The source is the max of the declared load range (the latest version the
-  // datapack was designed for). If no load range, we skip deprecation checking.
   let sourceRegistries: Record<string, string[]> | null = null
   let sourceVersionDv = 0
   if (loadRange) {
     try {
-      const sourceVer = allVersions.find(v => v.data_pack_version === loadRange.max)
+      const sourceVer = allVersions.find(v => v[ctx.versionField] === loadRange.max)
       if (sourceVer) {
         log.debug(`Fetching source registries for deprecation: ${sourceVer.name}`)
         sourceRegistries = await fetchRegistries(sourceVer.id)
@@ -397,40 +363,40 @@ export async function checkCompatibilityContentBased(
 
   for (const ver of relevantVersions) {
     const inLoadRange = loadRange
-      ? ver.data_pack_version >= loadRange.min && ver.data_pack_version <= loadRange.max
+      ? (ver[ctx.versionField] ?? 0) >= loadRange.min && (ver[ctx.versionField] ?? 0) <= loadRange.max
       : true
 
     const mcfunctionIssues: McfunctionIssue[] = []
     const registryIssues: RegistryIssue[] = []
 
-    // Validate commands against this version's command tree
-    let tree: CommandTreeNode | null = null
-    try {
-      log.time(`command-tree:${ver.id}`)
-      tree = await fetchCommandTree(ver.id)
-      log.timeEnd(`command-tree:${ver.id}`)
-      for (const cmd of commands) {
-        const res = validateCommand(cmd.text, tree, !strict)
-        if (!res.valid) {
-          mcfunctionIssues.push({
-            file: cmd.file,
-            line: cmd.line,
-            command: cmd.root,
-            issue: `Invalid in ${ver.name}: ${res.reason ?? 'syntax error'}`,
-          })
+    if (ctx.validateCommands) {
+      let tree: CommandTreeNode | null = null
+      try {
+        log.time(`command-tree:${ver.id}`)
+        tree = await fetchCommandTree(ver.id)
+        log.timeEnd(`command-tree:${ver.id}`)
+        for (const cmd of commands) {
+          const res = validateCommand(cmd.text, tree, !strict)
+          if (!res.valid) {
+            mcfunctionIssues.push({
+              file: cmd.file,
+              line: cmd.line,
+              command: cmd.root,
+              issue: `Invalid in ${ver.name}: ${res.reason ?? 'syntax error'}`,
+            })
+          }
         }
+      } catch (e) {
+        log.warn(`Failed to check commands for ${ver.name}:`, e)
+        mcfunctionIssues.push({
+          file: '(api)',
+          line: 0,
+          command: '',
+          issue: `Could not fetch command tree: ${e}`,
+        })
       }
-    } catch (e) {
-      log.warn(`Failed to check commands for ${ver.name}:`, e)
-      mcfunctionIssues.push({
-        file: '(api)',
-        line: 0,
-        command: '',
-        issue: `Could not fetch command tree: ${e}`,
-      })
     }
 
-    // Validate JSON against this version's registries
     const deprecationIssues: RegistryDeprecation[] = []
     let targetRegs: Record<string, string[]> | null = null
     try {
@@ -445,20 +411,16 @@ export async function checkCompatibilityContentBased(
       log.warn(`Failed to check registries for ${ver.name}:`, e)
     }
 
-    // Detect registry deprecations: entries that existed in the source version
-    // but were REMOVED by this (newer) target version.
     if (sourceRegistries && targetRegs && ver.data_version > sourceVersionDv) {
       for (const file of jsonFiles) {
         deprecationIssues.push(...checkDeprecatedRegistryEntries(file, sourceRegistries, targetRegs))
       }
     }
 
-    // Validate JSON structure against vanilla-mcdoc (field names, dispatch
-    // `type` values, and #[since]/#[until] version gating).
     const structuralIssues: StructuralIssue[] = []
     if (mcdocTable) {
       for (const file of structuralJsonFiles) {
-        const rel = relative(datapackDir, file).replace(/\\/g, '/')
+        const rel = relative(packDir, file).replace(/\\/g, '/')
         try {
           structuralIssues.push(...checkMcdocFile(file, rel, ver.name, mcdocTable))
         } catch (e) {
@@ -467,9 +429,6 @@ export async function checkCompatibilityContentBased(
       }
     }
 
-    // Knowledge-based issues: "what people say" — a feature requires a newer
-    // version than this one. This OVERRIDES the lenient walker, which tolerates
-    // tree gaps and would otherwise miss version-gating features.
     const knowledgeIssues: McfunctionIssue[] = []
     const seenRules = new Set<string>()
     for (const hit of knowledgeHits) {
@@ -503,12 +462,10 @@ export async function checkCompatibilityContentBased(
 
     if (inLoadRange && !hasContentIssues) compatible.push(result)
     else incompatible.push(result)
-
-    tree = null
   }
 
   log.timeEnd('version-loop', `checked ${relevantVersions.length} versions`)
-  log.timeEnd('checkCompatibilityContentBased')
+  log.timeEnd('checkPackCore')
 
   return {
     target_version_id: loadRange ? `${loadRange.min}-${loadRange.max}` : 'content-based',
@@ -520,6 +477,19 @@ export async function checkCompatibilityContentBased(
     knowledge_hits: knowledgeHits,
     load_range: loadRange,
   }
+}
+
+export async function checkCompatibilityContentBased(
+  datapackDir: string,
+  targetVersions?: string[],
+  allVersionsFlag: boolean = false,
+  strict: boolean = false,
+): Promise<CheckResult & {
+  min_version: string | null
+  knowledge_hits: KnowledgeHit[]
+  load_range: LoadRange | null
+}> {
+  return checkPackCore(datapackDir, DATAPACK, targetVersions, allVersionsFlag, strict)
 }
 
 // ---------------------------------------------------------------------------
