@@ -240,7 +240,7 @@ export default function Results({ result, mode }: Props) {
       <div className="card">
         <h2>✅ Compatible Versions <span className="sub">{compat.length}</span></h2>
         {compat.length > 0 ? (
-          <div className="scl-box" style={{ maxHeight: 290 }}>{compat.map(v => <VersionRow key={v.version.id} v={v} />)}</div>
+          <div className="vlist">{compat.map(v => <VersionRow key={v.version.id} v={v} />)}</div>
         ) : (
           <div className="empty-sm">No compatible versions to show</div>
         )}
@@ -250,7 +250,7 @@ export default function Results({ result, mode }: Props) {
       <div className="card">
         <h2>❌ Content Breaks <span className="sub">{broken.length}</span></h2>
         {broken.length > 0 ? (
-          <div className="scl-box" style={{ maxHeight: 290 }}>{broken.map(v => <VersionRow key={v.version.id} v={v} />)}</div>
+          <div className="vlist">{broken.map(v => <VersionRow key={v.version.id} v={v} />)}</div>
         ) : (
           <div className="empty-sm">No content issues found</div>
         )}
@@ -260,7 +260,7 @@ export default function Results({ result, mode }: Props) {
       <div className="card">
         <h2>⛔ Outside Declared Load Range <span className="sub">{outside.length}</span></h2>
         {outside.length > 0 ? (
-          <div className="scl-box" style={{ maxHeight: 290 }}>{outside.map(v => <VersionRow key={v.version.id} v={v} />)}</div>
+          <div className="vlist">{outside.map(v => <VersionRow key={v.version.id} v={v} />)}</div>
         ) : (
           <div className="empty-sm">All versions are within the declared load range</div>
         )}

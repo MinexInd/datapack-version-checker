@@ -34,14 +34,12 @@ export default function App() {
     )
   })
 
-  // Fix mode
   const [fixTarget, setFixTarget] = useState('')
   const [fixSource, setFixSource] = useState('')
   const [fixPreview, setFixPreview] = useState<FixPreview | null>(null)
 
   const folderRef = useRef<HTMLInputElement>(null)
   const zipRef = useRef<HTMLInputElement>(null)
-  const dropRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchVersions()
@@ -202,18 +200,39 @@ export default function App() {
 
   return (
     <div className="container">
-      <header>
-        <div className="logo">🔍</div>
-        <div className="title-block">
-          <h1>dpcheck</h1>
-          <p>Datapack &amp; Resource Pack Version Checker</p>
+      {/* Header */}
+      <header className="app-header animate-in">
+        <div className="app-logo">🔍</div>
+        <div className="app-title-group">
+          <h1 className="app-title">dpcheck</h1>
+          <p className="app-subtitle">Datapack &amp; Resource Pack Version Checker</p>
         </div>
-        <div className="spacer" />
         <span className="header-badge">content-based</span>
       </header>
 
+      {/* Hero / feature highlights */}
+      {!files && (
+        <div className="hero-grid animate-in-d1">
+          <div className="hero-card">
+            <span className="hc-icon">🔍</span>
+            <h3>Command Validation</h3>
+            <p>Checks every .mcfunction against the target version's command tree.</p>
+          </div>
+          <div className="hero-card">
+            <span className="hc-icon">📋</span>
+            <h3>Registry Checks</h3>
+            <p>Validates JSON files against per-version registries and mcdoc schemas.</p>
+          </div>
+          <div className="hero-card">
+            <span className="hc-icon">🔧</span>
+            <h3>Auto-Fix</h3>
+            <p>Ports packs between versions — rewrites commands and fixes JSON automatically.</p>
+          </div>
+        </div>
+      )}
+
       {/* Pack selection */}
-      <div className="card">
+      <div className="card animate-in-d2">
         <h2>📦 Pack <span className="sub">folder or .zip containing pack.mcmeta</span></h2>
         {files ? (
           <div className="dz-loaded">
@@ -229,7 +248,6 @@ export default function App() {
           </div>
         ) : (
           <div
-            ref={dropRef}
             className="dropzone"
             onDrop={handleDrop}
             onDragOver={handleDragOver}
@@ -250,13 +268,13 @@ export default function App() {
       </div>
 
       {/* Tabs */}
-      <div className="tabs">
+      <div className="tab-bar animate-in-d3">
         <button className={`tab ${tab === 'check' ? 'active' : ''}`} onClick={() => setTab('check')}>🔎 Check Compatibility</button>
         <button className={`tab ${tab === 'fix' ? 'active' : ''}`} onClick={() => setTab('fix')}>🔧 Auto-Fix / Port</button>
       </div>
 
       {tab === 'check' && (
-        <div className="card">
+        <div className="card animate-in-d3">
           <h2>⚙️ Options</h2>
           <div className="field">
             <label>Mode</label>
@@ -287,7 +305,7 @@ export default function App() {
                   onChange={e => setVersionSearch(e.target.value)}
                   style={{ marginBottom: 10 }}
                 />
-                <div className="scl-list" style={{ maxHeight: 145 }}>
+                <div className="scl-list">
                   {filteredVersions.map(v => (
                     <div
                       key={v.id}
@@ -330,7 +348,7 @@ export default function App() {
       )}
 
       {tab === 'fix' && (
-        <div className="card">
+        <div className="card animate-in-d3">
           <h2>🔧 Auto-Fix / Port <span className="sub">rewrites commands, fixes JSON, updates pack.mcmeta</span></h2>
           <div className="grid-2">
             <div className="field">
@@ -386,12 +404,13 @@ export default function App() {
               {fixPreview.results.length > 0 ? (
                 <div className="scl-box" style={{ maxHeight: 350 }}>
                   {fixPreview.results.map((r, i) => (
-                    <div key={i} className="issue cmd" style={{ marginBottom: 8 }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>
-                        {r.file} <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>({r.patches} patch{r.patches !== 1 ? 'es' : ''})</span>
+                    <div key={i} className="fix-file">
+                      <div className="fix-file-header">
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.file}</span>
+                        <span className="patch-count">({r.patches} patch{r.patches !== 1 ? 'es' : ''})</span>
                       </div>
                       {r.details.map((d, j) => (
-                        <div key={j} style={{ fontSize: '0.78rem', color: 'var(--text-dim)', paddingLeft: 12, lineHeight: 1.6 }}>
+                        <div key={j} className="fix-detail">
                           {d}
                         </div>
                       ))}
@@ -420,6 +439,11 @@ export default function App() {
       )}
 
       {result && <Results result={result.result} mode={result.mode} />}
+
+      {/* Footer */}
+      <footer className="app-footer">
+        <p>Runs entirely in your browser — nothing is uploaded. <a href="https://github.com/MinexInd/datapack-version-checker" target="_blank" rel="noopener">Source on GitHub</a></p>
+      </footer>
     </div>
   )
 }
