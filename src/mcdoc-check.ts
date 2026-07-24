@@ -29,7 +29,7 @@ export function cmpVer(a: string, b: string): number {
 }
 
 /** True when `version` is within [since, until) — `until` exclusive. */
-function inRange(version: string, since?: string, until?: string): boolean {
+export function inRange(version: string, since?: string, until?: string): boolean {
   if (since && cmpVer(version, since) < 0) return false
   if (until && cmpVer(version, until) >= 0) return false
   return true

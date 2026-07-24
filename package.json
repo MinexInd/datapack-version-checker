@@ -3,7 +3,9 @@
   "version": "0.5.0",
   "description": "CLI tool to check & auto-fix Minecraft datapack compatibility across versions — content + structural + registry deprecation + auto-porting",
   "type": "module",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
     "dpcheck": "./dist/index.js"
   },
@@ -11,6 +13,9 @@
     "build": "tsc && cd web && npm run build",
     "build:ts": "tsc",
     "build:web": "cd web && npm install && npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "start": "node dist/index.js",
     "serve": "node dist/index.js serve",
     "dev:web": "cd web && npm run dev"
@@ -19,7 +24,9 @@
     "@types/adm-zip": "^0.5.8",
     "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
-    "typescript": "^5.5.0"
+    "@vitest/coverage-v8": "^4.1.10",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "@spyglassmc/core": "^0.4.52",
