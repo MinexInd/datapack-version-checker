@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { CheckResult, VersionCompatibility, KnowledgeHit } from '../api'
+import type { CheckResult, VersionCompatibility, KnowledgeHit, ReferenceIssue } from '../api'
 
 interface Props {
   result: CheckResult
@@ -11,8 +11,9 @@ function issueCounts(v: VersionCompatibility) {
   const reg = v.registry_issues?.length ?? 0
   const str = v.structural_issues?.length ?? 0
   const dep = v.deprecation_issues?.length ?? 0
+  const ref = v.reference_issues?.length ?? 0
   const bc = v.breaking_changes?.length ?? 0
-  return { cmd, reg, str, dep, bc, total: cmd + reg + str + dep + bc }
+  return { cmd, reg, str, dep, ref, bc, total: cmd + reg + str + dep + ref + bc }
 }
 
 function IssueGroup({ kind, title, count, children }: { kind: string; title: string; count: number; children: React.ReactNode }) {
@@ -46,6 +47,7 @@ function VersionRow({ v }: { v: VersionCompatibility }) {
               {c.cmd > 0 && <span className="pill cmd">⛔ {c.cmd} cmd</span>}
               {c.reg > 0 && <span className="pill reg">⚠ {c.reg} reg</span>}
               {c.str > 0 && <span className="pill struct">▦ {c.str} struct</span>}
+              {c.ref > 0 && <span className="pill ref">🔗 {c.ref} ref</span>}
               {c.dep > 0 && <span className="pill dep">↺ {c.dep} deprec</span>}
               {v.status === 'outside_load_range' && <span className="badge outside">outside range</span>}
             </>
@@ -84,6 +86,18 @@ function VersionRow({ v }: { v: VersionCompatibility }) {
               <div key={idx} className="issue struct">
                 <span className="loc">{i.file}</span>
                 {' — '}<span className="msg">{i.issue}</span>
+              </div>
+            ))}
+          </IssueGroup>
+
+          <IssueGroup kind="ref" title="Broken References" count={c.ref}>
+            {(v.reference_issues ?? []).map((i, idx) => (
+              <div key={idx} className="issue ref">
+                <span className="loc">{i.file}{i.line ? <span className="ln">:{i.line}</span> : ''}</span>
+                {' — '}<span className="msg">{i.issue}</span>
+                {i.code && (
+                  <div className="code-snippet">{i.code}</div>
+                )}
               </div>
             ))}
           </IssueGroup>
@@ -163,6 +177,7 @@ function exportMarkdown(result: CheckResult) {
     for (const i of v.mcfunction_issues ?? []) issues.push(`- [cmd] ${i.file}:${i.line} — ${i.issue}`)
     for (const i of v.registry_issues ?? []) issues.push(`- [reg] ${i.file} — ${i.issue}`)
     for (const i of v.structural_issues ?? []) issues.push(`- [struct] ${i.file} — ${i.issue}`)
+    for (const i of v.reference_issues ?? []) issues.push(`- [ref] ${i.file}${i.line ? ':' + i.line : ''} — ${i.issue}`)
     for (const i of v.deprecation_issues ?? []) issues.push(`- [deprec] ${i.file} — ${i.issue}`)
     for (const bc of v.breaking_changes ?? []) issues.push(`- [breaking] ${bc}`)
     if (issues.length === 0) issues.push(`- No specific issues (outside load range)`)

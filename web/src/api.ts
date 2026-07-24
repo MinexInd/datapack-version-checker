@@ -47,6 +47,15 @@ export interface RegistryDeprecation {
   issue: string
 }
 
+export interface ReferenceIssue {
+  file: string
+  line?: number
+  reference: string
+  type: string
+  issue: string
+  code?: string
+}
+
 export interface FeatureRule {
   id: string
   description: string
@@ -74,6 +83,7 @@ export interface VersionCompatibility {
   registry_issues: RegistryIssue[]
   structural_issues?: StructuralIssue[]
   deprecation_issues?: RegistryDeprecation[]
+  reference_issues?: ReferenceIssue[]
   breaking_changes?: string[]
 }
 

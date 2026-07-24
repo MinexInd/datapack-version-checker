@@ -16,6 +16,7 @@ import type {
   RegistryIssue,
   RegistryDeprecation,
   StructuralIssue,
+  ReferenceIssue,
   CommandTreeNode,
   CheckResult,
 } from './types'
@@ -117,6 +118,153 @@ function knowledgeMinDataVersion(hits: KnowledgeHit[], versions: McmetaVersion[]
   return min
 }
 
+// ---------------------------------------------------------------------------
+// Resource index / cross-file reference checking (browser-side)
+// ---------------------------------------------------------------------------
+
+interface ResourceIndex {
+  functions: Set<string>
+  textures: Set<string>
+  models: Set<string>
+  loot_tables: Set<string>
+}
+
+function buildResourceIndex(files: PackFileMap): ResourceIndex {
+  const idx: ResourceIndex = {
+    functions: new Set(),
+    textures: new Set(),
+    models: new Set(),
+    loot_tables: new Set(),
+  }
+
+  for (const path of Object.keys(files)) {
+    if (path.startsWith('data/') && path.endsWith('.mcfunction')) {
+      const nsId = path
+        .replace(/^data\//, '')
+        .replace(/\.mcfunction$/, '')
+        .replace(/\\/g, '/')
+      idx.functions.add(nsId)
+    }
+    if (path.startsWith('data/') && path.endsWith('.json') && path.includes('/loot_tables/')) {
+      const nsId = path
+        .replace(/^data\//, '')
+        .replace(/\.json$/, '')
+        .replace(/\\/g, '/')
+      idx.loot_tables.add(nsId)
+    }
+    if (path.startsWith('assets/') && path.endsWith('.json') && path.includes('/models/')) {
+      const nsId = path
+        .replace(/^assets\//, '')
+        .replace(/\.json$/, '')
+        .replace(/\\/g, '/')
+      idx.models.add(nsId)
+    }
+    if (path.startsWith('assets/') && path.endsWith('.png') && path.includes('/textures/')) {
+      const nsId = path
+        .replace(/^assets\//, '')
+        .replace(/\.png$/, '')
+        .replace(/\\/g, '/')
+      idx.textures.add(nsId)
+    }
+  }
+
+  return idx
+}
+
+function findJsonLineBrowser(content: string, searchValue: string): { line: number; code: string } | null {
+  const lines = content.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(searchValue)) {
+      return { line: i + 1, code: lines[i].trim() }
+    }
+  }
+  return null
+}
+
+function checkReferences(
+  commands: CommandLine[],
+  files: PackFileMap,
+  jsonPaths: string[],
+  idx: ResourceIndex,
+): ReferenceIssue[] {
+  const issues: ReferenceIssue[] = []
+
+  for (const cmd of commands) {
+    const funcMatch = cmd.text.match(/^\/(?:function|schedule\s+function)\s+([a-z0-9_.-]+:[a-z0-9\/_.-]+)/)
+    if (funcMatch) {
+      const ref = funcMatch[1]
+      if (!idx.functions.has(ref)) {
+        issues.push({
+          file: cmd.file,
+          line: cmd.line,
+          reference: ref,
+          type: 'function',
+          issue: `References "${ref}" — no matching .mcfunction found in the pack`,
+          code: cmd.text,
+        })
+      }
+    }
+  }
+
+  for (const file of jsonPaths) {
+    const content = files[file]
+    if (!content) continue
+    let data: any
+    try { data = JSON.parse(content) } catch { continue }
+
+    if (data.parent && typeof data.parent === 'string' && file.includes('/models/')) {
+      if (!idx.models.has(data.parent)) {
+        const loc = findJsonLineBrowser(content, `"${data.parent}"`)
+        issues.push({
+          file,
+          line: loc?.line,
+          reference: data.parent,
+          type: 'model',
+          issue: `References model "${data.parent}" which doesn't exist in the pack`,
+          code: loc?.code,
+        })
+      }
+    }
+
+    if (data.textures && typeof data.textures === 'object' && file.includes('/models/')) {
+      for (const [key, val] of Object.entries(data.textures)) {
+        if (typeof val === 'string') {
+          const texRef = val.replace(/^minecraft:/, '')
+          if (!texRef.startsWith('#')) {
+            if (!idx.textures.has(texRef)) {
+              const loc = findJsonLineBrowser(content, `"${key}"`)
+              issues.push({
+                file,
+                line: loc?.line,
+                reference: val,
+                type: 'texture',
+                issue: `References texture "${val}" which doesn't exist in the pack`,
+                code: loc?.code,
+              })
+            }
+          }
+        }
+      }
+    }
+
+    if (data.loot_table && typeof data.loot_table === 'string') {
+      if (!idx.loot_tables.has(data.loot_table)) {
+        const loc = findJsonLineBrowser(content, `"${data.loot_table}"`)
+        issues.push({
+          file,
+          line: loc?.line,
+          reference: data.loot_table,
+          type: 'loot_table',
+          issue: `References loot table "${data.loot_table}" which doesn't exist in the pack`,
+          code: loc?.code,
+        })
+      }
+    }
+  }
+
+  return issues
+}
+
 export async function checkCompatibilityContentBased(
   files: PackFileMap,
   targetVersions?: string[],
@@ -139,6 +287,9 @@ export async function checkCompatibilityContentBased(
   const minVersionName = minDv > 0
     ? allVersions.find(v => v.data_version === minDv)?.name ?? null
     : null
+
+  const resourceIndex = buildResourceIndex(files)
+  const referenceIssues = checkReferences(commands, files, jsonFiles, resourceIndex)
 
   let loadRange: { min: number; max: number; min_name: string | null; max_name: string | null } | null = null
   const pmContent = files['pack.mcmeta']
@@ -320,7 +471,7 @@ export async function checkCompatibilityContentBased(
     const hasContentIssues =
       mcfunctionIssues.length > 0 || registryIssues.length > 0 ||
       knowledgeIssues.length > 0 || structuralIssues.length > 0 ||
-      deprecationIssues.length > 0
+      deprecationIssues.length > 0 || referenceIssues.length > 0
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inLoadRange ? 'exact' : 'none',
@@ -330,6 +481,7 @@ export async function checkCompatibilityContentBased(
       registry_issues: registryIssues,
       structural_issues: structuralIssues,
       deprecation_issues: deprecationIssues.length > 0 ? deprecationIssues : undefined,
+      reference_issues: referenceIssues.length > 0 ? referenceIssues : undefined,
       breaking_changes: breakingMap[ver.name] ?? [],
     }
 
@@ -369,9 +521,12 @@ export async function checkResourcePack(
 
   const allPaths = Object.keys(files)
   const jsonFiles = allPaths.filter(k =>
-    (k.startsWith('assets/') || k.startsWith('assets/')) &&
+    (k.startsWith('assets/')) &&
     (k.endsWith('.json') || k.endsWith('.mcmeta'))
   )
+
+  const resourceIndex = buildResourceIndex(files)
+  const referenceIssues = checkReferences([], files, jsonFiles, resourceIndex)
   const pngFiles = allPaths.filter(k => k.endsWith('.png'))
 
   const knowledgeHits = applyResourceKnowledge(files, jsonFiles)
@@ -508,7 +663,8 @@ export async function checkResourcePack(
 
     const hasContentIssues =
       registryIssues.length > 0 || knowledgeIssues.length > 0 ||
-      structuralIssues.length > 0 || deprecationIssues.length > 0
+      structuralIssues.length > 0 || deprecationIssues.length > 0 ||
+      referenceIssues.length > 0
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inLoadRange ? 'exact' : 'none',
@@ -518,6 +674,7 @@ export async function checkResourcePack(
       registry_issues: registryIssues,
       structural_issues: structuralIssues,
       deprecation_issues: deprecationIssues.length > 0 ? deprecationIssues : undefined,
+      reference_issues: referenceIssues.length > 0 ? referenceIssues : undefined,
       breaking_changes: breakingMap[ver.name] ?? [],
     }
 

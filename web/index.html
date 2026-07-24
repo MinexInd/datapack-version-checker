@@ -578,6 +578,7 @@
     .pill.cmd { background: var(--red-bg); color: var(--red); }
     .pill.reg { background: var(--amber-bg); color: var(--amber); }
     .pill.struct { background: var(--blue-bg); color: var(--blue); }
+    .pill.ref { background: var(--amber-bg); color: var(--amber); }
     .pill.dep { background: var(--purple-bg); color: var(--purple); }
     .pill.ok { background: var(--green-bg); color: var(--green); }
 
@@ -630,6 +631,7 @@
     .issue-group-title.cmd { color: var(--red); }
     .issue-group-title.reg { color: var(--amber); }
     .issue-group-title.struct { color: var(--blue); }
+    .issue-group-title.ref { color: var(--amber); }
     .issue-group-title.dep { color: var(--purple); }
     .issue-group-title.bc { color: var(--amber); }
 
@@ -649,11 +651,25 @@
     .issue.cmd { border-left-color: var(--red); }
     .issue.reg { border-left-color: var(--amber); }
     .issue.struct { border-left-color: var(--blue); }
+    .issue.ref { border-left-color: var(--amber); }
     .issue.dep { border-left-color: var(--purple); }
 
     .issue .loc { font-family: var(--mono); color: var(--text-dim); font-size: 0.78rem; }
     .issue .ln { color: var(--text-faint); }
     .issue .msg { color: var(--text); }
+
+    .code-snippet {
+      margin-top: 6px;
+      padding: 6px 10px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border-soft);
+      border-radius: 5px;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      color: var(--text-dim);
+      overflow-x: auto;
+      white-space: pre;
+    }
 
     .breaking {
       font-size: 0.82rem; line-height: 1.5; padding: 9px 12px; margin-bottom: 6px;

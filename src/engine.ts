@@ -18,6 +18,7 @@ import type {
   RegistryIssue,
   RegistryDeprecation,
   StructuralIssue,
+  ReferenceIssue,
   CommandTreeNode,
   CheckResult,
 } from './types.js'
@@ -129,6 +130,154 @@ function knowledgeMinDataVersion(hits: KnowledgeHit[], versions: McmetaVersion[]
     if (dv !== null && dv > min) min = dv
   }
   return min
+}
+
+// ---------------------------------------------------------------------------
+// Resource index / cross-file reference checking
+// ---------------------------------------------------------------------------
+
+interface ResourceIndex {
+  functions: Set<string>
+  textures: Set<string>
+  models: Set<string>
+  loot_tables: Set<string>
+}
+
+function buildResourceIndex(packDir: string): ResourceIndex {
+  const idx: ResourceIndex = {
+    functions: new Set(),
+    textures: new Set(),
+    models: new Set(),
+    loot_tables: new Set(),
+  }
+
+  function walk(dir: string, prefix: string, cb: (rel: string) => void) {
+    try {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry)
+        if (statSync(full).isDirectory()) {
+          walk(full, prefix ? `${prefix}/${entry}` : entry, cb)
+        } else {
+          cb(prefix ? `${prefix}/${entry}` : entry)
+        }
+      }
+    } catch { }
+  }
+
+  function scan(baseRel: string, type: keyof ResourceIndex, ext: string) {
+    const base = join(packDir, baseRel)
+    try {
+      for (const ns of readdirSync(base)) {
+        const nsDir = join(base, ns)
+        if (!statSync(nsDir).isDirectory()) continue
+        walk(nsDir, '', (relPath) => {
+          const name = relPath.replace(new RegExp(`\\.${ext}$`), '')
+          idx[type].add(`${ns}:${name}`)
+        })
+      }
+    } catch { }
+  }
+
+  scan('data', 'functions', 'mcfunction')
+  scan('data', 'loot_tables', 'json')
+  scan('assets', 'models', 'json')
+  scan('assets', 'textures', 'png')
+
+  return idx
+}
+
+function findJsonLine(content: string, searchValue: string): { line: number; code: string } | null {
+  const lines = content.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(searchValue)) {
+      return { line: i + 1, code: lines[i].trim() }
+    }
+  }
+  return null
+}
+
+function checkReferences(
+  commands: CommandLine[],
+  jsonFiles: string[],
+  packDir: string,
+  idx: ResourceIndex,
+): ReferenceIssue[] {
+  const issues: ReferenceIssue[] = []
+
+  for (const cmd of commands) {
+    const funcMatch = cmd.text.match(/^\/(?:function|schedule\s+function)\s+([a-z0-9_.-]+:[a-z0-9\/_.-]+)/)
+    if (funcMatch) {
+      const ref = funcMatch[1]
+      if (!idx.functions.has(ref)) {
+        issues.push({
+          file: cmd.file,
+          line: cmd.line,
+          reference: ref,
+          type: 'function',
+          issue: `References "${ref}" — no matching .mcfunction found in the pack`,
+          code: cmd.text,
+        })
+      }
+    }
+  }
+
+  for (const file of jsonFiles) {
+    const content = readFileSync(file, 'utf-8')
+    let data: any
+    try { data = JSON.parse(content) } catch { continue }
+    const rel = relative(packDir, file).replace(/\\/g, '/')
+
+    if (data.parent && typeof data.parent === 'string' && rel.includes('/models/')) {
+      if (!idx.models.has(data.parent)) {
+        const loc = findJsonLine(content, `"${data.parent}"`)
+        issues.push({
+          file: rel,
+          line: loc?.line,
+          reference: data.parent,
+          type: 'model',
+          issue: `References model "${data.parent}" which doesn't exist in the pack`,
+          code: loc?.code,
+        })
+      }
+    }
+
+    if (data.textures && typeof data.textures === 'object' && rel.includes('/models/')) {
+      for (const [key, val] of Object.entries(data.textures)) {
+        if (typeof val === 'string') {
+          const texRef = val.replace(/^minecraft:/, '')
+          if (!texRef.startsWith('#')) {
+            if (!idx.textures.has(texRef)) {
+              const loc = findJsonLine(content, `"${key}"`)
+              issues.push({
+                file: rel,
+                line: loc?.line,
+                reference: val,
+                type: 'texture',
+                issue: `References texture "${val}" which doesn't exist in the pack`,
+                code: loc?.code,
+              })
+            }
+          }
+        }
+      }
+    }
+
+    if (data.loot_table && typeof data.loot_table === 'string') {
+      if (!idx.loot_tables.has(data.loot_table)) {
+        const loc = findJsonLine(content, `"${data.loot_table}"`)
+        issues.push({
+          file: rel,
+          line: loc?.line,
+          reference: data.loot_table,
+          type: 'loot_table',
+          issue: `References loot table "${data.loot_table}" which doesn't exist in the pack`,
+          code: loc?.code,
+        })
+      }
+    }
+  }
+
+  return issues
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +447,11 @@ async function checkPackCore(
     ? allVersions.find(v => v.data_version === minDv)?.name ?? null
     : null
 
+  const resourceIndex = buildResourceIndex(packDir)
+  const referenceIssues = ctx.validateCommands
+    ? checkReferences(commands, jsonFiles, packDir, resourceIndex)
+    : []
+
   const loadRange = ctx.buildLoadRange(packDir, allVersions)
 
   const releases = allVersions
@@ -447,7 +601,7 @@ async function checkPackCore(
     const hasContentIssues =
       mcfunctionIssues.length > 0 || registryIssues.length > 0 ||
       knowledgeIssues.length > 0 || structuralIssues.length > 0 ||
-      deprecationIssues.length > 0
+      deprecationIssues.length > 0 || referenceIssues.length > 0
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inLoadRange ? 'exact' : 'none',
@@ -457,6 +611,7 @@ async function checkPackCore(
       registry_issues: registryIssues,
       structural_issues: structuralIssues,
       deprecation_issues: deprecationIssues.length > 0 ? deprecationIssues : undefined,
+      reference_issues: referenceIssues.length > 0 ? referenceIssues : undefined,
       breaking_changes: breakingMap[ver.name] ?? [],
     }
 
