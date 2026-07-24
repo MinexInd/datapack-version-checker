@@ -131,6 +131,149 @@ function knowledgeMinDataVersion(hits: KnowledgeHit[], versions: McmetaVersion[]
   return min
 }
 
+// ---------------------------------------------------------------------------
+// Pack types
+// ---------------------------------------------------------------------------
+
+interface LoadRange {
+  min: number
+  max: number
+  min_name: string | null
+  max_name: string | null
+}
+
+interface ScanResult {
+  mcfunction: string[]
+  json: string[]
+}
+
+interface PackContext {
+  versionField: 'data_pack_version' | 'resource_pack_version'
+  windowPadding: number
+  validateCommands: boolean
+  scanFiles: (packDir: string) => ScanResult
+  applyKnowledge: (commands: CommandLine[], jsonFiles: string[], packDir: string) => KnowledgeHit[]
+  buildLoadRange: (packDir: string, allVersions: McmetaVersion[]) => LoadRange | null
+  computeWindow: (loadRange: LoadRange, minVersionName: string | null, allVersions: McmetaVersion[]) => { lo: number; hi: number }
+}
+
+function scanDatapackFiles(packDir: string): ScanResult {
+  return {
+    mcfunction: findMcfunctionFiles(join(packDir, 'data')),
+    json: findJsonFiles(join(packDir, 'data')),
+  }
+}
+
+function scanResourcepackFiles(packDir: string): ScanResult {
+  function walk(dir: string, json: string[]): void {
+    try {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry)
+        if (statSync(full).isDirectory()) walk(full, json)
+        else if (entry.endsWith('.json') || entry.endsWith('.mcmeta')) json.push(full)
+      }
+    } catch { }
+  }
+  const json: string[] = []
+  walk(join(packDir, 'assets'), json)
+  return { mcfunction: [], json }
+}
+
+function applyDatapackKnowledge(commands: CommandLine[], jsonFiles: string[], packDir: string): KnowledgeHit[] {
+  return applyKnowledgeRules(commands, jsonFiles, packDir)
+}
+
+function applyResourcepackKnowledge(commands: CommandLine[], jsonFiles: string[], packDir: string): KnowledgeHit[] {
+  const hits: KnowledgeHit[] = []
+  for (const file of jsonFiles) {
+    const rel = relative(packDir, file).replace(/\\/g, '/')
+    const content = readFileSync(file, 'utf-8')
+    for (const rule of RESOURCE_FEATURE_RULES) {
+      if (rel.includes(rule.match) || content.includes(rule.match)) {
+        hits.push({ rule: { id: rule.id, description: rule.description, type: 'command', match: rule.match, minVersion: rule.minVersion, fix: rule.fix }, file: rel })
+      }
+    }
+  }
+  return hits
+}
+
+function buildDatapackLoadRange(packDir: string, allVersions: McmetaVersion[]): LoadRange | null {
+  const pmPath = join(packDir, 'pack.mcmeta')
+  if (!existsSync(pmPath)) return null
+  try {
+    const { supported_formats } = readPackMcmeta(packDir)
+    if (!supported_formats) return null
+    const minVer = allVersions.find(v => v.data_pack_version === supported_formats.min)
+    const maxVer = allVersions.find(v => v.data_pack_version === supported_formats.max)
+    return {
+      min: supported_formats.min,
+      max: supported_formats.max,
+      min_name: minVer?.name ?? null,
+      max_name: maxVer?.name ?? null,
+    }
+  } catch { return null }
+}
+
+function buildResourcepackLoadRange(packDir: string, allVersions: McmetaVersion[]): LoadRange | null {
+  const pmPath = join(packDir, 'pack.mcmeta')
+  if (!existsSync(pmPath)) return null
+  try {
+    const raw = readFileSync(pmPath, 'utf-8')
+    const data = JSON.parse(raw)
+    const pf = data.pack?.pack_format
+    if (typeof pf !== 'number') return null
+    const sf = data.pack?.supported_formats
+    let rmin = pf, rmax = pf
+    if (sf !== undefined && sf !== null) {
+      if (typeof sf === 'number') { rmin = sf; rmax = sf }
+      else if (Array.isArray(sf)) { rmin = Math.min(...sf); rmax = Math.max(...sf) }
+      else if (typeof sf === 'object') {
+        if ('min_inclusive' in sf) rmin = sf.min_inclusive
+        if ('max_inclusive' in sf) rmax = sf.max_inclusive
+      }
+    }
+    const minVer = allVersions.find(v => v.resource_pack_version === rmin)
+    const maxVer = allVersions.find(v => v.resource_pack_version === rmax)
+    return { min: rmin, max: rmax, min_name: minVer?.name ?? null, max_name: maxVer?.name ?? null }
+  } catch { return null }
+}
+
+function computeDatapackWindow(loadRange: LoadRange, minVersionName: string | null, allVersions: McmetaVersion[]): { lo: number; hi: number } {
+  const contentMinVer = minVersionName ? allVersions.find(v => v.name === minVersionName) : undefined
+  const contentMinPack = contentMinVer?.data_pack_version ?? loadRange.min
+  return {
+    lo: Math.min(loadRange.min, contentMinPack) - 5,
+    hi: Math.max(loadRange.max, contentMinPack) + 5,
+  }
+}
+
+function computeResourcepackWindow(loadRange: LoadRange, _minVersionName: string | null, _allVersions: McmetaVersion[]): { lo: number; hi: number } {
+  return {
+    lo: loadRange.min - 3,
+    hi: loadRange.max + 3,
+  }
+}
+
+const DATAPACK: PackContext = {
+  versionField: 'data_pack_version',
+  windowPadding: 5,
+  validateCommands: true,
+  scanFiles: scanDatapackFiles,
+  applyKnowledge: applyDatapackKnowledge,
+  buildLoadRange: buildDatapackLoadRange,
+  computeWindow: computeDatapackWindow,
+}
+
+const RESOURCEPACK: PackContext = {
+  versionField: 'resource_pack_version',
+  windowPadding: 3,
+  validateCommands: false,
+  scanFiles: scanResourcepackFiles,
+  applyKnowledge: applyResourcepackKnowledge,
+  buildLoadRange: buildResourcepackLoadRange,
+  computeWindow: computeResourcepackWindow,
+}
+
 export async function checkCompatibilityContentBased(
   datapackDir: string,
   targetVersions?: string[],
