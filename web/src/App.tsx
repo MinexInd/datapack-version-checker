@@ -234,11 +234,15 @@ export default function App() {
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
-            onClick={() => folderRef.current?.click()}
           >
             <div className="dz-icon">📁</div>
-            <p>Drop a datapack / resource pack here, or click to browse</p>
-            <div className="dz-hint">Drag a folder or .zip file, or click to browse</div>
+            <p>Drop a datapack / resource pack here</p>
+            <div className="dz-hint">Drag a folder or .zip file</div>
+            <div className="dz-browse">
+              <span className="browse-link" onClick={(e) => { e.stopPropagation(); folderRef.current?.click() }}>Browse folder</span>
+              <span className="browse-sep">·</span>
+              <span className="browse-link" onClick={(e) => { e.stopPropagation(); zipRef.current?.click() }}>Browse .zip</span>
+            </div>
           </div>
         )}
         <input ref={folderRef} type="file" {...{ webkitdirectory: '', directory: '' } as any} onChange={handleFolder} style={{ display: 'none' }} />
