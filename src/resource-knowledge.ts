@@ -4,6 +4,8 @@ export interface ResourceFeatureRule {
   /** Regex pattern or root key to match in resource paths */
   match: string
   minVersion: string
+  /** If set, feature was removed/changed after this version */
+  maxVersion?: string
   fix?: string
   note?: string
 }
@@ -46,7 +48,61 @@ export const RESOURCE_FEATURE_RULES: ResourceFeatureRule[] = [
     note: 'Removed in 1.21.5',
   },
 
+  // ---- 1.21.4 item model definition system ----
+  {
+    id: 'item_model_definition',
+    description: 'Item model definition files (assets/<ns>/items/<id>.json) require 1.21.4+',
+    match: 'items/.*\\.json',
+    minVersion: '1.21.4',
+    fix: 'Item model definition system is 1.21.4+; use model overrides for older versions.',
+    note: 'New item rendering pipeline added in 1.21.4',
+  },
+  {
+    id: 'item_model_selector',
+    description: 'Model selectors (select/condition/rotate) require 1.21.4+',
+    match: '(?:selectors|model_selectors|condition)',
+    minVersion: '1.21.4',
+    fix: 'Model selector system is 1.21.4+ only.',
+    note: 'Item model selectors added in 1.21.4',
+  },
+
+  // ---- 1.21.5 spawn egg textures ----
+  {
+    id: 'spawn_egg_individual_textures',
+    description: 'Individual spawn egg textures (spawn_egg_<entity>.png) require 1.21.5+',
+    match: 'spawn_egg_',
+    minVersion: '1.21.5',
+    fix: 'Spawn egg coloring system was replaced with individual textures in 1.21.5.',
+    note: 'All spawn egg textures split into individual files in 1.21.5',
+  },
+
+  // ---- 1.21.6 shader/dialog changes ----
+  {
+    id: 'shader_core_format',
+    description: 'Core shader format changes in 1.21.6+',
+    match: 'shaders/',
+    minVersion: '1.21.6',
+    fix: 'Shader format was updated in 1.21.6; check compatibility with target version.',
+    note: 'Shader system updated in 1.21.6 (Chase the Skies)',
+  },
+  {
+    id: 'dialog_registry_rp',
+    description: 'Dialog registry files in resource packs require 1.21.6+',
+    match: 'dialog/',
+    minVersion: '1.21.6',
+    fix: 'Dialog system is 1.21.6+ only.',
+    note: 'Dialog system added in 1.21.6',
+  },
+
   // ---- Model format changes ----
+  {
+    id: 'model_render_type',
+    description: 'Block model "render_type" field requires 1.17+',
+    match: 'render_type',
+    minVersion: '1.17',
+    fix: 'Omit render_type for pre-1.17 resource packs (cutout, translucent, etc).',
+    note: 'render_type field added in 1.17',
+  },
   {
     id: 'model_element_rotation',
     description: 'Model elements with rotation require 1.16+ format',
@@ -99,6 +155,14 @@ export const RESOURCE_FEATURE_RULES: ResourceFeatureRule[] = [
     fix: 'Remove palette source for pre-1.19.4.',
     note: 'Palette source added 1.19.4',
   },
+  {
+    id: 'atlas_paletted_permutations',
+    description: 'Atlas "paletted_permutations" source type requires 1.20+',
+    match: 'paletted_permutations',
+    minVersion: '1.20',
+    fix: 'paletted_permutations is 1.20+; use individual texture files for older versions.',
+    note: 'Added in 1.20 (Trails & Tales)',
+  },
 
   // ---- Particles ----
   {
@@ -108,6 +172,14 @@ export const RESOURCE_FEATURE_RULES: ResourceFeatureRule[] = [
     minVersion: '1.13',
     fix: 'Pre-1.13 particles use a different file format.',
     note: 'Particle system overhauled in 1.13',
+  },
+  {
+    id: 'particle_type_json',
+    description: 'Particle type JSON definitions require 1.20.5+',
+    match: 'particles/.*\\.json',
+    minVersion: '1.20.5',
+    fix: 'Particle JSON format changed in 1.20.5.',
+    note: 'Particle format updated with item component system',
   },
 
   // ---- Blockstate changes ----
@@ -128,5 +200,76 @@ export const RESOURCE_FEATURE_RULES: ResourceFeatureRule[] = [
     minVersion: '1.13',
     fix: 'Language files work across all versions >= 1.13.',
     note: 'JSON lang files introduced in 1.13',
+  },
+
+  // ---- Entity model changes ----
+  {
+    id: 'entity_model_overrides',
+    description: 'Entity model render_type overrides require 1.19.4+',
+    match: 'entity.*render_type',
+    minVersion: '1.19.4',
+    fix: 'Entity render type overrides are 1.19.4+ only.',
+    note: 'Display entity render types added in 1.19.4',
+  },
+
+  // ---- Font provider changes ----
+  {
+    id: 'font_shift_provider',
+    description: 'Font "shift" provider (horizontal offset) requires 1.20.5+',
+    match: 'font.*shift',
+    minVersion: '1.20.5',
+    fix: 'Font shift provider is 1.20.5+ only.',
+    note: 'Font shift provider added in 1.20.5',
+  },
+
+  // ---- Block model tint ----
+  {
+    id: 'model_tint_source',
+    description: 'Block model "tint_source" field requires 1.21.4+',
+    match: 'tint_source',
+    minVersion: '1.21.4',
+    fix: 'tint_source is 1.21.4+ only.',
+    note: 'Added in 1.21.4',
+  },
+
+  // ---- Painting format ----
+  {
+    id: 'painting_inline_variant',
+    description: 'Inline painting variants require pre-1.21.6',
+    match: 'painting.*variant',
+    minVersion: '1.21',
+    maxVersion: '1.21.5',
+    fix: 'Inline painting variants removed in 1.21.6; use registry references instead.',
+    note: 'Painting variants changed to registry-only in 1.21.6',
+  },
+
+  // ---- Dimension type fields ----
+  {
+    id: 'dimension_type_fields',
+    description: 'Dimension type definitions expanded in 1.21.6+',
+    match: 'dimension_type',
+    minVersion: '1.16',
+    fix: 'Dimension type format changed across versions; check compatibility.',
+    note: 'Dimension system introduced 1.16, expanded 1.21.6',
+  },
+
+  // ---- Cow/chicken variant textures (1.21.5) ----
+  {
+    id: 'cow_variant_textures',
+    description: 'Cow variant textures (cow_cold.png, cow_warm.png) require 1.21.5+',
+    match: 'entity/cow.*(?:cold|warm|temperate)',
+    minVersion: '1.21.5',
+    fix: 'Cow variant textures are 1.21.5+ only.',
+    note: 'Cow variants added in 1.21.5',
+  },
+
+  // ---- Armor trim model changes ----
+  {
+    id: 'armor_trim_models',
+    description: 'Armor trim model system changed in 1.21.5+',
+    match: 'armor_trim',
+    minVersion: '1.20',
+    fix: 'Armor trim format changed significantly in 1.21.5.',
+    note: 'Trim format updated in 1.21.5',
   },
 ]
