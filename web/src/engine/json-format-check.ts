@@ -151,30 +151,21 @@ function checkLootFunctions(data: any, rel: string, ver: string): StructuralIssu
 
 function checkRecipeResult(data: any, rel: string, ver: string): StructuralIssue[] {
   const issues: StructuralIssue[] = []
-  function walk(obj: any, path: string): void {
+  function walk(obj: any, path: string, parentKey?: string): void {
     if (!obj || typeof obj !== 'object') return
     if (Array.isArray(obj)) {
-      obj.forEach((item, i) => walk(item, `${path}[${i}]`))
+      obj.forEach((item, i) => walk(item, `${path}[${i}]`, parentKey))
       return
     }
-    if ('item' in obj && !('id' in obj) && typeof (obj as any).item === 'string' && cmpVer(ver, '1.20.5') >= 0) {
-      const keys = Object.keys(obj)
-      const looksLikeRecipeResult = keys.length <= 4 && (
-        keys.includes('count') || keys.includes('data') || keys.includes('components') || keys.length === 1
-      )
-      if (looksLikeRecipeResult) {
+    const isResultObject = parentKey === 'result' || parentKey === 'output'
+    if (isResultObject) {
+      if ('item' in obj && !('id' in obj) && typeof (obj as any).item === 'string' && cmpVer(ver, '1.20.5') >= 0) {
         issues.push({
           file: rel,
           issue: `Recipe result key 'item' renamed to 'id' in 1.20.5 (path: ${path}.item)`,
         })
       }
-    }
-    if ('id' in obj && !('item' in obj) && typeof (obj as any).id === 'string' && cmpVer(ver, '1.20.5') < 0) {
-      const keys = Object.keys(obj)
-      const looksLikeRecipeResult = keys.length <= 4 && (
-        keys.includes('count') || keys.includes('data') || keys.includes('components') || keys.length === 1
-      )
-      if (looksLikeRecipeResult) {
+      if ('id' in obj && !('item' in obj) && typeof (obj as any).id === 'string' && cmpVer(ver, '1.20.5') < 0) {
         issues.push({
           file: rel,
           issue: `Recipe result key 'id' not available before 1.20.5 — use 'item' instead (path: ${path}.id)`,
@@ -182,7 +173,7 @@ function checkRecipeResult(data: any, rel: string, ver: string): StructuralIssue
       }
     }
     for (const [k, v] of Object.entries(obj)) {
-      walk(v, `${path}.${k}`)
+      walk(v, `${path}.${k}`, k)
     }
   }
   walk(data, '$')
