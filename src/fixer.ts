@@ -41,6 +41,8 @@ interface CmdRewrite {
   sourceSince?: string
   /** Maximum target version (e.g. '1.20.4' means "only rewrite if target <= 1.20.4") */
   targetUntil?: string
+  /** Minimum target version (e.g. '1.20.5' means "only rewrite if target >= 1.20.5") */
+  targetSince?: string
 }
 
 const CMD_REWRITES: CmdRewrite[] = [
@@ -72,7 +74,7 @@ const CMD_REWRITES: CmdRewrite[] = [
     replacement: '/item replace $1 $2 $3 with $4 $5',
     description: '/replaceitem -> /item replace (1.20.5+ syntax)',
     sourceSince: '1.13',
-    targetUntil: '0',
+    targetSince: '1.20.5',
   },
 
   // ---- /placefeature -> /place (forward port to 1.19+) ----
@@ -83,7 +85,7 @@ const CMD_REWRITES: CmdRewrite[] = [
     replacement: '/place feature $1',
     description: '/placefeature -> /place feature',
     sourceSince: '1.18',
-    targetUntil: '0',
+    targetSince: '1.19',
   },
 
   // ---- /place -> /placefeature (backport pre-1.19) ----
@@ -390,11 +392,16 @@ function getApplicableFixes(
     const rwTargetUntilDv = rw.targetUntil && rw.targetUntil !== '0'
       ? versionNameToDataVersion(rw.targetUntil, allVersions)
       : null
+    const rwTargetSinceDv = rw.targetSince
+      ? versionNameToDataVersion(rw.targetSince, allVersions)
+      : null
 
     // Source must be >= sourceSince (the feature exists in source)
     if (rwSourceSinceDv !== null && svDv < rwSourceSinceDv) continue
     // Target must be <= targetUntil (the feature doesn't exist in target)
     if (rwTargetUntilDv !== null && tvDv > rwTargetUntilDv) continue
+    // Target must be >= targetSince (the replacement feature exists in target)
+    if (rwTargetSinceDv !== null && tvDv < rwTargetSinceDv) continue
 
     rewrites.push(rw)
   }
@@ -681,6 +688,10 @@ function updatePackMcmeta(
     return { content, changed: false }
   }
 
+  if (!parsed.pack) {
+    return { content, changed: false }
+  }
+
   const oldFormat = parsed.pack.pack_format
   if (oldFormat === targetPackFormat) {
     return { content, changed: false }
@@ -888,10 +899,11 @@ export async function fixDatapack(options: FixOptions): Promise<{
         const ruleMinDv = versionNameToDataVersion(rule.minVersion, allVersions)
         if (ruleMinDv === null) continue
         if (svDv >= ruleMinDv && tvDv < ruleMinDv) {
-          const searchStr = `${rule.match}/`
+          const searchStr = rule.match.endsWith('/') ? rule.match : `${rule.match}/`
           const contentStr = JSON.stringify(currentData)
-          if (contentStr.includes(searchStr)) {
-            const fixed = contentStr.replace(new RegExp(`"${searchStr}`, 'g'), `"## FIXED(${rule.match} not available in ${targetName})/`)
+          const re = new RegExp(`"(?:[\\w-]+:)?${searchStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g')
+          if (re.test(contentStr)) {
+            const fixed = contentStr.replace(re, `"## FIXED(${rule.match} not available in ${targetName})/`)
             try { currentData = JSON.parse(fixed); patches++; details.push(`${rel}: Replaced ${rule.match} references`) } catch { }
           }
         }

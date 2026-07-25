@@ -452,13 +452,13 @@ async function readDirectoryEntry(entry: any): Promise<PackFileMap> {
   const files: PackFileMap = {}
   const reader = entry.createReader()
 
-  const readAllEntries = () => new Promise<any[]>((resolve) => {
+  const readAllEntries = () => new Promise<any[]>((resolve, reject) => {
     const all: any[] = []
     const readBatch = () => {
       reader.readEntries((batch: any[]) => {
         if (batch.length === 0) resolve(all)
         else { all.push(...batch); readBatch() }
-      })
+      }, (err: any) => reject(err))
     }
     readBatch()
   })
@@ -471,7 +471,7 @@ async function readDirectoryEntry(entry: any): Promise<PackFileMap> {
         files[e.name + '/' + k] = v
       }
     } else {
-      const file = await new Promise<File>((resolve) => e.file(resolve))
+      const file = await new Promise<File>((resolve, reject) => e.file(resolve, reject))
       if (!file.name.startsWith('.')) {
         files[file.name] = await file.text()
       }

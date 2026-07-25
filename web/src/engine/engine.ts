@@ -100,7 +100,8 @@ function applyKnowledgeRules(
     if (!content) continue
     for (const rule of FEATURE_RULES) {
       if (rule.type === 'registry') {
-        if (file.includes(`/${rule.match}/`) || content.includes(`${rule.match}/`)) {
+        const re = new RegExp(rule.match)
+        if (re.test(file) || re.test(content)) {
           hits.push({ rule, file })
         }
       }
@@ -213,7 +214,8 @@ function checkReferences(
     try { data = JSON.parse(content) } catch { continue }
 
     if (data.parent && typeof data.parent === 'string' && file.includes('/models/')) {
-      if (!idx.models.has(data.parent)) {
+      const parentRef = data.parent.includes(':') ? data.parent : `minecraft:${data.parent}`
+      if (!idx.models.has(parentRef)) {
         const loc = findJsonLineBrowser(content, `"${data.parent}"`)
         issues.push({
           file,
@@ -229,19 +231,18 @@ function checkReferences(
     if (data.textures && typeof data.textures === 'object' && file.includes('/models/')) {
       for (const [key, val] of Object.entries(data.textures)) {
         if (typeof val === 'string') {
-          const texRef = val.replace(/^minecraft:/, '')
-          if (!texRef.startsWith('#')) {
-            if (!idx.textures.has(texRef)) {
-              const loc = findJsonLineBrowser(content, `"${key}"`)
-              issues.push({
-                file,
-                line: loc?.line,
-                reference: val,
-                type: 'texture',
-                issue: `References texture "${val}" which doesn't exist in the pack`,
-                code: loc?.code,
-              })
-            }
+          if (val.startsWith('#')) continue
+          const texRef = val.includes(':') ? val : `minecraft:${val}`
+          if (!idx.textures.has(texRef)) {
+            const loc = findJsonLineBrowser(content, `"${key}"`)
+            issues.push({
+              file,
+              line: loc?.line,
+              reference: val,
+              type: 'texture',
+              issue: `References texture "${val}" which doesn't exist in the pack`,
+              code: loc?.code,
+            })
           }
         }
       }
@@ -471,7 +472,7 @@ export async function checkCompatibilityContentBased(
     const hasContentIssues =
       mcfunctionIssues.length > 0 || registryIssues.length > 0 ||
       knowledgeIssues.length > 0 || structuralIssues.length > 0 ||
-      deprecationIssues.length > 0 || referenceIssues.length > 0
+      deprecationIssues.length > 0
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inLoadRange ? 'exact' : 'none',
@@ -663,8 +664,7 @@ export async function checkResourcePack(
 
     const hasContentIssues =
       registryIssues.length > 0 || knowledgeIssues.length > 0 ||
-      structuralIssues.length > 0 || deprecationIssues.length > 0 ||
-      referenceIssues.length > 0
+      structuralIssues.length > 0 || deprecationIssues.length > 0
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inLoadRange ? 'exact' : 'none',

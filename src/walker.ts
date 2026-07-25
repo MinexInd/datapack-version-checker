@@ -20,6 +20,8 @@ function resolveRedirect(node: CommandTreeNode, root: CommandTreeNode): CommandT
   for (const seg of node.redirect) {
     if (current.children && current.children[seg]) {
       current = current.children[seg]
+    } else {
+      return node
     }
   }
   return current

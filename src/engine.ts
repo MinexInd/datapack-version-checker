@@ -228,7 +228,8 @@ function checkReferences(
     const rel = relative(packDir, file).replace(/\\/g, '/')
 
     if (data.parent && typeof data.parent === 'string' && rel.includes('/models/')) {
-      if (!idx.models.has(data.parent)) {
+      const parentRef = data.parent.includes(':') ? data.parent : `minecraft:${data.parent}`
+      if (!idx.models.has(parentRef)) {
         const loc = findJsonLine(content, `"${data.parent}"`)
         issues.push({
           file: rel,
@@ -244,19 +245,18 @@ function checkReferences(
     if (data.textures && typeof data.textures === 'object' && rel.includes('/models/')) {
       for (const [key, val] of Object.entries(data.textures)) {
         if (typeof val === 'string') {
-          const texRef = val.replace(/^minecraft:/, '')
-          if (!texRef.startsWith('#')) {
-            if (!idx.textures.has(texRef)) {
-              const loc = findJsonLine(content, `"${key}"`)
-              issues.push({
-                file: rel,
-                line: loc?.line,
-                reference: val,
-                type: 'texture',
-                issue: `References texture "${val}" which doesn't exist in the pack`,
-                code: loc?.code,
-              })
-            }
+          if (val.startsWith('#')) continue
+          const texRef = val.includes(':') ? val : `minecraft:${val}`
+          if (!idx.textures.has(texRef)) {
+            const loc = findJsonLine(content, `"${key}"`)
+            issues.push({
+              file: rel,
+              line: loc?.line,
+              reference: val,
+              type: 'texture',
+              issue: `References texture "${val}" which doesn't exist in the pack`,
+              code: loc?.code,
+            })
           }
         }
       }
@@ -338,7 +338,8 @@ function applyResourcepackKnowledge(commands: CommandLine[], jsonFiles: string[]
     const rel = relative(packDir, file).replace(/\\/g, '/')
     const content = readFileSync(file, 'utf-8')
     for (const rule of RESOURCE_FEATURE_RULES) {
-      if (rel.includes(rule.match) || content.includes(rule.match)) {
+      const re = new RegExp(rule.match)
+      if (re.test(rel) || re.test(content)) {
         hits.push({ rule: { id: rule.id, description: rule.description, type: 'command', match: rule.match, minVersion: rule.minVersion, fix: rule.fix }, file: rel })
       }
     }
@@ -601,7 +602,7 @@ async function checkPackCore(
     const hasContentIssues =
       mcfunctionIssues.length > 0 || registryIssues.length > 0 ||
       knowledgeIssues.length > 0 || structuralIssues.length > 0 ||
-      deprecationIssues.length > 0 || referenceIssues.length > 0
+      deprecationIssues.length > 0
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inLoadRange ? 'exact' : 'none',
