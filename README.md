@@ -2,7 +2,7 @@
 
 > Check whether a Minecraft **Java Edition datapack or resource pack** works on a given game version — and find out *exactly what breaks* so you can port it faster.
 
-`dpcheck` looks at the **real content** of your pack (the actual commands, JSON files, models, sounds, textures) and validates it against the real command tree, registries, and mcdoc schemas of each Minecraft version. It also uses a curated list of community-known version changes (the "what people say" layer) — because `pack.mcmeta` is **often wrong** about which versions a pack really supports.
+`dpcheck` looks at the **real content** of your pack (the actual commands, JSON files, models, sounds, textures) and validates it against the real command tree, registries, mcdoc schemas, and **version-aware JSON format rules** of each Minecraft version. It also uses a curated list of community-known version changes (the "what people say" layer) — because `pack.mcmeta` is **often wrong** about which versions a pack really supports.
 
 ---
 
@@ -13,10 +13,11 @@ Datapack authors usually only test on one version. When someone asks *"does this
 This tool answers that question by:
 
 1. Reading your `.mcfunction` files and checking every command against the **real Brigadier command tree** of each version (from the [Spyglass](https://github.com/SpyglassMC/Spyglass) API).
- 2. Reading your `.json` files and checking values against each version's **real registries** (entity types, items, biomes, etc.).
- 3. **Structurally validating** datapack JSON (`recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`) against the real [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema, with full `#[since]`/`#[until]` version gating — so it catches things like a `crafting_dye` recipe (added in 26.1), a `random_sequence` loot-table field (added in 1.20), or an advancement `icon` using the post-1.20.5 `ItemStackTemplate` format.
- 4. Cross-referencing a **knowledge base** of version changes (e.g. item components need 1.20.5+, `/random` needs 1.20.2, `/dialog` needs 1.21.6).
- 5. Reporting which versions **fully work**, which **break**, and **what to change** for each break.
+2. Reading your `.json` files and checking values against each version's **real registries** (entity types, items, biomes, etc.).
+3. **Structurally validating** datapack JSON (`recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`) against the real [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema, with full `#[since]`/`#[until]` version gating — so it catches things like a `crafting_dye` recipe (added in 26.1), a `random_sequence` loot-table field (added in 1.20), or an advancement `icon` using the post-1.20.5 `ItemStackTemplate` format.
+4. **Version-aware JSON semantic checks** — catching format changes that mcdoc alone doesn't cover: predicate field renames (`alternative`→`any_of` in 1.20), damage boolean flag removal (1.19.4), biome precipitation field changes (1.19.4), loot function `type` requirements (1.17/1.18), and recipe result key renames (`item`→`id` in 1.20.5).
+5. Cross-referencing a **knowledge base** of version changes (e.g. item components need 1.20.5+, `/random` needs 1.20.2, `/dialog` needs 1.21.6).
+6. Reporting which versions **fully work**, which **break**, and **what to change** for each break.
 
 ---
 
@@ -29,6 +30,7 @@ This tool answers that question by:
 - ✅ Real per-version command-tree validation (via Spyglass API)
 - ✅ Real per-version registry validation for JSON
 - ✅ Real **structural** JSON validation via [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) — field names, dispatch `type` values, and `#[since]`/`#[until]` version gating for datapack types (`recipe`, `loot_table`, `advancement`, etc.) **and** resource pack types (`model`, `block_definition`, `sounds`, `atlas`, `particle`, `font`, `shader`, `lang`, `texture_meta`, `item_model`, etc.)
+- ✅ **JSON semantic format checks** — version-aware detection of format changes: predicate field renames (`alternative`/`any_of`, `requirements`/`all_of`), damage boolean flag removal (1.19.4), biome precipitation field changes (1.19.4), loot function `type` requirements (1.17/1.18), recipe result key renames (`item`/`id`, 1.20.5)
 - ✅ Community knowledge rules for version-gated features (datapack **and** resource pack)
 - ✅ **Registry deprecation detection** — detects registry entries (items, entities, biomes, etc.) that existed in the pack's source version but were REMOVED in the target version
 - ✅ Detects when `pack.mcmeta` is **wrong** (e.g. declares 1.19.3 but uses 1.20.5 features)
@@ -172,7 +174,7 @@ node dist/index.js --dir "./my-pack" --mode auto
 ## How to read the report
 
 ```
-⚡ Datapack Version Checker v0.5.0 (content + load-range + structural + registry deprecation + auto-fix)
+⚡ dpcheck v0.6.0 (content + load-range + structural + semantic format + registry deprecation + auto-fix)
 ══════════════════════════════════════════════════════════
 
 📦 Declared load range (pack.mcmeta): 1.19.3 – 1.19.3
@@ -210,7 +212,8 @@ At the end, a **"WHY THIS VERSION RANGE"** section explains which community-know
  2. **Tokenize** each command line and walk it against the target version's Brigadier command tree (following redirects like `tp` → `teleport`).
  3. **Validate** JSON string values against the target version's registries (entity types, items, etc.), with guards against common false positives.
  4. **Structurally validate** datapack JSON (`recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`) against the target version's [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema.
- 5. **Apply knowledge rules** — a feature that was added in a later version overrides the lenient walker and is reported as a break on older versions.
+ 5. **Semantic format checks** — version-aware validation of JSON field names and structures that changed between versions: predicate field renames, damage flags, biome precipitation, loot function type requirements, and recipe result key formats.
+ 6. **Apply knowledge rules** — a feature that was added in a later version overrides the lenient walker and is reported as a break on older versions.
 
  **Resource pack mode** (`assets/`):
  1. **Scan** all `assets/**/*.json`, `*.png`, and `*.mcmeta` files.
@@ -219,8 +222,8 @@ At the end, a **"WHY THIS VERSION RANGE"** section explains which community-know
  4. **Apply resource knowledge rules** — model features, atlas sources, font provider fields, etc.
 
  **Both modes:**
- 6. **Pull breaking changes** per version from [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated, auto-updating) and show them as informational notes.
- 7. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range.
+ 7. **Pull breaking changes** per version from [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated, auto-updating) and show them as informational notes.
+ 8. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range.
 
 All downloaded data is **cached locally** (24h) so re-runs are fast and work offline; use `--refresh` to force an update.
 
@@ -241,7 +244,8 @@ See [`docs.md`](./docs.md) for the full technical details.
 
 - Command argument-level validation is **lenient by default** (the root command must exist; gaps in sub-commands are tolerated because the Spyglass tree has some holes). Use `--strict` for stricter checks.
 - Structural JSON validation covers datapack files: `recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`, `damage_type`, `enchantment`, `jukebox_song`, `chat_type`, `trim_pattern`, `trim_material`, `banner_pattern`, `wolf_variant`, `pig_variant`, `cat_variant`, `frog_variant`, `painting_variant`, `instrument`, `dimension_type`, `dimension`, `trial_spawner`, `trade_set`, `villager_trade`, `dialog`, `enchantment_provider`, `decorated_pot_pattern`, and **all worldgen types** (`worldgen/biome`, `worldgen/configured_feature`, `worldgen/placed_feature`, `worldgen/structure`, `worldgen/template_pool`, `worldgen/density_function`, `worldgen/noise`, `worldgen/noise_settings`, etc.). Tag files (`tags/`) are automatically excluded from structural validation (they have a simpler format). It tolerates mcdoc constructs it can't parse yet (treating them as "allowed"), so it aims to report **real** breaks without false positives rather than exhaustively proving correctness.
-- NBT *structure* is not deeply validated yet (only JSON structure via vanilla-mcdoc).
+- **JSON semantic format checks** cover predicate field renames (1.20), damage boolean flags (1.19.4), biome precipitation (1.19.4), loot function type requirements (1.17/1.18), and recipe result keys (1.20.5). These checks apply to both data packs and resource packs where relevant.
+- NBT *structure* is not deeply validated yet (only JSON structure via vanilla-mcdoc and semantic format checks).
 - Registry deprecation detection only fires when checking versions NEWER than the datapack's declared `pack.mcmeta` range. When the source version is unknown (no `pack.mcmeta` range), deprecation detection is skipped.
 - The knowledge base covers the most common breaking changes; it is not an exhaustive list of every MC change. Contributions welcome.
 - **Auto-fix mode** (`--fix`) rewrites commands and JSON based on known patterns, including commands nested inside `/execute run` and `$()` macros. It is conservative — commands that can't be rewritten are commented out (with `## FIXED(...): original command`) rather than deleted. JSON structural fixes remove fields invalid for the target version using the mcdoc schema. Works for both datapacks and resource packs.

@@ -469,21 +469,42 @@ For resource pack mode:
     that used to exist but no longer does.
 
  4c. **Check JSON (structure).** The tool validates the file's **structure** against
-    the official [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc)
-    schema for that exact version. The full mcdoc schema is downloaded live (as a
-    tarball) from Spyglass and cached. Files are routed to the correct schema type
-    based on their path (e.g. `data/**/recipe/*.json` → `recipe`,
-    `assets/**/models/*.json` → `model`). For each version it:
+     the official [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc)
+     schema for that exact version. The full mcdoc schema is downloaded live (as a
+     tarball) from Spyglass and cached. Files are routed to the correct schema type
+     based on their path (e.g. `data/**/recipe/*.json` → `recipe`,
+     `assets/**/models/*.json` → `model`). For each version it:
 
-    - confirms that top-level and nested **field names** actually exist in that
-      version (e.g. a loot table `random_sequence` field only exists since 1.20);
-    - confirms that **dispatch `type` values** are valid for that version (e.g. a
-      `minecraft:crafting_dye` recipe only exists since 26.1);
-    - respects every `#[since]` / `#[until]` version gate in the schema.
+     - confirms that top-level and nested **field names** actually exist in that
+       version (e.g. a loot table `random_sequence` field only exists since 1.20);
+     - confirms that **dispatch `type` values** are valid for that version (e.g. a
+       `minecraft:crafting_dye` recipe only exists since 26.1);
+     - respects every `#[since]` / `#[until]` version gate in the schema.
 
-    The parser is deliberately tolerant: mcdoc constructs it can't fully parse are
-    treated as "allowed", so the tool reports **real** breaks rather than
-    fabricating false positives.
+     The parser is deliberately tolerant: mcdoc constructs it can't fully parse are
+     treated as "allowed", so the tool reports **real** breaks rather than
+     fabricating false positives.
+
+ 4d. **Check JSON (semantic format).** Beyond structural validation, the tool
+     performs **version-aware semantic checks** on JSON field names and layout
+     that changed across MC versions but aren't captured by mcdoc alone:
+
+     - **Predicate field renames**: `alternative` → `any_of` and
+       `requirements` → `all_of` (1.20 boundary — flags incorrect format
+       in both directions).
+     - **Damage predicate flags**: `bypasses_armor`, `is_fire`, `is_explosion`
+       etc. removed in 1.19.4, replaced by damage type tags.
+     - **Biome precipitation**: `"precipitation": "rain"` (string) →
+       `"has_precipitation": true` (boolean) in 1.19.4.
+     - **Loot function type requirements**: `set_damage` needs a `type` field
+       since 1.17; `set_contents` and `set_loot_table` since 1.18.
+     - **Recipe result keys**: `"item": "minecraft:diamond"` →
+       `"id": "minecraft:diamond"` in 1.20.5. Only checks objects under
+       the `result` or `output` key to avoid false positives on ingredients.
+
+     These checks run alongside mcdoc validation for every JSON file in the
+     version loop, on both server and browser engines. Source:
+     `src/json-format-check.ts` / `web/src/engine/json-format-check.ts`.
 
 5. **Apply knowledge rules.** Some features are version-gated in ways the tree
    alone doesn't show (e.g. item components need 1.20.5). A curated rule list
@@ -604,6 +625,7 @@ datapack-version-checker/
 │   ├── tokenizer.ts      # Command line tokenizer
 │   ├── walker.ts         # Brigadier command-tree walker
 │   ├── json-check.ts     # JSON registry validation
+│   ├── json-format-check.ts # Version-aware JSON semantic format checks
 │   ├── mcdoc-check.ts    # vanilla-mcdoc structural validator
 │   ├── knowledge.ts      # Community version-change rules (FEATURE_RULES)
 │   ├── resource-knowledge.ts # Resource pack version-change rules (RESOURCE_FEATURE_RULES)
@@ -621,6 +643,20 @@ datapack-version-checker/
 │       ├── main.tsx      # React entry point
 │       ├── App.tsx       # Main app component (tabs, file upload, version picker)
 │       ├── api.ts        # Frontend API client + TypeScript types
+│       ├── engine/
+│       │   ├── engine.ts         # Browser-side compatibility engine
+│       │   ├── json-check.ts     # Registry validation (browser-compatible)
+│       │   ├── json-format-check.ts # Format checks (browser-compatible)
+│       │   ├── mcdoc-check.ts    # mcdoc validation (browser-compatible)
+│       │   ├── knowledge.ts      # Knowledge rules (browser-compatible)
+│       │   ├── resource-knowledge.ts # Resource pack rules (browser-compatible)
+│       │   ├── tokenizer.ts      # Command tokenizer (browser-compatible)
+│       │   ├── walker.ts         # Command tree walker (browser-compatible)
+│       │   ├── version.ts        # Version helpers (browser-compatible)
+│       │   ├── pack-mcmeta.ts    # pack.mcmeta reader (browser-compatible)
+│       │   ├── technical-changes.ts # Breaking changes fetcher (browser-compatible)
+│       │   ├── logger.ts         # Logger (browser-compatible)
+│       │   └── types.ts          # Shared types (browser-compatible)
 │       └── components/
 │           └── Results.tsx  # Results display (version rows, issues, knowledge)
 ├── web/dist/             # Built frontend (served by `serve` command)
