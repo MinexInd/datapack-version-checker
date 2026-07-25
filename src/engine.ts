@@ -10,6 +10,7 @@ import { isVersionAtLeast, versionNameToDataVersion } from './version.js'
 import { getBreakingChanges } from './technical-changes.js'
 import { readPackMcmeta } from './pack-mcmeta.js'
 import { getMcdocSymbols, checkMcdocFile, fileKindFromPath } from './mcdoc-check.js'
+import { checkJsonFormatFile } from './json-format-check.js'
 import { getLogger } from './logger.js'
 import type {
   McmetaVersion,
@@ -581,6 +582,15 @@ async function checkPackCore(
         } catch (e) {
           log.debug(`mcdoc validation error for ${rel}:`, e)
         }
+      }
+    }
+
+    for (const file of jsonFiles) {
+      const rel = relative(packDir, file).replace(/\\/g, '/')
+      try {
+        structuralIssues.push(...checkJsonFormatFile(file, rel, ver.name))
+      } catch (e) {
+        log.debug(`json format check error for ${rel}:`, e)
       }
     }
 

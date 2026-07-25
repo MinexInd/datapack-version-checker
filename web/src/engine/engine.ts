@@ -8,6 +8,7 @@ import { isVersionAtLeast, versionNameToDataVersion } from './version'
 import { getBreakingChanges } from './technical-changes'
 import { readPackMcmetaFromString } from './pack-mcmeta'
 import { getMcdocSymbols, checkMcdocData, fileKindFromPath } from './mcdoc-check'
+import { checkJsonFormatSemantics } from './json-format-check'
 import { getLogger } from './logger'
 import type {
   McmetaVersion,
@@ -454,6 +455,18 @@ export async function checkCompatibilityContentBased(
       }
     }
 
+    for (const file of jsonFiles) {
+      const content = files[file]
+      if (!content) continue
+      let data: any
+      try { data = JSON.parse(content) } catch { continue }
+      try {
+        structuralIssues.push(...checkJsonFormatSemantics(data, file, ver.name))
+      } catch (e) {
+        log.debug(`json format check error for ${file}:`, e)
+      }
+    }
+
     const knowledgeIssues: McfunctionIssue[] = []
     const seenRules = new Set<string>()
     for (const hit of knowledgeHits) {
@@ -644,6 +657,18 @@ export async function checkResourcePack(
         } catch (e) {
           log.debug(`mcdoc validation error for ${file}:`, e)
         }
+      }
+    }
+
+    for (const file of jsonFiles) {
+      const content = files[file]
+      if (!content) continue
+      let data: any
+      try { data = JSON.parse(content) } catch { continue }
+      try {
+        structuralIssues.push(...checkJsonFormatSemantics(data, file, ver.name))
+      } catch (e) {
+        log.debug(`json format check error for ${file}:`, e)
       }
     }
 
