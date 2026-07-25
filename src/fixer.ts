@@ -364,6 +364,105 @@ const CMD_REWRITES: CmdRewrite[] = [
   // ---- /execute if|unless -> /testfor (backport pre-1.14) ----
   // Complex: would need to parse the condition and rewrite to /testfor + /scoreboard
   // Skipping for now — user gets a comment note instead.
+
+  // ---- /execute in (dimension) -> comment (backport pre-1.16) ----
+  {
+    id: 'execute_in_comment',
+    matchRoot: 'execute',
+    pattern: /^\/execute\s+.*\s+in\s+\S+\s/,
+    replacement: '## FIXED(/execute in requires 1.16+): $0',
+    description: '/execute in (dimension) commented out (pre-1.16)',
+    sourceSince: '1.16',
+    targetUntil: '1.15.2',
+  },
+
+  // ---- /execute if|unless predicate -> comment (backport pre-1.15) ----
+  {
+    id: 'execute_if_predicate',
+    matchRoot: 'execute',
+    pattern: /^\/execute\s+.*\s+(?:if|unless)\s+predicate\s/,
+    replacement: '## FIXED(/execute if predicate requires 1.15+): $0',
+    description: '/execute if predicate commented out (pre-1.15)',
+    sourceSince: '1.15',
+    targetUntil: '1.14.4',
+  },
+
+  // ---- /execute if|unless function -> comment (backport pre-1.20) ----
+  {
+    id: 'execute_if_function',
+    matchRoot: 'execute',
+    pattern: /^\/execute\s+.*\s+(?:if|unless)\s+function\s/,
+    replacement: '## FIXED(/execute if function requires 1.20+): $0',
+    description: '/execute if function commented out (pre-1.20)',
+    sourceSince: '1.20',
+    targetUntil: '1.19.4',
+  },
+
+  // ---- /execute on -> comment (backport pre-1.19.4) ----
+  {
+    id: 'execute_on_comment',
+    matchRoot: 'execute',
+    pattern: /^\/execute\s+.*\s+on\s+(?:origin|attacker|target|vehicle|mount|passengers|controller)\b/,
+    replacement: '## FIXED(/execute on requires 1.19.4+): $0',
+    description: '/execute on (relations) commented out (pre-1.19.4)',
+    sourceSince: '1.19.4',
+    targetUntil: '1.19.3',
+  },
+
+  // ---- /execute rotated as|over -> comment (backport pre-1.20) ----
+  {
+    id: 'execute_rotated_comment',
+    matchRoot: 'execute',
+    pattern: /^\/execute\s+.*\s+rotated\s+(?:as|over)\s/,
+    replacement: '## FIXED(/execute rotated requires 1.20+): $0',
+    description: '/execute rotated as/over commented out (pre-1.20)',
+    sourceSince: '1.20',
+    targetUntil: '1.19.4',
+  },
+
+  // ---- /scoreboard ... numberformat -> comment (backport pre-1.20.3) ----
+  {
+    id: 'scoreboard_numberformat_comment',
+    matchRoot: 'scoreboard',
+    pattern: /^\/scoreboard\s+.*\s+numberformat\s/,
+    replacement: '## FIXED(/scoreboard numberformat requires 1.20.3+): $0',
+    description: '/scoreboard numberformat commented out (pre-1.20.3)',
+    sourceSince: '1.20.3',
+    targetUntil: '1.20.2',
+  },
+
+  // ---- /scoreboard ... displayname -> comment (backport pre-1.20.3) ----
+  {
+    id: 'scoreboard_displayname_comment',
+    matchRoot: 'scoreboard',
+    pattern: /^\/scoreboard\s+.*\s+displayname\s/,
+    replacement: '## FIXED(/scoreboard displayname requires 1.20.3+): $0',
+    description: '/scoreboard displayname commented out (pre-1.20.3)',
+    sourceSince: '1.20.3',
+    targetUntil: '1.20.2',
+  },
+
+  // ---- /item model component on /give -> comment (backport pre-1.21.4) ----
+  {
+    id: 'give_item_model_comment',
+    matchRoot: 'give',
+    pattern: /^\/give\s+\S+\s+\S+\s*.*minecraft:item_model\b/,
+    replacement: '## FIXED(minecraft:item_model requires 1.21.4+): $0',
+    description: '/give with item_model component commented out (pre-1.21.4)',
+    sourceSince: '1.21.4',
+    targetUntil: '1.21.3',
+  },
+
+  // ---- /give consumable component -> comment (backport pre-1.21.2) ----
+  {
+    id: 'give_consumable_comment',
+    matchRoot: 'give',
+    pattern: /^\/give\s+\S+\s+\S+\s*.*minecraft:consumable\b/,
+    replacement: '## FIXED(minecraft:consumable requires 1.21.2+): $0',
+    description: '/give with consumable component commented out (pre-1.21.2)',
+    sourceSince: '1.21.2',
+    targetUntil: '1.21.1',
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -780,6 +879,72 @@ function fixAdvancementIcon(
 }
 
 // ---------------------------------------------------------------------------
+// Biome precipitation field rename (1.19.4 backport)
+// ---------------------------------------------------------------------------
+
+function renameBiomeField(
+  data: any,
+  targetName: string,
+  relPath: string,
+): { data: any; patches: number; details: string[] } {
+  const details: string[] = []
+  let patches = 0
+
+  function walk(obj: any): any {
+    if (!obj || typeof obj !== 'object') return obj
+    if (Array.isArray(obj)) return obj.map(walk)
+    const result: any = {}
+    for (const [key, val] of Object.entries(obj)) {
+      if (key === 'has_precipitation' && typeof val === 'boolean') {
+        result['precipitation'] = val ? 'rain' : 'none'
+        patches++
+        details.push(`${relPath}: Renamed has_precipitation -> precipitation for pre-1.19.4`)
+      } else {
+        result[key] = walk(val)
+      }
+    }
+    return result
+  }
+
+  return { data: walk(data), patches, details }
+}
+
+// ---------------------------------------------------------------------------
+// Predicate any_of -> alternative rename (1.20 backport)
+// ---------------------------------------------------------------------------
+
+function renamePredicateFields(
+  data: any,
+  targetName: string,
+  relPath: string,
+): { data: any; patches: number; details: string[] } {
+  const details: string[] = []
+  let patches = 0
+
+  function walk(obj: any): any {
+    if (!obj || typeof obj !== 'object') return obj
+    if (Array.isArray(obj)) return obj.map(walk)
+    const result: any = {}
+    for (const [key, val] of Object.entries(obj)) {
+      if (key === 'any_of') {
+        result['alternative'] = walk(val)
+        patches++
+        details.push(`${relPath}: Renamed any_of -> alternative for pre-1.20`)
+      } else if (key === 'all_of') {
+        result['requirements'] = walk(val)
+        patches++
+        details.push(`${relPath}: Renamed all_of -> requirements for pre-1.20`)
+      } else {
+        result[key] = walk(val)
+      }
+    }
+    return result
+  }
+
+  return { data: walk(data), patches, details }
+}
+
+// ---------------------------------------------------------------------------
 // Main fix entry point
 // ---------------------------------------------------------------------------
 
@@ -888,6 +1053,22 @@ export async function fixDatapack(options: FixOptions): Promise<{
       currentData = advResult.data
       patches += advResult.patches
       details.push(...advResult.details)
+    }
+
+    // Biome precipitation field rename: has_precipitation (1.19.4+) -> precipitation (pre-1.19.4)
+    if (!portingForward && rel.includes('/worldgen/biome') && cmpVer(targetName, '1.19.4') < 0) {
+      const fixResult = renameBiomeField(currentData, targetName, rel)
+      currentData = fixResult.data
+      patches += fixResult.patches
+      details.push(...fixResult.details)
+    }
+
+    // Predicate any_of -> alternative rename (backport pre-1.20)
+    if (!portingForward && rel.includes('/predicate') && cmpVer(targetName, '1.20') < 0) {
+      const fixResult = renamePredicateFields(currentData, targetName, rel)
+      currentData = fixResult.data
+      patches += fixResult.patches
+      details.push(...fixResult.details)
     }
 
     // Registry reference fixing
