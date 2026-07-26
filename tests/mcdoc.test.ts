@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cmpVer, inRange, fileKindFromPath } from '../src/mcdoc-check.js'
-
-// parseType is intentionally not exported — it's an internal helper.
+import { cmpVer, inRange, fileKindFromPath, parseType } from '../src/mcdoc-check.js'
 
 describe('cmpVer', () => {
   it('compares equal versions', () => {
@@ -107,5 +105,57 @@ describe('fileKindFromPath', () => {
 })
 
 describe('parseType', () => {
-  it.skip('parses a primitive type (internal helper, not exported)', () => { })
+  it('parses a primitive type', () => {
+    expect(parseType('string')).toEqual({ t: 'prim' })
+    expect(parseType('int')).toEqual({ t: 'prim' })
+    expect(parseType('float')).toEqual({ t: 'prim' })
+    expect(parseType('double')).toEqual({ t: 'prim' })
+    expect(parseType('bool')).toEqual({ t: 'prim' })
+    expect(parseType('boolean')).toEqual({ t: 'prim' })
+    expect(parseType('any')).toEqual({ t: 'prim' })
+    expect(parseType('json')).toEqual({ t: 'prim' })
+    expect(parseType('uint')).toEqual({ t: 'prim' })
+    expect(parseType('literal')).toEqual({ t: 'prim' })
+  })
+
+  it('parses a list type', () => {
+    expect(parseType('[string]')).toEqual({ t: 'list', of: { t: 'prim' } })
+    expect(parseType('[int]')).toEqual({ t: 'list', of: { t: 'prim' } })
+    expect(parseType('[minecraft:item]')).toEqual({ t: 'list', of: { t: 'ref', name: 'minecraft:item' } })
+  })
+
+  it('parses a union type', () => {
+    const result = parseType('(string | int)')
+    expect(result.t).toBe('union')
+    if (result.t === 'union') {
+      expect(result.opts).toHaveLength(2)
+      expect(result.opts[0].of).toEqual({ t: 'prim' })
+      expect(result.opts[1].of).toEqual({ t: 'prim' })
+    }
+  })
+
+  it('parses a reference type', () => {
+    expect(parseType('minecraft:entity')).toEqual({ t: 'ref', name: 'minecraft:entity' })
+    expect(parseType('minecraft:item')).toEqual({ t: 'ref', name: 'minecraft:item' })
+    expect(parseType('minecraft:block_pos')).toEqual({ t: 'ref', name: 'minecraft:block_pos' })
+  })
+
+  it('parses a string literal type', () => {
+    expect(parseType('"value"')).toEqual({ t: 'literal' })
+    expect(parseType("'value'")).toEqual({ t: 'literal' })
+  })
+
+  it('parses a ref type with generic args', () => {
+    const result = parseType('Vector3<float>')
+    expect(result).toEqual({ t: 'ref', name: 'Vector3' })
+  })
+
+  it('parses empty string as primitive', () => {
+    expect(parseType('')).toEqual({ t: 'prim' })
+  })
+
+  it('parses primitive type ignoring leading attrs', () => {
+    const result = parseType('#[since="1.20"] string')
+    expect(result).toEqual({ t: 'prim' })
+  })
 })

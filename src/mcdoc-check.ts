@@ -223,7 +223,7 @@ function isBalanced(s: string): boolean {
   return depth === 0
 }
 
-function parseType(str: string): TypeExpr {
+export function parseType(str: string): TypeExpr {
   const s = stripLeadingAttrs(stripComments(str)).rest.trim()
   if (s === '') return { t: 'prim' }
   if (s.startsWith('[') && s.endsWith(']')) {
