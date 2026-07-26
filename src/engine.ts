@@ -517,7 +517,10 @@ async function checkPackCore(
   log.info(`Checking ${relevantVersions.length} versions...`)
   log.time('version-loop')
 
-  for (const ver of relevantVersions) {
+  const total = relevantVersions.length
+  let done = 0
+
+  const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
     const inLoadRange = loadRange
       ? (ver[ctx.versionField] ?? 0) >= loadRange.min && (ver[ctx.versionField] ?? 0) <= loadRange.max
       : true
@@ -628,6 +631,13 @@ async function checkPackCore(
 
     if (inLoadRange && !hasContentIssues) compatible.push(result)
     else incompatible.push(result)
+    done++
+    log.info(`[${done}/${total}] Checked ${ver.name}`)
+  }
+
+  for (let i = 0; i < relevantVersions.length; i += 3) {
+    const batch = relevantVersions.slice(i, i + 3)
+    await Promise.all(batch.map(ver => checkOneVersion(ver)))
   }
 
   log.timeEnd('version-loop', `checked ${relevantVersions.length} versions`)

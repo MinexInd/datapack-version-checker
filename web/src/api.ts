@@ -1,5 +1,5 @@
 import { fetchVersions as engineFetchVersions } from './engine/api'
-import { checkCompatibilityContentBased, checkResourcePack } from './engine/engine'
+import { checkCompatibilityContentBased, checkResourcePack, type ProgressCallback } from './engine/engine'
 import { fixDatapack, fixResourcePack } from './engine/fixer'
 import type { PackFileMap as EngineFileMap } from './engine/engine'
 import JSZip from 'jszip'
@@ -112,6 +112,7 @@ export interface CheckRequest {
   all: boolean
   strict: boolean
   files: PackFileMap
+  onProgress?: ProgressCallback
 }
 
 export interface CheckResponse {
@@ -148,7 +149,7 @@ export async function fetchVersions(): Promise<McmetaVersion[]> {
 }
 
 export async function runCheck(req: CheckRequest): Promise<CheckResponse> {
-  const { mode, versions, all, strict, files } = req
+  const { mode, versions, all, strict, files, onProgress } = req
 
   let result: any
   let detectedMode = mode
@@ -169,7 +170,7 @@ export async function runCheck(req: CheckRequest): Promise<CheckResponse> {
     if (detectedMode === 'resourcepack') {
       result = await checkResourcePack(files, versionList, all)
     } else {
-      result = await checkCompatibilityContentBased(files, versionList, all, strict)
+      result = await checkCompatibilityContentBased(files, versionList, all, strict, onProgress)
     }
   } catch (err: any) {
     throw new Error(err.message || String(err))

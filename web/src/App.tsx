@@ -156,7 +156,7 @@ export default function App() {
     setCheckStartTime(Date.now())
     try {
       const versionList = all ? undefined : selectedVersions.length ? selectedVersions : undefined
-      const res = await runCheck({ mode, versions: versionList, all, strict, files })
+      const res = await runCheck({ mode, versions: versionList, all, strict, files, onProgress: setProgress })
       setCheckDuration(Date.now() - checkStartTime)
       setResult(res)
     } catch (err: any) {

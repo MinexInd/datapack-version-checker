@@ -267,11 +267,16 @@ function checkReferences(
   return issues
 }
 
+const BATCH_SIZE = 3
+
+export type ProgressCallback = (msg: string) => void
+
 export async function checkCompatibilityContentBased(
   files: PackFileMap,
   targetVersions?: string[],
   allVersionsFlag: boolean = false,
   strict: boolean = false,
+  onProgress?: ProgressCallback,
 ): Promise<CheckResult & {
   min_version: string | null
   knowledge_hits: KnowledgeHit[]
@@ -378,7 +383,14 @@ export async function checkCompatibilityContentBased(
   log.info(`Checking ${relevantVersions.length} versions...`)
   log.time('version-loop')
 
-  for (const ver of relevantVersions) {
+  const total = relevantVersions.length
+  let done = 0
+  const onCheckDone = (name: string) => {
+    done++
+    onProgress?.(`Checked ${name} — ${done}/${total} versions`)
+  }
+
+  const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
     const inLoadRange = loadRange
       ? ver.data_pack_version >= loadRange.min && ver.data_pack_version <= loadRange.max
       : true
@@ -388,9 +400,9 @@ export async function checkCompatibilityContentBased(
 
     let tree: CommandTreeNode | null = null
     try {
-      log.time(`command-tree:${ver.id}`)
+      onProgress?.(`Fetching command tree for ${ver.name}...`)
       tree = await fetchCommandTree(ver.id)
-      log.timeEnd(`command-tree:${ver.id}`)
+      onProgress?.(`Validating commands in ${ver.name}...`)
       for (const cmd of commands) {
         const res = validateCommand(cmd.text, tree, !strict)
         if (!res.valid) {
@@ -415,9 +427,8 @@ export async function checkCompatibilityContentBased(
     const deprecationIssues: RegistryDeprecation[] = []
     let targetRegs: Record<string, string[]> | null = null
     try {
-      log.time(`registries:${ver.id}`)
+      onProgress?.(`Checking registries for ${ver.name}...`)
       targetRegs = await fetchRegistries(ver.id)
-      log.timeEnd(`registries:${ver.id}`)
       for (const file of jsonFiles) {
         const content = files[file]
         if (!content) continue
@@ -442,6 +453,7 @@ export async function checkCompatibilityContentBased(
 
     const structuralIssues: StructuralIssue[] = []
     if (mcdocTable) {
+      onProgress?.(`Running mcdoc structural check for ${ver.name}...`)
       for (const file of structuralJsonFiles) {
         const content = files[file]
         if (!content) continue
@@ -486,6 +498,7 @@ export async function checkCompatibilityContentBased(
       mcfunctionIssues.length > 0 || registryIssues.length > 0 ||
       knowledgeIssues.length > 0 || structuralIssues.length > 0 ||
       deprecationIssues.length > 0
+
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inLoadRange ? 'exact' : 'none',
@@ -501,8 +514,12 @@ export async function checkCompatibilityContentBased(
 
     if (inLoadRange && !hasContentIssues) compatible.push(result)
     else incompatible.push(result)
+    onCheckDone(ver.name)
+  }
 
-    tree = null
+  for (let i = 0; i < relevantVersions.length; i += BATCH_SIZE) {
+    const batch = relevantVersions.slice(i, i + BATCH_SIZE)
+    await Promise.all(batch.map(ver => checkOneVersion(ver)))
   }
 
   log.timeEnd('version-loop', `checked ${relevantVersions.length} versions`)
