@@ -185,21 +185,21 @@ export function checkJsonFormatSemantics(
   rel: string,
   versionName: string,
 ): StructuralIssue[] {
-  const issues: StructuralIssue[] = []
+  const out: StructuralIssue[] = []
 
   if (isPredicateFile(rel)) {
-    issues.push(...checkPredicateRenames(data, rel, versionName))
-    issues.push(...checkDamagePredicateFlags(data, rel, versionName))
+    for (const iss of checkPredicateRenames(data, rel, versionName)) out.push({ ...iss, source: 'format' })
+    for (const iss of checkDamagePredicateFlags(data, rel, versionName)) out.push({ ...iss, source: 'format' })
   }
   if (isBiomeFile(rel)) {
-    issues.push(...checkBiomePrecipitation(data, rel, versionName))
+    for (const iss of checkBiomePrecipitation(data, rel, versionName)) out.push({ ...iss, source: 'format' })
   }
   if (isLootTableFile(rel)) {
-    issues.push(...checkLootFunctions(data, rel, versionName))
+    for (const iss of checkLootFunctions(data, rel, versionName)) out.push({ ...iss, source: 'format' })
   }
   if (isRecipeFile(rel)) {
-    issues.push(...checkRecipeResult(data, rel, versionName))
+    for (const iss of checkRecipeResult(data, rel, versionName)) out.push({ ...iss, source: 'format' })
   }
 
-  return issues
+  return out
 }

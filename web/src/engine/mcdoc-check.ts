@@ -469,6 +469,7 @@ export interface FixMcdocResult {
 export interface StructuralIssue {
   file: string
   issue: string
+  source?: 'mcdoc' | 'format'
 }
 
 function resolveStruct(ref: string, table: SymbolTable): StructDef | null {
@@ -783,7 +784,7 @@ export function checkMcdocData(
       const alias = table.typeAliases.get(refName)
       if (alias) {
         validateValue(data, alias, version, '$', issues, table, 0)
-        for (const iss of issues) iss.file = relPath
+        for (const iss of issues) { iss.file = relPath; iss.source = 'mcdoc' }
         return issues
       }
     }
@@ -791,7 +792,7 @@ export function checkMcdocData(
   }
 
   validateObject(data as Record<string, unknown>, rootStruct, version, '$', issues, table, 0)
-  for (const iss of issues) iss.file = relPath
+  for (const iss of issues) { iss.file = relPath; iss.source = 'mcdoc' }
   return issues
 }
 

@@ -220,8 +220,13 @@ export default function App() {
           </div>
           <div className="hero-card">
             <span className="hc-icon">📋</span>
-            <h3>Registry Checks</h3>
+            <h3>Registry & mcdoc</h3>
             <p>Validates JSON files against per-version registries and mcdoc schemas.</p>
+          </div>
+          <div className="hero-card">
+            <span className="hc-icon">▤</span>
+            <h3>Format Checks <span className="new-badge">NEW</span></h3>
+            <p>Catches JSON field renames, removed flags, biome/loot/recipe format changes across versions.</p>
           </div>
           <div className="hero-card">
             <span className="hc-icon">🔧</span>

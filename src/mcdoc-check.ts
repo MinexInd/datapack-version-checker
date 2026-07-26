@@ -524,6 +524,7 @@ export interface FixMcdocResult {
 export interface StructuralIssue {
   file: string
   issue: string
+  source?: 'mcdoc' | 'format'
 }
 
 function resolveStruct(ref: string, table: SymbolTable): StructDef | null {
@@ -877,7 +878,7 @@ export function checkMcdocFile(
       const alias = table.typeAliases.get(refName)
       if (alias) {
         validateValue(data, alias, version, '$', issues, table, 0)
-        attachFile(issues, relPath)
+        attachFile(issues, relPath, 'mcdoc')
         return issues
       }
     }
@@ -885,12 +886,15 @@ export function checkMcdocFile(
   }
 
   validateObject(data as Record<string, unknown>, rootStruct, version, '$', issues, table, 0)
-  attachFile(issues, relPath)
+  attachFile(issues, relPath, 'mcdoc')
   return issues
 }
 
-function attachFile(issues: StructuralIssue[], relPath: string): void {
-  for (const iss of issues) iss.file = relPath
+function attachFile(issues: StructuralIssue[], relPath: string, source: 'mcdoc' | 'format'): void {
+  for (const iss of issues) {
+    iss.file = relPath
+    iss.source = source
+  }
 }
 
 // ---------------------------------------------------------------------------

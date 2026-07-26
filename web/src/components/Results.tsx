@@ -7,13 +7,15 @@ interface Props {
 }
 
 function issueCounts(v: VersionCompatibility) {
+  const strAll = v.structural_issues ?? []
+  const mcdoc = strAll.filter(i => i.source !== 'format').length
+  const fmt = strAll.filter(i => i.source === 'format').length
   const cmd = v.mcfunction_issues?.length ?? 0
   const reg = v.registry_issues?.length ?? 0
-  const str = v.structural_issues?.length ?? 0
   const dep = v.deprecation_issues?.length ?? 0
   const ref = v.reference_issues?.length ?? 0
   const bc = v.breaking_changes?.length ?? 0
-  return { cmd, reg, str, dep, ref, bc, total: cmd + reg + str + dep + ref + bc }
+  return { cmd, reg, mcdoc, fmt, dep, ref, bc, total: cmd + reg + mcdoc + fmt + dep + ref + bc }
 }
 
 function IssueGroup({ kind, title, count, children }: { kind: string; title: string; count: number; children: React.ReactNode }) {
@@ -46,7 +48,8 @@ function VersionRow({ v }: { v: VersionCompatibility }) {
             <>
               {c.cmd > 0 && <span className="pill cmd">⛔ {c.cmd} cmd</span>}
               {c.reg > 0 && <span className="pill reg">⚠ {c.reg} reg</span>}
-              {c.str > 0 && <span className="pill struct">▦ {c.str} struct</span>}
+              {c.mcdoc > 0 && <span className="pill struct">▦ {c.mcdoc} mcdoc</span>}
+              {c.fmt > 0 && <span className="pill fmt">▤ {c.fmt} fmt</span>}
               {c.ref > 0 && <span className="pill ref">🔗 {c.ref} ref</span>}
               {c.dep > 0 && <span className="pill dep">↺ {c.dep} deprec</span>}
               {v.status === 'outside_load_range' && <span className="badge outside">outside range</span>}
@@ -81,9 +84,18 @@ function VersionRow({ v }: { v: VersionCompatibility }) {
             ))}
           </IssueGroup>
 
-          <IssueGroup kind="struct" title="Structural Issues (mcdoc)" count={c.str}>
-            {(v.structural_issues ?? []).map((i, idx) => (
+          <IssueGroup kind="struct" title="Structural Issues (mcdoc)" count={c.mcdoc}>
+            {((v.structural_issues ?? []).filter(i => i.source !== 'format')).map((i, idx) => (
               <div key={idx} className="issue struct">
+                <span className="loc">{i.file}</span>
+                {' — '}<span className="msg">{i.issue}</span>
+              </div>
+            ))}
+          </IssueGroup>
+
+          <IssueGroup kind="fmt" title="JSON Format Issues" count={c.fmt}>
+            {((v.structural_issues ?? []).filter(i => i.source === 'format')).map((i, idx) => (
+              <div key={idx} className="issue fmt">
                 <span className="loc">{i.file}</span>
                 {' — '}<span className="msg">{i.issue}</span>
               </div>

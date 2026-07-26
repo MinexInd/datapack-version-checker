@@ -38,6 +38,7 @@ export interface RegistryIssue {
 export interface StructuralIssue {
   file: string
   issue: string
+  source?: 'mcdoc' | 'format'
 }
 
 export interface RegistryDeprecation {
