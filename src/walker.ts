@@ -57,7 +57,11 @@ function walk(
   const actual = node.redirect ? resolveRedirect(node, root) : node
 
   if (!actual.children) {
-    if (lenient && depth > 0) return { valid: true, lenient: true }
+    if (lenient && depth > 0) {
+      const fromRoot = walk(root, tokens, index, root, lenient, 0)
+      if (fromRoot.valid) return fromRoot
+      return { valid: true, lenient: true }
+    }
     return { valid: false, failedAt: tokens[index], reason: 'unexpected argument(s) after command' }
   }
 
@@ -90,7 +94,16 @@ function walk(
     return walk(actual, tokens, index + 1, root, lenient, depth + 1)
   }
 
-  return { valid: false, failedAt: token, reason: `no matching subcommand/argument for '${token}'` }
+  const expected: string[] = []
+  if (actual.children) {
+    for (const [name, child] of Object.entries(actual.children)) {
+      if (child.type === 'literal') expected.push(name)
+      else if (child.type === 'argument') expected.push(`<${name}>`)
+    }
+  }
+  const expectedStr = expected.length > 0 ? ` — expected: ${expected.join(', ')}` : ''
+
+  return { valid: false, failedAt: token, reason: `no matching subcommand/argument for '${token}'${expectedStr}` }
 }
 
 export function validateCommand(
@@ -100,5 +113,6 @@ export function validateCommand(
 ): WalkResult {
   const tokens = tokenizeCommand(line).map(t => t.value)
   if (tokens.length === 0) return { valid: true }
+  if (tokens[0].startsWith('/')) tokens[0] = tokens[0].slice(1)
   return walk(tree, tokens, 0, tree, lenient, 0)
 }

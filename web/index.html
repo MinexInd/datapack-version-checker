@@ -615,13 +615,18 @@
     .pill.ok { background: var(--green-bg); color: var(--green); }
 
     .vbody {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.25s ease;
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows 0.3s ease;
     }
 
-    .vrow.open .vbody { max-height: 5000px; }
-    .vbody-inner { padding: 0 16px 16px; border-top: 1px solid var(--border-soft); }
+    .vrow.open .vbody { grid-template-rows: 1fr; }
+    .vbody-inner {
+      overflow: hidden;
+      min-height: 0;
+      padding: 0 16px 16px;
+      border-top: 1px solid var(--border-soft);
+    }
 
     /* scrollable list container */
     .scl-box { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
@@ -691,6 +696,15 @@
     .issue .loc { font-family: var(--mono); color: var(--text-dim); font-size: 0.78rem; }
     .issue .ln { color: var(--text-faint); }
     .issue .msg { color: var(--text); }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-6px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .vbody-inner .issue {
+      animation: slideIn 0.2s ease both;
+    }
 
     .code-snippet {
       margin-top: 6px;

@@ -23,6 +23,22 @@ export default function App() {
   const [versions, setVersions] = useState<McmetaVersion[]>([])
   const [versionsLoading, setVersionsLoading] = useState(true)
   const [versionSearch, setVersionSearch] = useState('')
+  const [checkStartTime, setCheckStartTime] = useState(0)
+  const [checkDuration, setCheckDuration] = useState(0)
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        if (!loading && files) handleRun()
+      }
+      if (e.key === 'Escape' && files && !loading) {
+        clearFiles()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
 
   const filteredVersions = versions.filter(v => {
     const q = versionSearch.trim().toLowerCase()
@@ -137,9 +153,11 @@ export default function App() {
     setError('')
     setResult(null)
     setProgress('Running compatibility check...')
+    setCheckStartTime(Date.now())
     try {
       const versionList = all ? undefined : selectedVersions.length ? selectedVersions : undefined
       const res = await runCheck({ mode, versions: versionList, all, strict, files })
+      setCheckDuration(Date.now() - checkStartTime)
       setResult(res)
     } catch (err: any) {
       setError(err.message || String(err))
@@ -224,9 +242,9 @@ export default function App() {
             <p>Validates JSON files against per-version registries and mcdoc schemas.</p>
           </div>
           <div className="hero-card">
-            <span className="hc-icon">▤</span>
-            <h3>Format Checks <span className="new-badge">NEW</span></h3>
-            <p>Catches JSON field renames, removed flags, biome/loot/recipe format changes across versions.</p>
+            <span className="hc-icon">▦</span>
+            <h3>mcdoc Structural</h3>
+            <p>Validates JSON against Minecraft's type system — catches field changes, removed fields, and structural issues across versions.</p>
           </div>
           <div className="hero-card">
             <span className="hc-icon">🔧</span>
@@ -324,15 +342,17 @@ export default function App() {
                 </div>
               </>
             )}
-            <div className="hint" style={{ marginTop: 6 }}>
+            <div className="hint" style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span>{versions.length} versions{versionSearch ? `, ${filteredVersions.length} match` : ''}</span>
-              <span style={{ marginLeft: 12 }}>
+              <span style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSelectedVersions(filteredVersions.filter(v => v.type === 'release').map(v => v.name))}>Releases</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSelectedVersions(filteredVersions.filter(v => v.type === 'snapshot').map(v => v.name))}>Snapshots</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setSelectedVersions(filteredVersions.map(v => v.name))}>All</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setSelectedVersions([])}>Clear</button>
-                {selectedVersions.length > 0 && (
-                  <span style={{ marginLeft: 6, color: 'var(--text-faint)', fontSize: '0.76rem' }}>{selectedVersions.length} selected</span>
-                )}
               </span>
+              {selectedVersions.length > 0 && (
+                <span style={{ color: 'var(--accent)', fontSize: '0.76rem', fontWeight: 600 }}>{selectedVersions.length} selected</span>
+              )}
             </div>
           </div>
 
@@ -348,6 +368,7 @@ export default function App() {
             <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={handleRun} disabled={loading || !files}>
               {loading ? <><span className="spinner" /> Running…</> : '▶ Run Check'}
             </button>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>Ctrl+Enter</span>
           </div>
         </div>
       )}
@@ -470,7 +491,7 @@ export default function App() {
         </div>
       )}
 
-      {result && <Results result={result.result} mode={result.mode} />}
+      {result && <Results result={result.result} mode={result.mode} duration={checkDuration} />}
 
       {/* Footer */}
       <footer className="app-footer">

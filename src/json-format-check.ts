@@ -276,21 +276,21 @@ export function checkJsonFormatSemantics(
   const out: StructuralIssue[] = []
 
   if (isPredicateFile(rel)) {
-    for (const iss of checkPredicateRenames(data, rel, versionName)) out.push({ ...iss, source: 'format' })
-    for (const iss of checkDamagePredicateFlags(data, rel, versionName)) out.push({ ...iss, source: 'format' })
+    for (const iss of checkPredicateRenames(data, rel, versionName)) out.push(iss)
+    for (const iss of checkDamagePredicateFlags(data, rel, versionName)) out.push(iss)
   }
   if (isBiomeFile(rel)) {
-    for (const iss of checkBiomePrecipitation(data, rel, versionName)) out.push({ ...iss, source: 'format' })
+    for (const iss of checkBiomePrecipitation(data, rel, versionName)) out.push(iss)
   }
   if (isLootTableFile(rel)) {
-    for (const iss of checkLootFunctions(data, rel, versionName)) out.push({ ...iss, source: 'format' })
+    for (const iss of checkLootFunctions(data, rel, versionName)) out.push(iss)
   }
   if (isRecipeFile(rel)) {
-    for (const iss of checkRecipeResult(data, rel, versionName)) out.push({ ...iss, source: 'format' })
+    for (const iss of checkRecipeResult(data, rel, versionName)) out.push(iss)
   }
-  for (const iss of checkNumberProviderValue(data, rel, versionName)) out.push({ ...iss, source: 'format' })
+  for (const iss of checkNumberProviderValue(data, rel, versionName)) out.push(iss)
   if (isAdvancementFile(rel)) {
-    for (const iss of checkAdvancementTriggers(data, rel, versionName)) out.push({ ...iss, source: 'format' })
+    for (const iss of checkAdvancementTriggers(data, rel, versionName)) out.push(iss)
   }
 
   return out

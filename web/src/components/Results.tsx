@@ -1,21 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { CheckResult, VersionCompatibility, KnowledgeHit, ReferenceIssue } from '../api'
 
 interface Props {
   result: CheckResult
   mode: string
+  duration?: number
 }
 
 function issueCounts(v: VersionCompatibility) {
-  const strAll = v.structural_issues ?? []
-  const mcdoc = strAll.filter(i => i.source !== 'format').length
-  const fmt = strAll.filter(i => i.source === 'format').length
+  const structural = v.structural_issues?.length ?? 0
   const cmd = v.mcfunction_issues?.length ?? 0
   const reg = v.registry_issues?.length ?? 0
   const dep = v.deprecation_issues?.length ?? 0
   const ref = v.reference_issues?.length ?? 0
   const bc = v.breaking_changes?.length ?? 0
-  return { cmd, reg, mcdoc, fmt, dep, ref, bc, total: cmd + reg + mcdoc + fmt + dep + ref + bc }
+  return { cmd, reg, structural, dep, ref, bc, total: cmd + reg + structural + dep + ref + bc }
 }
 
 function IssueGroup({ kind, title, count, children }: { kind: string; title: string; count: number; children: React.ReactNode }) {
@@ -30,8 +29,9 @@ function IssueGroup({ kind, title, count, children }: { kind: string; title: str
   )
 }
 
-function VersionRow({ v }: { v: VersionCompatibility }) {
-  const [open, setOpen] = useState(false)
+function VersionRow({ v, defaultOpen }: { v: VersionCompatibility; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen ?? false)
+  useEffect(() => { setOpen(defaultOpen ?? false) }, [defaultOpen])
   const c = issueCounts(v)
   const tagClass = v.version.type === 'snapshot' ? 'snapshot' : 'release'
 
@@ -48,8 +48,7 @@ function VersionRow({ v }: { v: VersionCompatibility }) {
             <>
               {c.cmd > 0 && <span className="pill cmd">⛔ {c.cmd} cmd</span>}
               {c.reg > 0 && <span className="pill reg">⚠ {c.reg} reg</span>}
-              {c.mcdoc > 0 && <span className="pill struct">▦ {c.mcdoc} mcdoc</span>}
-              {c.fmt > 0 && <span className="pill fmt">▤ {c.fmt} fmt</span>}
+              {c.structural > 0 && <span className="pill struct">▦ {c.structural} structural</span>}
               {c.ref > 0 && <span className="pill ref">🔗 {c.ref} ref</span>}
               {c.dep > 0 && <span className="pill dep">↺ {c.dep} deprec</span>}
               {v.status === 'outside_load_range' && <span className="badge outside">outside range</span>}
@@ -84,18 +83,9 @@ function VersionRow({ v }: { v: VersionCompatibility }) {
             ))}
           </IssueGroup>
 
-          <IssueGroup kind="struct" title="Structural Issues (mcdoc)" count={c.mcdoc}>
-            {((v.structural_issues ?? []).filter(i => i.source !== 'format')).map((i, idx) => (
+          <IssueGroup kind="struct" title="Structural Issues (mcdoc)" count={c.structural}>
+            {(v.structural_issues ?? []).map((i, idx) => (
               <div key={idx} className="issue struct">
-                <span className="loc">{i.file}</span>
-                {' — '}<span className="msg">{i.issue}</span>
-              </div>
-            ))}
-          </IssueGroup>
-
-          <IssueGroup kind="fmt" title="JSON Format Issues" count={c.fmt}>
-            {((v.structural_issues ?? []).filter(i => i.source === 'format')).map((i, idx) => (
-              <div key={idx} className="issue fmt">
                 <span className="loc">{i.file}</span>
                 {' — '}<span className="msg">{i.issue}</span>
               </div>
@@ -214,14 +204,57 @@ function exportMarkdown(result: CheckResult) {
   downloadFile('dpcheck-report.md', lines.join('\n'), 'text/markdown')
 }
 
-export default function Results({ result, mode }: Props) {
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  const m = Math.floor(ms / 60000)
+  const s = Math.round((ms % 60000) / 1000)
+  return `${m}m ${s}s`
+}
+
+async function copyReport(result: CheckResult) {
+  const text = generateReportText(result)
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch { /* fallback: ignore */ }
+}
+
+function generateReportText(result: CheckResult): string {
+  const lines: string[] = []
+  lines.push(`dpcheck Report — ${result.versions_checked} versions checked`)
+  if (result.load_range) {
+    lines.push(`Load range: ${result.load_range.min_name ?? result.load_range.min} – ${result.load_range.max_name ?? result.load_range.max}`)
+  }
+  if (result.min_version) {
+    lines.push(`Min version: ${result.min_version}`)
+  }
+  lines.push(``)
+  for (const v of result.compatible ?? []) {
+    lines.push(`✓ ${v.version.name} — compatible`)
+  }
+  for (const v of result.incompatible ?? []) {
+    const c = issueCounts(v)
+    lines.push(`✗ ${v.version.name} — ${c.total} issue(s)`)
+    for (const i of v.mcfunction_issues ?? []) lines.push(`  [cmd] ${i.file}:${i.line} — ${i.issue}`)
+    for (const i of v.registry_issues ?? []) lines.push(`  [reg] ${i.file} — ${i.issue}`)
+    for (const i of v.structural_issues ?? []) lines.push(`  [struct] ${i.file} — ${i.issue}`)
+    for (const i of v.reference_issues ?? []) lines.push(`  [ref] ${i.file}${i.line ? ':' + i.line : ''} — ${i.issue}`)
+    for (const i of v.deprecation_issues ?? []) lines.push(`  [dep] ${i.file} — ${i.issue}`)
+    for (const bc of v.breaking_changes ?? []) lines.push(`  [breaking] ${bc}`)
+  }
+  return lines.join('\n')
+}
+
+export default function Results({ result, mode, duration }: Props) {
   if (!result) return null
 
+  const [allOpen, setAllOpen] = useState(false)
   const compat = result.compatible || []
   const incompat = result.incompatible || []
   const outside = incompat.filter(v => v.status === 'outside_load_range')
   const broken = incompat.filter(v => v.status !== 'outside_load_range')
   const totalIssues = incompat.reduce((acc, v) => acc + issueCounts(v).total, 0)
+  const allVersions = [...compat, ...incompat]
 
   return (
     <>
@@ -257,7 +290,10 @@ export default function Results({ result, mode }: Props) {
             <div className="label">Total issues</div>
           </div>
         </div>
-        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+        {duration ? <div className="meta-line" style={{ marginTop: 8 }}>Check completed in <b>{formatDuration(duration)}</b></div> : null}
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-sm" onClick={() => setAllOpen(o => !o)}>{allOpen ? '▲ Collapse All' : '▼ Expand All'}</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => copyReport(result)}>📋 Copy Report</button>
           <button className="btn btn-ghost btn-sm" onClick={() => exportJson(result)}>⬇ Export JSON</button>
           <button className="btn btn-ghost btn-sm" onClick={() => exportMarkdown(result)}>⬇ Export Markdown</button>
         </div>
@@ -267,7 +303,7 @@ export default function Results({ result, mode }: Props) {
       <div className="card">
         <h2>✅ Compatible Versions <span className="sub">{compat.length}</span></h2>
         {compat.length > 0 ? (
-          <div className="vlist">{compat.map(v => <VersionRow key={v.version.id} v={v} />)}</div>
+          <div className="vlist">{compat.map(v => <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} />)}</div>
         ) : (
           <div className="empty-sm">No compatible versions to show</div>
         )}
@@ -277,7 +313,7 @@ export default function Results({ result, mode }: Props) {
       <div className="card">
         <h2>❌ Content Breaks <span className="sub">{broken.length}</span></h2>
         {broken.length > 0 ? (
-          <div className="vlist">{broken.map(v => <VersionRow key={v.version.id} v={v} />)}</div>
+          <div className="vlist">{broken.map(v => <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} />)}</div>
         ) : (
           <div className="empty-sm">No content issues found</div>
         )}
@@ -287,7 +323,7 @@ export default function Results({ result, mode }: Props) {
       <div className="card">
         <h2>⛔ Outside Declared Load Range <span className="sub">{outside.length}</span></h2>
         {outside.length > 0 ? (
-          <div className="vlist">{outside.map(v => <VersionRow key={v.version.id} v={v} />)}</div>
+          <div className="vlist">{outside.map(v => <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} />)}</div>
         ) : (
           <div className="empty-sm">All versions are within the declared load range</div>
         )}

@@ -136,4 +136,20 @@ describe('validateCommand', () => {
     const res = validateCommand('data get block 0 64 0 extra junk', mockTree, true)
     expect(res.valid).toBe(true)
   })
+
+  it('strips leading slash from command', () => {
+    expect(validateCommand('/say', mockTree, false)).toMatchObject({ valid: true })
+  })
+
+  it('validates command after run via root redirect in lenient mode', () => {
+    // `run` has no children/redirect in Spyglass data, but walker should
+    // redirect remaining tokens to root, so `say` is validated
+    const res = validateCommand('execute run say hi', mockTree, true)
+    expect(res.valid).toBe(true)
+  })
+
+  it('rejects unknown command after run in strict mode', () => {
+    const res = validateCommand('execute run blargh', mockTree, false)
+    expect(res.valid).toBe(false)
+  })
 })
