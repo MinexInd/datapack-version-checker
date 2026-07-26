@@ -20,6 +20,8 @@ function resolveRedirect(node: CommandTreeNode, root: CommandTreeNode): CommandT
   for (const seg of node.redirect) {
     if (current.children && current.children[seg]) {
       current = current.children[seg]
+    } else {
+      return node
     }
   }
   return current
@@ -64,7 +66,8 @@ function walk(
   const token = stripQuotes(tokens[index])
 
   for (const [name, child] of Object.entries(actual.children)) {
-    if (child.type === 'literal' && name === token) {
+    if (name !== token) continue
+    if (child.type === 'literal' || !child.type) {
       const res = walk(child, tokens, index + 1, root, lenient, depth + 1)
       if (res.valid) return res
     }
@@ -89,7 +92,7 @@ function walk(
   const expected: string[] = []
   if (actual.children) {
     for (const [name, child] of Object.entries(actual.children)) {
-      if (child.type === 'literal') expected.push(name)
+      if (child.type === 'literal' || !child.type) expected.push(name)
       else if (child.type === 'argument') expected.push(`<${name}>`)
     }
   }
