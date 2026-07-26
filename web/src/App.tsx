@@ -433,7 +433,7 @@ export default function App() {
       {progress && (
         <div className="progress-bar">
           <span className="spinner" />
-          {progress}
+          <span style={{ position: 'relative', zIndex: 1 }}>{progress}</span>
         </div>
       )}
       {error && (
@@ -443,11 +443,43 @@ export default function App() {
         </div>
       )}
 
+      {loading && !result && !error && (
+        <div className="card" style={{ animation: 'fadeScale 0.25s ease both' }}>
+          <h2>📊 Results <span className="sub">checking…</span></h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginTop: 14 }}>
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="skeleton" style={{ padding: '18px 20px', borderRadius: 10 }}>
+                <div className="skeleton-line w40" style={{ height: 28, marginBottom: 6 }} />
+                <div className="skeleton-line w60" style={{ height: 10 }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 16 }}>
+            {[1, 2, 3].map(i => (
+              <div key={i} className="skeleton-row">
+                <div className="skeleton sk-name">
+                  <div className="skeleton-line w60" />
+                </div>
+                <div className="sk-pills">
+                  <div className="skeleton skeleton-pill" />
+                  <div className="skeleton skeleton-pill" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {result && <Results result={result.result} mode={result.mode} />}
 
       {/* Footer */}
       <footer className="app-footer">
-        <p>Runs entirely in your browser — nothing is uploaded. <a href="https://github.com/MinexInd/datapack-version-checker" target="_blank" rel="noopener">Source on GitHub</a></p>
+        <p>Runs entirely in your browser — nothing is uploaded.</p>
+        <div className="footer-links">
+          <a href="https://github.com/MinexInd/datapack-version-checker" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/MinexInd/datapack-version-checker/issues" target="_blank" rel="noopener">Report Issue</a>
+          <span style={{ color: 'var(--text-faint)', fontSize: '0.76rem' }}>v0.6.0</span>
+        </div>
       </footer>
     </div>
   )

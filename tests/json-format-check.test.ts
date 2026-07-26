@@ -245,3 +245,126 @@ describe('checkJsonFormatSemantics — edge cases', () => {
     expect(issues.some(i => i.issue.includes('set_damage'))).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Number provider value wrapper (removed in 1.20.5)
+// ---------------------------------------------------------------------------
+
+describe('checkJsonFormatSemantics — number provider value wrapper', () => {
+  it('flags uniform provider with value wrapper when checking 1.20.5+', () => {
+    const data = { type: 'minecraft:uniform', value: { min_inclusive: 0, max_inclusive: 10 } }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/loot_tables/test.json', '1.20.5')
+    expect(issues.some(i => i.issue.includes("no longer uses 'value' wrapper"))).toBe(true)
+  })
+
+  it('flags binomial provider with value wrapper when checking 1.20.5+', () => {
+    const data = { type: 'minecraft:binomial', value: { n: 10, p: 0.5 } }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/loot_tables/test.json', '1.21')
+    expect(issues.some(i => i.issue.includes("'minecraft:binomial' no longer uses 'value' wrapper"))).toBe(true)
+  })
+
+  it('does NOT flag uniform provider with value wrapper when checking pre-1.20.5', () => {
+    const data = { type: 'minecraft:uniform', value: { min_inclusive: 0, max_inclusive: 10 } }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/loot_tables/test.json', '1.20.4')
+    expect(issues.some(i => i.issue.includes('value wrapper'))).toBe(false)
+  })
+
+  it('does NOT flag uniform provider without direct fields when checking pre-1.20.5', () => {
+    const data = { type: 'minecraft:uniform' }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/loot_tables/test.json', '1.20.4')
+    expect(issues.some(i => i.issue.includes('value wrapper'))).toBe(false)
+  })
+
+  it('flags uniform provider missing value wrapper when checking pre-1.20.5', () => {
+    const data = { type: 'minecraft:uniform', min_inclusive: 0, max_inclusive: 10 }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/loot_tables/test.json', '1.20.4')
+    expect(issues.some(i => i.issue.includes("requires a 'value' wrapper"))).toBe(true)
+  })
+
+  it('does NOT flag uniform provider without value wrapper when checking 1.20.5+', () => {
+    const data = { type: 'minecraft:uniform', min_inclusive: 0, max_inclusive: 10 }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/loot_tables/test.json', '1.21')
+    expect(issues.some(i => i.issue.includes('value wrapper'))).toBe(false)
+  })
+
+  it('flags deeply nested number providers', () => {
+    const data = {
+      pools: [{
+        entries: [{
+          functions: [{
+            function: 'minecraft:set_count',
+            count: { type: 'minecraft:uniform', value: { min_inclusive: 1, max_inclusive: 5 } },
+          }],
+        }],
+      }],
+    }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/loot_tables/test.json', '1.21')
+    expect(issues.some(i => i.issue.includes("no longer uses 'value' wrapper"))).toBe(true)
+  })
+
+  it('does NOT flag constant number provider', () => {
+    const data = { type: 'minecraft:constant', value: 5 }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/loot_tables/test.json', '1.20.5')
+    expect(issues.some(i => i.issue.includes('value wrapper'))).toBe(false)
+  })
+
+  it('works on any JSON file path', () => {
+    const data = { type: 'minecraft:uniform', value: { min_inclusive: 0, max_inclusive: 10 } }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/worldgen/noise_settings/test.json', '1.20.5')
+    expect(issues.some(i => i.issue.includes("no longer uses 'value' wrapper"))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Advancement trigger collapse (merged into minecraft:location in 1.20)
+// ---------------------------------------------------------------------------
+
+describe('checkJsonFormatSemantics — advancement triggers', () => {
+  it('flags placed_block trigger when checking 1.20+', () => {
+    const data = { trigger: 'minecraft:placed_block', conditions: {} }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/advancements/test.json', '1.20')
+    expect(issues.some(i => i.issue.includes("'minecraft:placed_block' was merged into 'minecraft:location'"))).toBe(true)
+  })
+
+  it('flags item_used_on_block trigger when checking 1.20+', () => {
+    const data = { trigger: 'minecraft:item_used_on_block', conditions: {} }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/advancements/test.json', '1.21')
+    expect(issues.some(i => i.issue.includes("'minecraft:item_used_on_block' was merged"))).toBe(true)
+  })
+
+  it('flags allay_drop_item_on_block trigger when checking 1.20+', () => {
+    const data = { trigger: 'minecraft:allay_drop_item_on_block', conditions: {} }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/advancements/test.json', '1.20')
+    expect(issues.some(i => i.issue.includes("'minecraft:allay_drop_item_on_block' was merged"))).toBe(true)
+  })
+
+  it('does NOT flag placed_block when checking pre-1.20', () => {
+    const data = { trigger: 'minecraft:placed_block', conditions: {} }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/advancements/test.json', '1.19.4')
+    expect(issues.some(i => i.issue.includes('placed_block'))).toBe(false)
+  })
+
+  it('flags minecraft:location trigger when checking pre-1.20', () => {
+    const data = { trigger: 'minecraft:location', conditions: {} }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/advancements/test.json', '1.19.4')
+    expect(issues.some(i => i.issue.includes("'minecraft:location' not available before 1.20"))).toBe(true)
+  })
+
+  it('does NOT flag minecraft:location trigger when checking 1.20+', () => {
+    const data = { trigger: 'minecraft:location', conditions: {} }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/advancements/test.json', '1.20')
+    expect(issues.some(i => i.issue.includes('minecraft:location'))).toBe(false)
+  })
+
+  it('does NOT flag non-collapsed triggers', () => {
+    const data = { trigger: 'minecraft:tick', conditions: {} }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/advancements/test.json', '1.20')
+    expect(issues).toHaveLength(0)
+  })
+
+  it('does NOT check triggers outside advancement files', () => {
+    const data = { trigger: 'minecraft:placed_block', conditions: {} }
+    const issues = checkJsonFormatSemantics(data, 'data/mc/predicates/test.json', '1.21')
+    expect(issues.some(i => i.issue.includes('placed_block'))).toBe(false)
+  })
+})

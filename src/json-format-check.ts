@@ -49,6 +49,18 @@ function isRecipeFile(rel: string): boolean {
   return /(?:^|\/)recipes?\//.test(rel)
 }
 
+function isAdvancementFile(rel: string): boolean {
+  return /(?:^|\/)advancements?\//.test(rel)
+}
+
+const NUMBER_PROVIDER_TYPES = ['minecraft:uniform', 'minecraft:binomial']
+
+const COLLAPSED_TRIGGERS = [
+  'minecraft:placed_block',
+  'minecraft:item_used_on_block',
+  'minecraft:allay_drop_item_on_block',
+]
+
 // ---------------------------------------------------------------------------
 // Individual checkers
 // ---------------------------------------------------------------------------
@@ -198,6 +210,56 @@ function checkRecipeResult(data: any, rel: string, ver: string): StructuralIssue
   return issues
 }
 
+function checkNumberProviderValue(data: any, rel: string, ver: string): StructuralIssue[] {
+  const issues: StructuralIssue[] = []
+  function walk(obj: any, path: string): void {
+    if (!obj || typeof obj !== 'object') return
+    if (Array.isArray(obj)) {
+      obj.forEach((item, i) => walk(item, `${path}[${i}]`))
+      return
+    }
+    if (typeof obj.type === 'string' && NUMBER_PROVIDER_TYPES.includes(obj.type)) {
+      if (cmpVer(ver, '1.20.5') >= 0 && obj.value && typeof obj.value === 'object') {
+        issues.push({
+          file: rel,
+          issue: `Number provider '${obj.type}' no longer uses 'value' wrapper in 1.20.5 — move fields to the top level (path: ${path}.value)`,
+        })
+      }
+      if (cmpVer(ver, '1.20.5') < 0 && !obj.value && (obj.min_inclusive !== undefined || obj.n !== undefined)) {
+        issues.push({
+          file: rel,
+          issue: `Number provider '${obj.type}' requires a 'value' wrapper object before 1.20.5 (path: ${path})`,
+        })
+      }
+    }
+    for (const [k, v] of Object.entries(obj)) {
+      walk(v, `${path}.${k}`)
+    }
+  }
+  walk(data, '$')
+  return issues
+}
+
+function checkAdvancementTriggers(data: any, rel: string, ver: string): StructuralIssue[] {
+  const issues: StructuralIssue[] = []
+  if (!data || typeof data !== 'object') return issues
+  if (typeof data.trigger === 'string') {
+    if (COLLAPSED_TRIGGERS.includes(data.trigger) && cmpVer(ver, '1.20') >= 0) {
+      issues.push({
+        file: rel,
+        issue: `Advancement trigger '${data.trigger}' was merged into 'minecraft:location' in 1.20`,
+      })
+    }
+    if (data.trigger === 'minecraft:location' && cmpVer(ver, '1.20') < 0) {
+      issues.push({
+        file: rel,
+        issue: `Advancement trigger 'minecraft:location' not available before 1.20 — use the specific trigger instead`,
+      })
+    }
+  }
+  return issues
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -225,6 +287,10 @@ export function checkJsonFormatSemantics(
   }
   if (isRecipeFile(rel)) {
     for (const iss of checkRecipeResult(data, rel, versionName)) out.push({ ...iss, source: 'format' })
+  }
+  for (const iss of checkNumberProviderValue(data, rel, versionName)) out.push({ ...iss, source: 'format' })
+  if (isAdvancementFile(rel)) {
+    for (const iss of checkAdvancementTriggers(data, rel, versionName)) out.push({ ...iss, source: 'format' })
   }
 
   return out
