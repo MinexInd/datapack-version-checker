@@ -610,8 +610,9 @@
     .pill.reg { background: var(--amber-bg); color: var(--amber); }
     .pill.struct { background: var(--blue-bg); color: var(--blue); }
     .pill.fmt { background: var(--teal-bg); color: var(--teal); }
-    .pill.ref { background: var(--amber-bg); color: var(--amber); }
+    .pill.ref { background: var(--teal-bg); color: var(--teal); }
     .pill.dep { background: var(--purple-bg); color: var(--purple); }
+    .pill.bc { background: var(--amber-bg); color: var(--amber); }
     .pill.ok { background: var(--green-bg); color: var(--green); }
 
     .vbody {
@@ -656,15 +657,13 @@
 
     .hint { font-size: 0.76rem; color: var(--text-faint); margin-top: 6px; }
 
-    /* --- Issue groups --- */
+    /* --- Issue groups (legacy) --- */
     .issue-group { margin-top: 14px; }
     .issue-group:first-child { margin-top: 12px; }
-
     .issue-group-title {
       font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.04em; margin-bottom: 8px;
     }
-
     .issue-group-title.cmd { color: var(--red); }
     .issue-group-title.reg { color: var(--amber); }
     .issue-group-title.struct { color: var(--blue); }
@@ -672,51 +671,27 @@
     .issue-group-title.ref { color: var(--amber); }
     .issue-group-title.dep { color: var(--purple); }
     .issue-group-title.bc { color: var(--amber); }
-
     .issue {
-      font-size: 0.82rem;
-      line-height: 1.55;
-      padding: 9px 12px;
-      margin-bottom: 6px;
-      border-radius: 7px;
-      background: var(--bg);
-      border: 1px solid var(--border-soft);
+      font-size: 0.82rem; line-height: 1.55; padding: 9px 12px; margin-bottom: 6px;
+      border-radius: 7px; background: var(--bg); border: 1px solid var(--border-soft);
       border-left-width: 3px;
     }
-
     .issue:last-child { margin-bottom: 0; }
-
     .issue.cmd { border-left-color: var(--red); }
     .issue.reg { border-left-color: var(--amber); }
     .issue.struct { border-left-color: var(--blue); }
     .issue.fmt { border-left-color: var(--teal); }
     .issue.ref { border-left-color: var(--amber); }
     .issue.dep { border-left-color: var(--purple); }
-
     .issue .loc { font-family: var(--mono); color: var(--text-dim); font-size: 0.78rem; }
     .issue .ln { color: var(--text-faint); }
     .issue .msg { color: var(--text); }
 
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateX(-6px); }
-      to { opacity: 1; transform: translateX(0); }
-    }
-
-    .vbody-inner .issue {
-      animation: slideIn 0.2s ease both;
-    }
-
     .code-snippet {
-      margin-top: 6px;
-      padding: 6px 10px;
-      background: var(--bg-elev-2);
-      border: 1px solid var(--border-soft);
-      border-radius: 5px;
-      font-family: var(--mono);
-      font-size: 0.76rem;
-      color: var(--text-dim);
-      overflow-x: auto;
-      white-space: pre;
+      margin-top: 6px; padding: 6px 10px;
+      background: var(--bg-elev-2); border: 1px solid var(--border-soft);
+      border-radius: 5px; font-family: var(--mono); font-size: 0.76rem;
+      color: var(--text-dim); overflow-x: auto; white-space: pre;
     }
 
     .breaking {
@@ -724,39 +699,240 @@
       border-radius: 7px; background: var(--amber-bg); border: 1px solid var(--amber-border);
       color: var(--text);
     }
-
     .breaking:last-child { margin-bottom: 0; }
 
     .badge {
       font-size: 0.68rem; font-weight: 700; padding: 3px 9px; border-radius: 20px;
       text-transform: uppercase; letter-spacing: 0.03em;
     }
-
     .badge.outside { background: var(--amber-bg); color: var(--amber); }
 
-    /* --- Knowledge cards --- */
+    /* --- File-grouped issues (redesigned Results) --- */
+    @keyframes issueSlideIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-summary .result-header-row {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    }
+
+    .result-summary .result-header-row h2 {
+      margin-bottom: 0; flex: 1;
+    }
+
+    .result-header-icon {
+      font-size: 1.1rem; margin-right: 2px;
+    }
+
+    .result-actions {
+      display: flex; gap: 6px; flex-shrink: 0;
+    }
+
+    .duration-line {
+      margin-top: 6px; font-size: 0.82rem;
+    }
+
+    .section-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 6px; font-size: 0.75rem;
+      margin-right: 4px;
+    }
+    .section-icon.green { background: var(--green-bg); color: var(--green); }
+    .section-icon.red { background: var(--red-bg); color: var(--red); }
+    .section-icon.amber { background: var(--amber-bg); color: var(--amber); }
+    .section-icon.blue { background: var(--blue-bg); color: var(--blue); }
+
+    .issues-scroll {
+      display: flex; flex-direction: column; gap: 8px;
+      max-height: 480px; overflow-y: auto;
+      padding-right: 4px; margin-top: 12px;
+      scroll-behavior: smooth;
+    }
+
+    .file-group {
+      border: 1px solid var(--border-soft);
+      border-radius: 8px; overflow: hidden;
+      animation: fadeInUp 0.25s ease both;
+    }
+
+    .file-group-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px;
+      background: var(--bg-elev-2);
+      border-bottom: 1px solid var(--border-soft);
+      cursor: default;
+    }
+
+    .file-path {
+      font-family: var(--mono); font-size: 0.76rem; font-weight: 500;
+      color: var(--text-dim); overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; flex: 1;
+    }
+
+    .file-issue-count {
+      font-size: 0.68rem; font-weight: 700;
+      background: var(--bg-active); color: var(--text-faint);
+      padding: 1px 7px; border-radius: 10px;
+      flex-shrink: 0;
+    }
+
+    .file-kind-tags {
+      display: flex; gap: 3px; flex-shrink: 0;
+    }
+
+    .file-kind-tag {
+      font-size: 0.65rem; width: 18px; height: 18px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 4px;
+    }
+    .file-kind-tag.cmd { background: var(--red-bg); }
+    .file-kind-tag.reg { background: var(--amber-bg); }
+    .file-kind-tag.struct { background: var(--blue-bg); }
+    .file-kind-tag.ref { background: var(--amber-bg); }
+    .file-kind-tag.dep { background: var(--purple-bg); }
+    .file-kind-tag.bc { background: var(--amber-bg); }
+
+    .file-group-issues {
+      padding: 8px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+
+    .issue-item {
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border-soft);
+      border-left: 3px solid var(--border);
+      animation: issueSlideIn 0.2s ease both;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .issue-item:hover {
+      background: var(--bg-hover);
+      border-color: var(--border);
+    }
+
+    .issue-item.cmd { border-left-color: var(--red); }
+    .issue-item.reg { border-left-color: var(--amber); }
+    .issue-item.struct { border-left-color: var(--blue); }
+    .issue-item.ref { border-left-color: var(--teal); }
+    .issue-item.dep { border-left-color: var(--purple); }
+    .issue-item.bc { border-left-color: var(--amber); }
+
+    .issue-item-header {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+    }
+
+    .issue-badge {
+      font-size: 0.68rem; font-weight: 700; padding: 2px 8px;
+      border-radius: 4px; text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    .issue-badge.cmd { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+    .issue-badge.reg { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+    .issue-badge.struct { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-border); }
+    .issue-badge.ref { background: var(--teal-bg); color: var(--teal); border: 1px solid var(--teal-border); }
+    .issue-badge.dep { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple-border); }
+    .issue-badge.bc { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+
+    .issue-loc {
+      font-family: var(--mono); font-size: 0.7rem; font-weight: 500;
+      color: var(--text-faint); background: var(--bg-elev-2);
+      padding: 1px 6px; border-radius: 3px;
+    }
+
+    .issue-item-body {
+      font-size: 0.82rem; line-height: 1.5; color: var(--text);
+    }
+
+    .issue-cmd {
+      display: inline-block; margin-top: 4px;
+      padding: 2px 8px; border-radius: 4px;
+      background: var(--bg-elev-2); border: 1px solid var(--border-soft);
+      font-family: var(--mono); font-size: 0.72rem; color: var(--text-dim);
+      max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    .issue-code {
+      margin-top: 6px; padding: 8px 10px;
+      background: var(--bg-elev-2); border: 1px solid var(--border-soft);
+      border-radius: 5px; font-family: var(--mono); font-size: 0.74rem;
+      color: var(--text-dim); overflow-x: auto; white-space: pre;
+    }
+
+    .outside-notice {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 12px 14px; margin-top: 12px;
+      background: var(--amber-bg); border: 1px solid var(--amber-border);
+      border-radius: 8px;
+    }
+
+    .outside-icon { font-size: 1.1rem; margin-top: 1px; }
+
+    .outside-notice strong {
+      display: block; font-size: 0.85rem; color: var(--amber); margin-bottom: 2px;
+    }
+
+    .outside-notice span {
+      font-size: 0.78rem; color: var(--text-dim);
+    }
+
+    .empty-state {
+      font-size: 0.85rem; color: var(--text-faint);
+      padding: 20px 4px; text-align: center;
+    }
+
+    /* --- Knowledge cards (redesigned) --- */
+    .knowledge-grid {
+      display: flex; flex-direction: column; gap: 10px;
+      max-height: 500px; overflow-y: auto;
+      padding-right: 4px;
+    }
+
     .krule {
-      padding: 16px 18px;
+      padding: 14px 16px;
       border-radius: 10px;
       background: var(--bg-elev-2);
       border: 1px solid var(--border);
       border-left: 3px solid var(--accent-strong);
-      flex-shrink: 0;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, background 0.15s;
+      animation: fadeInUp 0.25s ease both;
     }
 
-    .krule:hover { border-color: var(--text-faint); }
+    .krule:hover {
+      border-color: var(--text-faint);
+      background: var(--bg-hover);
+    }
 
-    .kfeat { font-weight: 600; font-size: 0.88rem; color: var(--text); margin-bottom: 6px; }
+    .krule-top {
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+
+    .krule-icon {
+      font-size: 1rem; width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--accent-glow); border-radius: 6px;
+      flex-shrink: 0; margin-top: 1px;
+    }
+
+    .krule-info { flex: 1; min-width: 0; }
+
+    .kfeat { font-weight: 600; font-size: 0.88rem; color: var(--text); margin-bottom: 4px; }
 
     .kmin {
-      display: inline-block; font-size: 0.74rem; font-weight: 700; color: var(--blue);
+      display: inline-block; font-size: 0.72rem; font-weight: 700; color: var(--blue);
       background: var(--blue-bg); border: 1px solid var(--blue-border);
-      padding: 2px 9px; border-radius: 20px; margin-bottom: 6px;
+      padding: 2px 9px; border-radius: 20px;
     }
 
-    .kfix { font-size: 0.82rem; color: var(--green); margin-top: 4px; }
-    .kfound { font-family: var(--mono); font-size: 0.76rem; color: var(--text-faint); margin-top: 6px; }
+    .kfix { font-size: 0.8rem; color: var(--green); margin-top: 8px; padding-left: 38px; }
+
+    .kfound {
+      font-family: var(--mono); font-size: 0.72rem; color: var(--text-faint);
+      margin-top: 4px; padding-left: 38px;
+    }
+
+    .kfound-label { color: var(--text-dim); font-weight: 500; }
 
     /* --- Empty states --- */
     .empty-sm { font-size: 0.85rem; color: var(--text-faint); padding: 8px 2px; }

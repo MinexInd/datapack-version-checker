@@ -1,8 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import JSZip from 'jszip'
 import type { PackFileMap, CheckResponse, McmetaVersion, Mode } from './api'
 import { runCheck, runFix, runFixPreview, fetchVersions } from './api'
 import type { FixPreview } from './api'
+import Header from './components/Header'
+import PackSelector from './components/PackSelector'
+import CheckPanel from './components/CheckPanel'
+import FixPanel from './components/FixPanel'
 import Results from './components/Results'
 
 type Tab = 'check' | 'fix'
@@ -22,26 +25,12 @@ export default function App() {
   const [progress, setProgress] = useState('')
   const [versions, setVersions] = useState<McmetaVersion[]>([])
   const [versionsLoading, setVersionsLoading] = useState(true)
-  const [versionSearch, setVersionSearch] = useState('')
   const [checkDuration, setCheckDuration] = useState(0)
   const checkStartRef = useRef(0)
-
-  const filteredVersions = versions.filter(v => {
-    const q = versionSearch.trim().toLowerCase()
-    if (!q) return true
-    return (
-      v.name.toLowerCase().includes(q) ||
-      v.id.toLowerCase().includes(q) ||
-      v.type.toLowerCase().includes(q)
-    )
-  })
 
   const [fixTarget, setFixTarget] = useState('')
   const [fixSource, setFixSource] = useState('')
   const [fixPreview, setFixPreview] = useState<FixPreview | null>(null)
-
-  const folderRef = useRef<HTMLInputElement>(null)
-  const zipRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchVersions()
@@ -58,80 +47,26 @@ export default function App() {
     setResult(null)
   }, [])
 
-  const handleFolder = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const dir = e.target.files
-    if (!dir) return
-    const entries: PackFileMap = {}
-    for (let i = 0; i < dir.length; i++) {
-      const f = dir[i]
-      const rel = f.webkitRelativePath || f.name
-      if (rel.startsWith('.')) continue
-      entries[rel] = await f.text()
-    }
-    await loadFiles(entries, dir[0]?.webkitRelativePath?.split('/')[0] || 'folder')
-  }, [loadFiles])
-
-  const handleZip = useCallback(async (file: File) => {
-    const zip = await JSZip.loadAsync(file)
-    const entries: PackFileMap = {}
-    const promises: Promise<void>[] = []
-    zip.forEach((rel, entry) => {
-      if (entry.dir) return
-      const name = rel.replace(/\\/g, '/')
-      if (name.startsWith('.') || name.startsWith('__MACOSX')) return
-      promises.push(
-        entry.async('string').then(content => { entries[name] = content })
-      )
-    })
-    await Promise.all(promises)
-    await loadFiles(entries, file.name)
-  }, [loadFiles])
-
-  const handleZipInput = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    await handleZip(file)
-  }, [handleZip])
-
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    const items = e.dataTransfer.items
-    if (!items) return
-    for (const item of items) {
-      if (item.kind === 'file') {
-        const file = item.getAsFile()
-        if (!file) continue
-        if (file.name.endsWith('.zip') || file.type === 'application/zip') {
-          await handleZip(file)
-          return
-        }
-      }
-    }
-    for (const item of items) {
-      const entry = item.webkitGetAsEntry?.()
-      if (entry?.isDirectory) {
-        const allFiles = await readDirectoryEntry(entry)
-        await loadFiles(allFiles, entry.name)
-        return
-      }
-    }
-    setError('Drop a .zip file or a folder containing pack.mcmeta')
-  }, [handleZip, loadFiles])
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.currentTarget.classList.add('dragover')
+  const clearFiles = useCallback(() => {
+    setFiles(null)
+    setFileCount(0)
+    setFileName('')
+    setResult(null)
   }, [])
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.currentTarget.classList.remove('dragover')
-  }, [])
-
-  const toggleVersion = (name: string) => {
-    setSelectedVersions(prev =>
-      prev.includes(name) ? prev.filter(v => v !== name) : [...prev, name]
-    )
-  }
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        if (!loading && files) handleRun()
+      }
+      if (e.key === 'Escape' && files && !loading) {
+        clearFiles()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [files, loading, clearFiles])
 
   const handleRun = useCallback(async () => {
     if (!files) { setError('Select a pack first'); return }
@@ -196,50 +131,20 @@ export default function App() {
     }
   }, [files, fixTarget, fixSource])
 
-  const clearFiles = useCallback(() => {
-    setFiles(null)
-    setFileCount(0)
-    setFileName('')
-    setResult(null)
-  }, [])
-
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault()
-        if (!loading && files) handleRun()
-      }
-      if (e.key === 'Escape' && files && !loading) {
-        clearFiles()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [files, loading, handleRun, clearFiles])
-
   return (
     <div className="container">
-      {/* Header */}
-      <header className="app-header animate-in">
-        <div className="app-logo">🔍</div>
-        <div className="app-title-group">
-          <h1 className="app-title">dpcheck</h1>
-          <p className="app-subtitle">Datapack &amp; Resource Pack Version Checker</p>
-        </div>
-        <span className="header-badge">content-based</span>
-      </header>
+      <Header />
 
-      {/* Hero / feature highlights */}
       {!files && (
         <div className="hero-grid animate-in-d1">
           <div className="hero-card">
-            <span className="hc-icon">🔍</span>
+            <span className="hc-icon">⌘</span>
             <h3>Command Validation</h3>
             <p>Checks every .mcfunction against the target version's command tree.</p>
           </div>
           <div className="hero-card">
-            <span className="hc-icon">📋</span>
-            <h3>Registry & mcdoc</h3>
+            <span className="hc-icon">📦</span>
+            <h3>Registry &amp; mcdoc</h3>
             <p>Validates JSON files against per-version registries and mcdoc schemas.</p>
           </div>
           <div className="hero-card">
@@ -248,208 +153,58 @@ export default function App() {
             <p>Validates JSON against Minecraft's type system — catches field changes, removed fields, and structural issues across versions.</p>
           </div>
           <div className="hero-card">
-            <span className="hc-icon">🔧</span>
+            <span className="hc-icon">⚡</span>
             <h3>Auto-Fix</h3>
             <p>Ports packs between versions — rewrites commands and fixes JSON automatically.</p>
           </div>
         </div>
       )}
 
-      {/* Pack selection */}
-      <div className="card animate-in-d2">
-        <h2>📦 Pack <span className="sub">folder or .zip containing pack.mcmeta</span></h2>
-        {files ? (
-          <div className="dz-loaded">
-            <div className="checkicon">✓</div>
-            <div className="meta">
-              <div className="name">{fileName}</div>
-              <div className="count">{fileCount} files loaded</div>
-            </div>
-            <div className="dz-btns">
-              <button className="btn btn-ghost" onClick={() => folderRef.current?.click()}>Change</button>
-              <button className="btn btn-ghost" onClick={clearFiles}>✕</button>
-            </div>
-          </div>
-        ) : (
-          <div
-            className="dropzone"
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-          >
-            <div className="dz-icon">📁</div>
-            <p>Drop a datapack / resource pack here</p>
-            <div className="dz-hint">Drag a folder or .zip file</div>
-            <div className="dz-browse">
-              <span className="browse-link" onClick={(e) => { e.stopPropagation(); folderRef.current?.click() }}>Browse folder</span>
-              <span className="browse-sep">·</span>
-              <span className="browse-link" onClick={(e) => { e.stopPropagation(); zipRef.current?.click() }}>Browse .zip</span>
-            </div>
-          </div>
-        )}
-        <input ref={folderRef} type="file" {...{ webkitdirectory: '', directory: '' } as any} onChange={handleFolder} style={{ display: 'none' }} />
-        <input ref={zipRef} type="file" accept=".zip" onChange={handleZipInput} style={{ display: 'none' }} />
-      </div>
+      <PackSelector
+        files={files}
+        fileCount={fileCount}
+        fileName={fileName}
+        onLoad={loadFiles}
+        onClear={clearFiles}
+      />
 
       {/* Tabs */}
       <div className="tab-bar animate-in-d3">
-        <button className={`tab ${tab === 'check' ? 'active' : ''}`} onClick={() => setTab('check')}>🔎 Check Compatibility</button>
-        <button className={`tab ${tab === 'fix' ? 'active' : ''}`} onClick={() => setTab('fix')}>🔧 Auto-Fix / Port</button>
+        <button className={`tab ${tab === 'check' ? 'active' : ''}`} onClick={() => setTab('check')}>Check Compatibility</button>
+        <button className={`tab ${tab === 'fix' ? 'active' : ''}`} onClick={() => setTab('fix')}>Auto-Fix / Port</button>
       </div>
 
       {tab === 'check' && (
-        <div className="card animate-in-d3">
-          <h2>⚙️ Options</h2>
-          <div className="field">
-            <label>Mode</label>
-            <div className="segmented">
-              {(['auto', 'datapack', 'resourcepack'] as const).map(m => (
-                <button key={m} className={mode === m ? 'active' : ''} onClick={() => setMode(m)}>
-                  {m === 'auto' ? 'Auto' : m === 'datapack' ? 'Datapack' : 'Resource Pack'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="field">
-            <label>
-              Versions to check
-              <span style={{ color: 'var(--text-faint)', fontWeight: 400, marginLeft: 6 }}>
-                (leave all unchecked = auto-window around load range)
-              </span>
-            </label>
-            {versionsLoading ? (
-              <div className="hint">Loading versions…</div>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  placeholder="🔍 Search versions (e.g. 1.20, 24w, snapshot)…"
-                  value={versionSearch}
-                  onChange={e => setVersionSearch(e.target.value)}
-                  style={{ marginBottom: 10 }}
-                />
-                <div className="scl-list">
-                  {filteredVersions.map(v => (
-                    <div
-                      key={v.id}
-                      className={`scl-row ${selectedVersions.includes(v.name) ? 'sel' : ''}`}
-                      onClick={() => toggleVersion(v.name)}
-                    >
-                      <span className="scl-name">{v.name}</span>
-                      <span className={`scl-tag ${v.type === 'snapshot' ? 'snap' : 'rel'}`}>{v.type}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-            <div className="hint" style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span>{versions.length} versions{versionSearch ? `, ${filteredVersions.length} match` : ''}</span>
-              <span style={{ display: 'flex', gap: 6 }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => setSelectedVersions(filteredVersions.filter(v => v.type === 'release').map(v => v.name))}>Releases</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setSelectedVersions(filteredVersions.filter(v => v.type === 'snapshot').map(v => v.name))}>Snapshots</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setSelectedVersions(filteredVersions.map(v => v.name))}>All</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setSelectedVersions([])}>Clear</button>
-              </span>
-              {selectedVersions.length > 0 && (
-                <span style={{ color: 'var(--accent)', fontSize: '0.76rem', fontWeight: 600 }}>{selectedVersions.length} selected</span>
-              )}
-            </div>
-          </div>
-
-          <div className="checks">
-            <label className="check">
-              <input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} />
-              Check ALL versions (incl. snapshots)
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={strict} onChange={e => setStrict(e.target.checked)} />
-              Strict command validation
-            </label>
-            <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={handleRun} disabled={loading || !files}>
-              {loading ? <><span className="spinner" /> Running…</> : '▶ Run Check'}
-            </button>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>Ctrl+Enter</span>
-          </div>
-        </div>
+        <CheckPanel
+          mode={mode}
+          onModeChange={setMode}
+          all={all}
+          onAllChange={setAll}
+          strict={strict}
+          onStrictChange={setStrict}
+          versions={versions}
+          versionsLoading={versionsLoading}
+          selectedVersions={selectedVersions}
+          onSelectedVersionsChange={setSelectedVersions}
+          onRun={handleRun}
+          loading={loading}
+          hasFiles={!!files}
+        />
       )}
 
       {tab === 'fix' && (
-        <div className="card animate-in-d3">
-          <h2>🔧 Auto-Fix / Port <span className="sub">rewrites commands, fixes JSON, updates pack.mcmeta</span></h2>
-          <div className="grid-2">
-            <div className="field">
-              <label>Target version</label>
-              <select value={fixTarget} onChange={e => { setFixTarget(e.target.value); setFixPreview(null) }}>
-                <option value="">— select target —</option>
-                {versions.map(v => (
-                  <option key={v.id} value={v.name}>{v.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label>Source version (optional)</label>
-              <select value={fixSource} onChange={e => { setFixSource(e.target.value); setFixPreview(null) }}>
-                <option value="">— auto-detect —</option>
-                {versions.map(v => (
-                  <option key={v.id} value={v.name}>{v.name}</option>
-                ))}
-              </select>
-              <div className="hint">Auto-detected from pack.mcmeta load range if blank.</div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <button className="btn btn-primary" onClick={handleFixPreview} disabled={loading || !files || !fixTarget}>
-              {loading ? <><span className="spinner" /> Generating…</> : '👁 Preview Changes'}
-            </button>
-            {fixPreview && (
-              <button className="btn btn-success" onClick={handleFix} disabled={loading}>
-                {loading ? <><span className="spinner" /> Downloading…</> : '⬇ Download Ported .zip'}
-              </button>
-            )}
-          </div>
-
-          {fixPreview && (
-            <div style={{ marginTop: 16 }}>
-              <div className="stats" style={{ marginBottom: 14 }}>
-                <div className="stat blue">
-                  <div className="num">{fixPreview.summary.filesFixed}</div>
-                  <div className="label">Files changed</div>
-                </div>
-                <div className="stat blue">
-                  <div className="num">{fixPreview.summary.totalPatches}</div>
-                  <div className="label">Total patches</div>
-                </div>
-              </div>
-              {fixPreview.summary.errors.length > 0 && (
-                <div className="error" style={{ marginBottom: 14 }}>
-                  <span>⚠</span>
-                  <span>{fixPreview.summary.errors.join('; ')}</span>
-                </div>
-              )}
-              {fixPreview.results.length > 0 ? (
-                <div className="scl-box" style={{ maxHeight: 350 }}>
-                  {fixPreview.results.map((r, i) => (
-                    <div key={i} className="fix-file">
-                      <div className="fix-file-header">
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.file}</span>
-                        <span className="patch-count">({r.patches} patch{r.patches !== 1 ? 'es' : ''})</span>
-                      </div>
-                      {r.details.map((d, j) => (
-                        <div key={j} className="fix-detail">
-                          {d}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-sm">No changes needed — pack is already compatible with {fixTarget}</div>
-              )}
-            </div>
-          )}
-        </div>
+        <FixPanel
+          versions={versions}
+          fixTarget={fixTarget}
+          onFixTargetChange={(v) => { setFixTarget(v); setFixPreview(null) }}
+          fixSource={fixSource}
+          onFixSourceChange={(v) => { setFixSource(v); setFixPreview(null) }}
+          fixPreview={fixPreview}
+          onPreview={handleFixPreview}
+          onDownload={handleFix}
+          loading={loading}
+          hasFiles={!!files}
+        />
       )}
 
       {progress && (
@@ -467,7 +222,7 @@ export default function App() {
 
       {loading && !result && !error && (
         <div className="card" style={{ animation: 'fadeScale 0.25s ease both' }}>
-          <h2>📊 Results <span className="sub">checking…</span></h2>
+          <h2>Results <span className="sub">checking…</span></h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginTop: 14 }}>
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="skeleton" style={{ padding: '18px 20px', borderRadius: 10 }}>
@@ -494,7 +249,6 @@ export default function App() {
 
       {result && <Results result={result.result} mode={result.mode} duration={checkDuration} />}
 
-      {/* Footer */}
       <footer className="app-footer">
         <p>Runs entirely in your browser — nothing is uploaded.</p>
         <div className="footer-links">
@@ -505,36 +259,4 @@ export default function App() {
       </footer>
     </div>
   )
-}
-
-async function readDirectoryEntry(entry: any): Promise<PackFileMap> {
-  const files: PackFileMap = {}
-  const reader = entry.createReader()
-
-  const readAllEntries = () => new Promise<any[]>((resolve, reject) => {
-    const all: any[] = []
-    const readBatch = () => {
-      reader.readEntries((batch: any[]) => {
-        if (batch.length === 0) resolve(all)
-        else { all.push(...batch); readBatch() }
-      }, (err: any) => reject(err))
-    }
-    readBatch()
-  })
-
-  const entries = await readAllEntries()
-  for (const e of entries) {
-    if (e.isDirectory) {
-      const sub = await readDirectoryEntry(e)
-      for (const [k, v] of Object.entries(sub)) {
-        files[e.name + '/' + k] = v
-      }
-    } else {
-      const file = await new Promise<File>((resolve, reject) => e.file(resolve, reject))
-      if (!file.name.startsWith('.')) {
-        files[file.name] = await file.text()
-      }
-    }
-  }
-  return files
 }
