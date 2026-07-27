@@ -1,5 +1,5 @@
-import type { CommandTreeNode } from './types'
-import { tokenizeCommand, stripQuotes } from './tokenizer'
+import type { CommandTreeNode } from './types.js'
+import { tokenizeCommand, stripQuotes } from './tokenizer.js'
 
 function getArity(parser: string | undefined, props: Record<string, unknown> | undefined): number {
   if (!parser) return 1
@@ -42,6 +42,7 @@ function walk(
   lenient: boolean,
   depth: number,
 ): WalkResult {
+  // End of input: valid only if this node can terminate (or its redirect target can)
   if (index >= tokens.length) {
     if (node.executable) return { valid: true }
     if (node.redirect) {
@@ -55,24 +56,31 @@ function walk(
   const actual = node.redirect ? resolveRedirect(node, root) : node
 
   if (!actual.children) {
-    if (lenient && depth > 0) {
+    if (depth > 0) {
       const fromRoot = walk(root, tokens, index, root, lenient, 0)
       if (fromRoot.valid) return fromRoot
-      return { valid: true, lenient: true }
+      if (lenient) return { valid: true, lenient: true }
     }
-    return { valid: false, failedAt: tokens[index], reason: 'unexpected argument(s) after command' }
+    return { valid: false, failedAt: tokens[index], reason: `unexpected argument(s) after command '${tokens[index]}'` }
   }
 
   const token = stripQuotes(tokens[index])
 
+  let deepestError: WalkResult | null = null
+
+  // Literal children that match the current token
   for (const [name, child] of Object.entries(actual.children)) {
     if (name !== token) continue
     if (child.type === 'literal' || !child.type) {
       const res = walk(child, tokens, index + 1, root, lenient, depth + 1)
       if (res.valid) return res
+      if (!deepestError || (res.failedAt && (!deepestError.failedAt || deepestError.failedAt === token))) {
+        deepestError = res
+      }
     }
   }
 
+  // Argument children (consume based on parser semantics)
   for (const [name, child] of Object.entries(actual.children)) {
     if (child.type !== 'argument') continue
     const arity = getArity(child.parser, child.properties)
@@ -82,13 +90,23 @@ function walk(
     if (consume <= 0) continue
     const res = walk(child, tokens, index + consume, root, lenient, depth + 1)
     if (res.valid) return res
+    if (!deepestError || (res.failedAt && (!deepestError.failedAt || deepestError.failedAt === token))) {
+      deepestError = res
+    }
   }
 
+  // No strict match. In lenient mode (and not at the root command), treat the
+  // token as an unknown argument and continue. This tolerates gaps in the
+  // command-tree data (e.g. `execute run <cmd>` where `run` has no children).
   if (lenient && depth > 0) {
     return walk(actual, tokens, index + 1, root, lenient, depth + 1)
   }
 
-  // Build a helpful error message showing what was expected
+  // If a deeper walk gave us a more informative error, use that instead
+  if (deepestError && deepestError.failedAt && deepestError.failedAt !== token) {
+    return deepestError
+  }
+
   const expected: string[] = []
   if (actual.children) {
     for (const [name, child] of Object.entries(actual.children)) {
