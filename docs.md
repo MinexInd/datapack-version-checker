@@ -156,13 +156,20 @@ node dist/index.js --dir "./my-pack" --mode datapack
 In resource pack mode, the tool scans `assets/` for:
 - **Model files** (`models/`) — validated against mcdoc `model` schema
 - **Blockstate files** (`blockstates/`) — validated against `block_definition` schema
+- **Item model definitions** (`items/`) — validated against `item_definition` schema
+- **Equipment definitions** (`equipment/`) — validated against `equipment` schema
+- **Waypoint styles** (`waypoint_style/`) — validated against `waypoint_style` schema
 - **Sound definitions** (`sounds.json`) — validated against `sounds` schema
 - **Atlas definitions** (`atlases/`) — validated against `atlas` schema
 - **Particle definitions** (`particles/`) — validated against `particle` schema
 - **Font definitions** (`font/`) — validated against `font` schema
-- **Shader definitions** (`shaders/`) — validated against `shader` schema
+- **Shader programs** (`shaders/`) — validated against `shader` schema
+- **Post-process effects** (`shaders/post/`) — validated against `post_effect` schema
 - **Language files** (`lang/`) — validated against `lang` schema
 - **Texture metadata** (`*.png.mcmeta`) — validated against `texture_meta` schema
+- **Credits** (`credits.json`) — validated against `credits` schema
+- **GPU warnlist** (`gpu_warnlist.json`) — validated against `gpu_warnlist` schema
+- **Regional compliancies** (`regional_compliancies.json`) — validated against `regional_compliancies` schema
 - **PNG files** — counted and reported, no deep content validation yet
 
 ### `--dir` / `-d` — which datapack
@@ -473,7 +480,10 @@ For resource pack mode:
      schema for that exact version. The full mcdoc schema is downloaded live (as a
      tarball) from Spyglass and cached. Files are routed to the correct schema type
      based on their path (e.g. `data/**/recipe/*.json` → `recipe`,
-     `assets/**/models/*.json` → `model`). For each version it:
+     `data/**/damage_type/*.json` → `damage_type`,
+     `assets/**/models/*.json` → `model`,
+     `assets/**/items/*.json` → `item_definition`,
+     `assets/**/shaders/post/*.json` → `post_effect`). 70+ datapack and resource pack types are covered. For each version it:
 
      - confirms that top-level and nested **field names** actually exist in that
        version (e.g. a loot table `random_sequence` field only exists since 1.20);
@@ -485,9 +495,10 @@ For resource pack mode:
      treated as "allowed", so the tool reports **real** breaks rather than
      fabricating false positives.
 
- 4d. **Check JSON (semantic format).** Beyond structural validation, the tool
-     performs **version-aware semantic checks** on JSON field names and layout
-     that changed across MC versions but aren't captured by mcdoc alone:
+ 4d. **Check JSON (semantic format — integrated into mcdoc).** Beyond structural
+     validation, the tool performs **version-aware semantic checks** on JSON
+     field names and layout that changed across MC versions. These are reported
+     under the same `mcdoc` source tag as structural issues:
 
      - **Predicate field renames**: `alternative` → `any_of` and
        `requirements` → `all_of` (1.20 boundary — flags incorrect format
@@ -502,7 +513,7 @@ For resource pack mode:
        `"id": "minecraft:diamond"` in 1.20.5. Only checks objects under
        the `result` or `output` key to avoid false positives on ingredients.
 
-     These checks run alongside mcdoc validation for every JSON file in the
+     These checks run as part of mcdoc validation for every JSON file in the
      version loop, on both server and browser engines. Source:
      `src/json-format-check.ts` / `web/src/engine/json-format-check.ts`.
 
@@ -626,7 +637,7 @@ datapack-version-checker/
 │   ├── walker.ts         # Brigadier command-tree walker
 │   ├── json-check.ts     # JSON registry validation
 │   ├── json-format-check.ts # Version-aware JSON semantic format checks
-│   ├── mcdoc-check.ts    # vanilla-mcdoc structural validator
+│   ├── mcdoc-check.ts    # vanilla-mcdoc structural validator (67+ resource type mappings)
 │   ├── knowledge.ts      # Community version-change rules (FEATURE_RULES)
 │   ├── resource-knowledge.ts # Resource pack version-change rules (RESOURCE_FEATURE_RULES)
 │   ├── version.ts        # Version comparison helpers

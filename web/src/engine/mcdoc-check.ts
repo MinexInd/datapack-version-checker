@@ -699,6 +699,14 @@ const KIND_TO_RESOURCE: Record<string, string> = {
   decorated_pot_pattern: 'decorated_pot_pattern',
   cow_variant: 'cow_variant',
   chicken_variant: 'chicken_variant',
+  zombie_nautilus_variant: 'zombie_nautilus_variant',
+  sulfur_cube_archetype: 'sulfur_cube_archetype',
+  timeline: 'timeline',
+  world_clock: 'world_clock',
+  test_instance: 'test_instance',
+  test_environment: 'test_environment',
+  number_provider: 'number_provider',
+  slot_source: 'slot_source',
   'worldgen/world_preset': '"worldgen/world_preset"',
   'worldgen/template_pool': '"worldgen/template_pool"',
   'worldgen/structure_set': '"worldgen/structure_set"',
@@ -727,10 +735,17 @@ const KIND_TO_RESOURCE: Record<string, string> = {
   lang: 'lang',
   font: 'font',
   shaders: 'shader',
+  'shaders/post': 'post_effect',
+  items: 'item_definition',
+  equipment: 'equipment',
+  waypoint_style: 'waypoint_style',
 }
 
 const FILE_TO_RESOURCE: Record<string, string> = {
   'sounds.json': 'sounds',
+  'credits.json': 'credits',
+  'gpu_warnlist.json': 'gpu_warnlist',
+  'regional_compliancies.json': 'regional_compliancies',
 }
 
 const WORLDGEN_PREFIXES = new Set(['worldgen'])
