@@ -23,22 +23,8 @@ export default function App() {
   const [versions, setVersions] = useState<McmetaVersion[]>([])
   const [versionsLoading, setVersionsLoading] = useState(true)
   const [versionSearch, setVersionSearch] = useState('')
-  const [checkStartTime, setCheckStartTime] = useState(0)
   const [checkDuration, setCheckDuration] = useState(0)
-
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault()
-        if (!loading && files) handleRun()
-      }
-      if (e.key === 'Escape' && files && !loading) {
-        clearFiles()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  })
+  const checkStartRef = useRef(0)
 
   const filteredVersions = versions.filter(v => {
     const q = versionSearch.trim().toLowerCase()
@@ -153,11 +139,12 @@ export default function App() {
     setError('')
     setResult(null)
     setProgress('Running compatibility check...')
-    setCheckStartTime(Date.now())
+    const startTime = Date.now()
+    checkStartRef.current = startTime
     try {
       const versionList = all ? undefined : selectedVersions.length ? selectedVersions : undefined
       const res = await runCheck({ mode, versions: versionList, all, strict, files, onProgress: setProgress })
-      setCheckDuration(Date.now() - checkStartTime)
+      setCheckDuration(Date.now() - checkStartRef.current)
       setResult(res)
     } catch (err: any) {
       setError(err.message || String(err))
@@ -209,12 +196,26 @@ export default function App() {
     }
   }, [files, fixTarget, fixSource])
 
-  const clearFiles = () => {
+  const clearFiles = useCallback(() => {
     setFiles(null)
     setFileCount(0)
     setFileName('')
     setResult(null)
-  }
+  }, [])
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        if (!loading && files) handleRun()
+      }
+      if (e.key === 'Escape' && files && !loading) {
+        clearFiles()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [files, loading, handleRun, clearFiles])
 
   return (
     <div className="container">

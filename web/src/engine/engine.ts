@@ -628,7 +628,13 @@ export async function checkResourcePack(
   log.info(`Checking ${relevantVersions.length} versions...`)
   log.time('rp-version-loop')
 
-  for (const ver of relevantVersions) {
+  const total = relevantVersions.length
+  let done = 0
+  const onCheckDone = (name: string) => {
+    done++
+  }
+
+  const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
     const inLoadRange = loadRange
       ? ver.resource_pack_version >= loadRange.min && ver.resource_pack_version <= loadRange.max
       : true
@@ -722,9 +728,15 @@ export async function checkResourcePack(
 
     if (inLoadRange && !hasContentIssues) compatible.push(result)
     else incompatible.push(result)
+    onCheckDone(ver.name)
   }
 
-  log.timeEnd('rp-version-loop')
+  for (let i = 0; i < relevantVersions.length; i += BATCH_SIZE) {
+    const batch = relevantVersions.slice(i, i + BATCH_SIZE)
+    await Promise.all(batch.map(ver => checkOneVersion(ver)))
+  }
+
+  log.timeEnd('rp-version-loop', `checked ${relevantVersions.length} versions`)
   log.timeEnd('checkResourcePack')
 
   return {
