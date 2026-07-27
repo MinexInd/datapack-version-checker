@@ -138,22 +138,22 @@ export default function App() {
       {!files && (
         <div className="hero-grid animate-in-d1">
           <div className="hero-card">
-            <span className="hc-icon">⌘</span>
+            <span className="hc-icon">&gt;</span>
             <h3>Command Validation</h3>
             <p>Checks every .mcfunction against the target version's command tree.</p>
           </div>
           <div className="hero-card">
-            <span className="hc-icon">📦</span>
+            <span className="hc-icon">#</span>
             <h3>Registry &amp; mcdoc</h3>
             <p>Validates JSON files against per-version registries and mcdoc schemas.</p>
           </div>
           <div className="hero-card">
-            <span className="hc-icon">▦</span>
+            <span className="hc-icon">M</span>
             <h3>mcdoc Structural</h3>
             <p>Validates JSON against Minecraft's type system — catches field changes, removed fields, and structural issues across versions.</p>
           </div>
           <div className="hero-card">
-            <span className="hc-icon">⚡</span>
+            <span className="hc-icon">+</span>
             <h3>Auto-Fix</h3>
             <p>Ports packs between versions — rewrites commands and fixes JSON automatically.</p>
           </div>
@@ -215,7 +215,7 @@ export default function App() {
       )}
       {error && (
         <div className="error">
-          <span>⚠</span>
+          <span>!</span>
           <span>{error}</span>
         </div>
       )}

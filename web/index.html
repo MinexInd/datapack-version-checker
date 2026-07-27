@@ -10,7 +10,7 @@
   <meta property="og:description" content="Check your Minecraft pack for command, registry, and structural issues across any version. Runs in your browser — nothing is uploaded." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://minexind.github.io/datapack-version-checker/" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🔍</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236ea8fe' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700;750;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -616,14 +616,16 @@
     .pill.ok { background: var(--green-bg); color: var(--green); }
 
     .vbody {
-      display: grid;
-      grid-template-rows: 0fr;
-      transition: grid-template-rows 0.3s ease;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease;
     }
 
-    .vrow.open .vbody { grid-template-rows: 1fr; }
+    .vrow.open .vbody {
+      max-height: 6000px;
+      overflow-y: auto;
+    }
     .vbody-inner {
-      overflow: hidden;
       min-height: 0;
       padding: 0 16px 16px;
       border-top: 1px solid var(--border-soft);
@@ -700,11 +702,6 @@
       color: var(--text);
     }
     .breaking:last-child { margin-bottom: 0; }
-
-    .badge {
-      font-size: 0.68rem; font-weight: 700; padding: 3px 9px; border-radius: 20px;
-      text-transform: uppercase; letter-spacing: 0.03em;
-    }
     .badge.outside { background: var(--amber-bg); color: var(--amber); }
 
     /* --- File-grouped issues (redesigned Results) --- */

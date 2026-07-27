@@ -79,12 +79,12 @@ function groupByFile(issues: FlatIssue[]): Map<string, FlatIssue[]> {
 }
 
 const KIND_META: Record<string, { label: string; icon: string; cssClass: string }> = {
-  cmd:    { label: 'Command', icon: '⛔', cssClass: 'cmd' },
-  reg:    { label: 'Registry', icon: '⚠', cssClass: 'reg' },
-  struct: { label: 'Structural', icon: '▦', cssClass: 'struct' },
-  ref:    { label: 'Reference', icon: '🔗', cssClass: 'ref' },
-  dep:    { label: 'Deprecated', icon: '↺', cssClass: 'dep' },
-  bc:     { label: 'Breaking', icon: '⚡', cssClass: 'bc' },
+  cmd:    { label: 'Command', icon: '!', cssClass: 'cmd' },
+  reg:    { label: 'Registry', icon: '~', cssClass: 'reg' },
+  struct: { label: 'Structural', icon: '#', cssClass: 'struct' },
+  ref:    { label: 'Reference', icon: '@', cssClass: 'ref' },
+  dep:    { label: 'Deprecated', icon: '-', cssClass: 'dep' },
+  bc:     { label: 'Breaking', icon: '*', cssClass: 'bc' },
 }
 
 function IssueItem({ issue, idx }: { issue: FlatIssue; idx: number }) {
@@ -145,12 +145,12 @@ function FileGroup({ filePath, issues }: { filePath: string; issues: FlatIssue[]
 function IssueCountsBar({ c }: { c: IssueCounts }) {
   return (
     <div className="issue-counts">
-      {c.cmd > 0 && <span className="pill cmd">⛔ {c.cmd} cmd</span>}
-      {c.reg > 0 && <span className="pill reg">⚠ {c.reg} reg</span>}
-      {c.structural > 0 && <span className="pill struct">▦ {c.structural} struct</span>}
-      {c.ref > 0 && <span className="pill ref">🔗 {c.ref} ref</span>}
-      {c.dep > 0 && <span className="pill dep">↺ {c.dep} dep</span>}
-      {c.bc > 0 && <span className="pill bc">⚡ {c.bc} breaking</span>}
+      {c.cmd > 0 && <span className="pill cmd">{c.cmd} cmd</span>}
+      {c.reg > 0 && <span className="pill reg">{c.reg} reg</span>}
+      {c.structural > 0 && <span className="pill struct">{c.structural} struct</span>}
+      {c.ref > 0 && <span className="pill ref">{c.ref} ref</span>}
+      {c.dep > 0 && <span className="pill dep">{c.dep} dep</span>}
+      {c.bc > 0 && <span className="pill bc">{c.bc} breaking</span>}
     </div>
   )
 }
@@ -177,7 +177,7 @@ function VersionRow({ v, defaultOpen, index }: { v: VersionCompatibility; defaul
         <span className={`vtag ${tagClass}`}>{v.version.type}</span>
         <div className="spacer" />
         {v.status === 'compatible' ? (
-          <span className="pill ok">✓ compatible</span>
+          <span className="pill ok">compatible</span>
         ) : (
           <IssueCountsBar c={c} />
         )}
@@ -190,7 +190,7 @@ function VersionRow({ v, defaultOpen, index }: { v: VersionCompatibility; defaul
         <div className="vbody-inner">
           {v.status === 'outside_load_range' && (
             <div className="outside-notice">
-              <span className="outside-icon">⛔</span>
+              <span className="outside-icon">!</span>
               <div>
                 <strong>Outside declared load range</strong>
                 <span>Minecraft will not load this pack for this version.</span>
@@ -216,9 +216,9 @@ function VersionRow({ v, defaultOpen, index }: { v: VersionCompatibility; defaul
 function KnowledgeCard({ h, idx }: { h: KnowledgeHit; idx: number }) {
   const rule = h.rule
   const typeIcons: Record<string, string> = {
-    command: '⌘',
-    command_pattern: '◈',
-    registry: '📦',
+    command: '>',
+    command_pattern: '~',
+    registry: '#',
     json_field: '{}',
     function_macro: '$',
   }
@@ -231,7 +231,7 @@ function KnowledgeCard({ h, idx }: { h: KnowledgeHit; idx: number }) {
           <div className="kmin">Requires: ≥ {rule.minVersion}</div>
         </div>
       </div>
-      {rule.fix && <div className="kfix">💡 {rule.fix}</div>}
+      {rule.fix && <div className="kfix">{rule.fix}</div>}
       {h.file && (
         <div className="kfound">
           <span className="kfound-label">Found in:</span> {h.file}{h.line ? ':' + h.line : ''}
@@ -373,7 +373,7 @@ export default function Results({ result, mode, duration }: Props) {
       <div className="card result-summary">
         <div className="result-header-row">
           <h2>
-            <span className="result-header-icon">📊</span>
+            <span className="result-header-icon">R</span>
             Results
             <span className="sub">{result.versions_checked} versions checked</span>
           </h2>
@@ -381,7 +381,7 @@ export default function Results({ result, mode, duration }: Props) {
             <button className="btn btn-sm" onClick={() => setAllOpen(o => !o)}>
               {allOpen ? '▲ Collapse All' : '▼ Expand All'}
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => copyReport(result)}>📋 Copy</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => copyReport(result)}>Copy</button>
             <button className="btn btn-ghost btn-sm" onClick={() => exportJson(result)}>JSON</button>
             <button className="btn btn-ghost btn-sm" onClick={() => exportMarkdown(result)}>MD</button>
           </div>
@@ -428,7 +428,7 @@ export default function Results({ result, mode, duration }: Props) {
       {/* Compatible */}
       <div className="card">
         <h2>
-          <span className="section-icon green">✓</span>
+          <span className="section-icon green">V</span>
           Compatible Versions
           <span className="sub">{compat.length}</span>
         </h2>
@@ -446,7 +446,7 @@ export default function Results({ result, mode, duration }: Props) {
       {/* Content breaks */}
       <div className="card">
         <h2>
-          <span className="section-icon red">✗</span>
+          <span className="section-icon red">X</span>
           Content Breaks
           <span className="sub">{broken.length}</span>
         </h2>
@@ -464,7 +464,7 @@ export default function Results({ result, mode, duration }: Props) {
       {/* Outside load range */}
       <div className="card">
         <h2>
-          <span className="section-icon amber">⛔</span>
+          <span className="section-icon amber">!</span>
           Outside Declared Load Range
           <span className="sub">{outside.length}</span>
         </h2>
@@ -483,7 +483,7 @@ export default function Results({ result, mode, duration }: Props) {
       {dedupedKnowledge.length > 0 && (
         <div className="card">
           <h2>
-            <span className="section-icon blue">📋</span>
+            <span className="section-icon blue">F</span>
             Features Setting Minimum Version
             <span className="sub">{dedupedKnowledge.length} feature{dedupedKnowledge.length !== 1 ? 's' : ''}</span>
           </h2>

@@ -70,7 +70,7 @@ export default function FixPanel({
           </div>
           {fixPreview.summary.errors.length > 0 && (
             <div className="error" style={{ marginBottom: 14 }}>
-              <span>⚠</span>
+              <span>!</span>
               <span>{fixPreview.summary.errors.join('; ')}</span>
             </div>
           )}
