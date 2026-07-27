@@ -73,15 +73,33 @@ export function tokenizeCommand(line: string): Token[] {
       continue
     }
 
-    // Regular token: read until whitespace or until an unquoted brace/bracket begins
+    // Regular token: read until whitespace, tracking NBT compound/bracket depth
+    // so that spaces inside compounds (e.g., item NBT lore strings) are preserved.
     let value = ''
+    let inStr = false
+    let strChar = ''
+    let depth = 0  // tracks { } and [ ] nesting for NBT compounds
     while (i < n) {
       const c = line[i]
-      if (c === ' ' || c === '\t') break
-      // If a brace/bracket starts mid-token it belongs to the current token
-      // (e.g. selector @e[type=...] or item diamond{tag:1b}). Only a leading
-      // brace/bracket starts a new dedicated brace token.
+      if (inStr) {
+        if (c === '\\' && i + 1 < n) { value += c + line[i+1]; i += 2; continue }
+        if (c === strChar) inStr = false
+        value += c
+        i++
+        continue
+      }
+      if (depth === 0 && (c === ' ' || c === '\t')) break
       if ((c === '{' || c === '[') && value.length === 0) break
+      // Track brace/bracket depth to keep NBT compounds together
+      if (c === '{' || c === '[') depth++
+      else if (c === '}' || c === ']') depth--
+      if (c === '"' || c === "'") {
+        inStr = true
+        strChar = c
+        value += c
+        i++
+        continue
+      }
       value += c
       i++
     }

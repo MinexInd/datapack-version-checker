@@ -7,8 +7,7 @@ function getArity(parser: string | undefined, props: Record<string, unknown> | u
   if (parser === 'minecraft:message' || parser === 'minecraft:component' ||
       parser === 'minecraft:text') return Infinity
   if (parser === 'brigadier:command' || parser?.includes('command')) return Infinity
-  if (parser === 'minecraft:block_pos' || parser === 'minecraft:vec3' ||
-      parser === 'minecraft:block_predicate') return 3
+  if (parser === 'minecraft:block_pos' || parser === 'minecraft:vec3') return 3
   if (parser === 'minecraft:rotation' || parser === 'minecraft:column_pos' ||
       parser === 'minecraft:vec2') return 2
   return 1

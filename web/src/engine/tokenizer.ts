@@ -74,10 +74,29 @@ export function tokenizeCommand(line: string): Token[] {
     }
 
     let value = ''
+    let inStr = false
+    let strChar = ''
+    let depth = 0
     while (i < n) {
       const c = line[i]
-      if (c === ' ' || c === '\t') break
+      if (inStr) {
+        if (c === '\\' && i + 1 < n) { value += c + line[i+1]; i += 2; continue }
+        if (c === strChar) inStr = false
+        value += c
+        i++
+        continue
+      }
+      if (depth === 0 && (c === ' ' || c === '\t')) break
       if ((c === '{' || c === '[') && value.length === 0) break
+      if (c === '{' || c === '[') depth++
+      else if (c === '}' || c === ']') depth--
+      if (c === '"' || c === "'") {
+        inStr = true
+        strChar = c
+        value += c
+        i++
+        continue
+      }
       value += c
       i++
     }
