@@ -560,7 +560,7 @@
     .vrow {
       border: 1px solid var(--border);
       border-radius: 10px;
-      overflow: hidden;
+      overflow: clip;
       background: var(--bg-elev-2);
       transition: border-color 0.15s;
       flex-shrink: 0;
@@ -743,15 +743,14 @@
 
     .issues-scroll {
       display: flex; flex-direction: column; gap: 8px;
-      max-height: 480px; overflow-y: auto;
+      max-height: 480px; height: 480px;
+      overflow-y: auto; overflow-x: hidden;
       padding-right: 4px; margin-top: 12px;
-      scroll-behavior: smooth;
     }
 
     .file-group {
       border: 1px solid var(--border-soft);
-      border-radius: 8px; overflow: hidden;
-      animation: fadeInUp 0.25s ease both;
+      border-radius: 8px;
     }
 
     .file-group-header {
@@ -894,7 +893,6 @@
       border: 1px solid var(--border);
       border-left: 3px solid var(--accent-strong);
       transition: border-color 0.15s, background 0.15s;
-      animation: fadeInUp 0.25s ease both;
     }
 
     .krule:hover {
