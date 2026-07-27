@@ -92,6 +92,57 @@ const mockTree: CommandTreeNode = {
         },
       },
     },
+    particle: {
+      type: 'literal',
+      executable: false,
+      children: {
+        name: {
+          type: 'argument',
+          executable: true,
+          parser: 'minecraft:particle',
+          children: {
+            pos: {
+              type: 'argument',
+              executable: true,
+              parser: 'minecraft:vec3',
+              children: {
+                delta: {
+                  type: 'argument',
+                  executable: true,
+                  parser: 'minecraft:vec3',
+                  children: {
+                    speed: {
+                      type: 'argument',
+                      executable: true,
+                      parser: 'brigadier:float',
+                      children: {
+                        count: {
+                          type: 'argument',
+                          executable: true,
+                          parser: 'brigadier:integer',
+                          children: {
+                            force: {
+                              type: 'literal',
+                              executable: true,
+                              children: {},
+                            },
+                            normal: {
+                              type: 'literal',
+                              executable: true,
+                              children: {},
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 }
 
@@ -151,5 +202,38 @@ describe('validateCommand', () => {
   it('rejects unknown command after run in strict mode', () => {
     const res = validateCommand('execute run blargh', mockTree, false)
     expect(res.valid).toBe(false)
+  })
+
+  // Particle command tests
+  it('validates simple particle with no extra params in strict mode', () => {
+    expect(validateCommand('particle minecraft:flame ~ ~ ~', mockTree, false)).toMatchObject({ valid: true })
+  })
+
+  it('validates dust particle (4 extra tokens) in strict mode', () => {
+    expect(validateCommand('particle minecraft:dust 1.0 0.0 0.0 1.0 ~ ~ ~', mockTree, false)).toMatchObject({ valid: true })
+  })
+
+  it('validates dust particle with all args in strict mode', () => {
+    expect(validateCommand('particle minecraft:dust 1.0 0.0 0.0 1.0 ~ ~ ~ 0 0 0 0 1 force', mockTree, false)).toMatchObject({ valid: true })
+  })
+
+  it('validates block particle (1 extra token) in strict mode', () => {
+    expect(validateCommand('particle minecraft:block minecraft:stone ~ ~ ~', mockTree, false)).toMatchObject({ valid: true })
+  })
+
+  it('validates item particle (1 extra token) in strict mode', () => {
+    expect(validateCommand('particle minecraft:item minecraft:diamond ~ ~ ~', mockTree, false)).toMatchObject({ valid: true })
+  })
+
+  it('validates shriek particle (1 extra token) in strict mode', () => {
+    expect(validateCommand('particle minecraft:shriek 10 ~ ~ ~', mockTree, false)).toMatchObject({ valid: true })
+  })
+
+  it('rejects particle command with missing name', () => {
+    expect(validateCommand('particle', mockTree, false).valid).toBe(false)
+  })
+
+  it('validates unknown particle name with no extra params in strict mode', () => {
+    expect(validateCommand('particle minecraft:my_custom_particle ~ ~ ~', mockTree, false)).toMatchObject({ valid: true })
   })
 })

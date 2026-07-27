@@ -1,7 +1,25 @@
 import type { CommandTreeNode } from './types.js'
 import { tokenizeCommand, stripQuotes } from './tokenizer.js'
 
-function getArity(parser: string | undefined, props: Record<string, unknown> | undefined): number {
+// Particle types whose minecraft:particle parser consumes extra tokens
+// beyond the particle name (before pos/delta/speed/count/mode).
+const PARTICLE_EXTRA_TOKENS: Record<string, number> = {
+  'minecraft:dust': 4,
+  'minecraft:dust_color_transition': 6,
+  'minecraft:block': 1,
+  'minecraft:block_marker': 1,
+  'minecraft:falling_dust': 1,
+  'minecraft:item': 1,
+  'minecraft:shriek': 1,
+}
+
+function getParticleArity(particleName: string): number {
+  const key = particleName.startsWith('minecraft:') ? particleName : `minecraft:${particleName}`
+  const extra = PARTICLE_EXTRA_TOKENS[key]
+  return extra !== undefined ? 1 + extra : 1
+}
+
+function getArity(parser: string | undefined, props: Record<string, unknown> | undefined, token?: string): number {
   if (!parser) return 1
   if (parser === 'brigadier:string' && props?.type === 'greedy') return Infinity
   if (parser === 'minecraft:message' || parser === 'minecraft:component' ||
@@ -10,6 +28,7 @@ function getArity(parser: string | undefined, props: Record<string, unknown> | u
   if (parser === 'minecraft:block_pos' || parser === 'minecraft:vec3') return 3
   if (parser === 'minecraft:rotation' || parser === 'minecraft:column_pos' ||
       parser === 'minecraft:vec2') return 2
+  if (parser === 'minecraft:particle' && token) return getParticleArity(token)
   return 1
 }
 
@@ -83,7 +102,7 @@ function walk(
   // Argument children (consume based on parser semantics)
   for (const [name, child] of Object.entries(actual.children)) {
     if (child.type !== 'argument') continue
-    const arity = getArity(child.parser, child.properties)
+    const arity = getArity(child.parser, child.properties, tokens[index])
     if (arity === Infinity) return { valid: true }
     const remaining = tokens.length - index
     const consume = Math.min(arity, remaining)
