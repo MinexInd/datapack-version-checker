@@ -616,17 +616,18 @@
     .pill.ok { background: var(--green-bg); color: var(--green); }
 
     .vbody {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.35s ease;
+      display: none;
     }
 
     .vrow.open .vbody {
-      max-height: 6000px;
-      overflow-y: auto;
+      display: block;
     }
+
+    .vrow.open .vbody-inner {
+      animation: fadeIn 0.18s ease;
+    }
+
     .vbody-inner {
-      min-height: 0;
       padding: 0 16px 16px;
       border-top: 1px solid var(--border-soft);
     }
