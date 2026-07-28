@@ -307,16 +307,12 @@ locally for 24 hours** so re-runs are fast and work offline. Use `--refresh`
 to discard the cache and fetch everything fresh (e.g. right after a new
 Minecraft version releases).
 
----
-
----
-
 ## 6. Reading the report
 
 Here is a typical report, annotated:
 
 ```
-⚡ Datapack Version Checker v0.4.0 (content + load-range + structural + auto-fix)
+⚡ dpcheck v0.7.0 (content + load-range + structural + semantic format + registry deprecation + auto-fix + analysis)
 ══════════════════════════════════════════════════════════
 
 📦 Declared load range (pack.mcmeta): 1.19.3 – 1.19.3
@@ -531,120 +527,73 @@ declared 26.x versions work.
 
 ## 9. How the tool actually works
 
-In plain terms (datapack mode):
+All data (command trees, registries, mcdoc schemas, breaking changes) is cached
+locally for 24 hours so re-runs are fast and work offline. Use `--refresh` to
+force a fresh download.
 
-1. **Gather version data.** It asks the Spyglass API for the list of Minecraft
-   versions, and for each version it can fetch the **command tree** (the full
-   list of valid commands and their arguments) and the **registries** (lists of
-   valid entity types, items, biomes, etc.).
+### Datapack mode
 
-2. **Read your datapack.** It scans every `.mcfunction` file and every `.json`
-   file under `data/`.
+1. **Gather version data.** Fetch the list of Minecraft versions, command trees,
+   registries, and vanilla-mcdoc schema from the Spyglass API.
 
-3. **Check commands.** For each command line, it splits the command into tokens
-   and "walks" down the version's command tree to see if the command is valid in
-   that version.
+2. **Read the pack.** Scan every `.mcfunction` and `.json` file under `data/`.
 
-4-8: Same as below, applied to `data/` content.
+3. **Check JSON values.** Validate each JSON string against the version's
+   registries (entity types, items, biomes, etc.), with guards against common
+   false positives.
 
----
+4. **Check JSON structure (mcdoc).** Validate each file against the
+   [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema for that
+   version — field names, dispatch `type` values, and `#[since]`/`#[until]`
+   version gating for 70+ datapack types.
 
-For resource pack mode:
+5. **Check JSON semantics (integrated into mcdoc).** Version-aware checks for
+   predicate field renames (`alternative`/`any_of`, `requirements`/`all_of` in
+   1.20), damage boolean flag removal (1.19.4), biome precipitation format
+   changes (1.19.4), loot function type requirements (1.17/1.18), and recipe
+   result key renames (`item`/`id` in 1.20.5).
 
-1. **Read your resource pack.** It scans every `.json`, `.png`, and `.mcmeta`
-   file under `assets/`.
+6. **Check registry deprecations.** If `pack.mcmeta` declares a source version,
+   compare its registries against each target version — report entries that
+   were removed.
 
-2. **Check JSON (values).** Same registry validation as datapack mode.
+7. **Check commands.** Tokenize each command line and walk it against the
+   version's Brigadier command tree (following redirects like `tp` → `teleport`).
 
-3. **Check JSON (structure).** For resource pack JSON, it uses the same
-   vanilla-mcdoc schema but routes files to **resource-specific types**:
-   `model`, `block_definition`, `sounds`, `atlas`, `particle`, `font`,
-   `shader`, `lang`, `texture_meta`, `item_model`, and more. Each type has
-   its own dispatch variants with `#[since]`/`#[until]` version gating.
+8. **Apply knowledge rules.** Version-gated features (e.g. item components need
+   1.20.5+, `/dialog` needs 1.21.6+) override the lenient walker and are
+   reported as breaks on older versions.
 
-4. **Apply knowledge rules.** Resource-specific rules surface model format
-   changes (e.g. rotation requires 1.16+), atlas/palette additions (1.19.4+),
-   sound field versioning (e.g. `replace` requires 1.16.2+), font provider
-   fields (e.g. `advancements` requires 1.20.5+), and more.
+9. **Analyze dependency graph.** Build a resource index of all functions, JSON
+   files, tags, and models; trace cross-file references (function calls, loot
+   table refs, advancement rewards, tag members, model parents, texture refs);
+   detect orphans (dead code), broken refs (typos), and circular dependencies
+   (A→B→A loops); compute pack metrics.
 
-5-7: Same steps as datapack mode.
+10. **Pull breaking changes.** Fetch community-curated notes from
+    [misode/technical-changes](https://github.com/misode/technical-changes)
+    per version and show as informational notes.
 
----
+11. **Combine with `pack.mcmeta`.** The declared load range tells us which
+    versions Minecraft will load the pack on. The content check tells us where
+    it breaks.
 
-**General steps (both modes):**
+### Resource pack mode
 
-4. **Check JSON (values).** For each JSON value, it checks whether the string is a
-   valid entry in that version's registries (e.g. an entity type like `minecraft:pig`).
-   It has guards to avoid false positives (for example `this` is a selector
-   keyword, not an entity type).
+1. **Read the pack.** Scan every `.json`, `.png`, and `.mcmeta` file under
+   `assets/`.
 
- 4b. **Check JSON (registry deprecations).** When a pack's `pack.mcmeta` declares
-    a source version range, the tool also fetches the **source version's registries**
-    and compares them against each target version's registries. If an entry (item,
-    entity type, biome, etc.) exists in the source but was REMOVED from the target,
-    it's reported as a **registry deprecation** — meaning the pack uses something
-    that used to exist but no longer does.
+2-3. **Check JSON values + mcdoc.** Same as datapack steps 3-5, but routes
+   files to resource-specific types (`model`, `block_definition`, `sounds`,
+   `atlas`, `particle`, `font`, `shader`, `lang`, `texture_meta`,
+   `item_definition`, `equipment`, `post_effect`, etc.).
 
- 4c. **Check JSON (structure).** The tool validates the file's **structure** against
-     the official [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc)
-     schema for that exact version. The full mcdoc schema is downloaded live (as a
-     tarball) from Spyglass and cached. Files are routed to the correct schema type
-     based on their path (e.g. `data/**/recipe/*.json` → `recipe`,
-     `data/**/damage_type/*.json` → `damage_type`,
-     `assets/**/models/*.json` → `model`,
-     `assets/**/items/*.json` → `item_definition`,
-     `assets/**/shaders/post/*.json` → `post_effect`). 70+ datapack and resource pack types are covered. For each version it:
+4. **Apply resource knowledge rules.** Resource-specific rules for model format
+   changes, atlas/palette additions, sound field versioning, font provider
+   fields, and more.
 
-     - confirms that top-level and nested **field names** actually exist in that
-       version (e.g. a loot table `random_sequence` field only exists since 1.20);
-     - confirms that **dispatch `type` values** are valid for that version (e.g. a
-       `minecraft:crafting_dye` recipe only exists since 26.1);
-     - respects every `#[since]` / `#[until]` version gate in the schema.
-
-     The parser is deliberately tolerant: mcdoc constructs it can't fully parse are
-     treated as "allowed", so the tool reports **real** breaks rather than
-     fabricating false positives.
-
- 4d. **Check JSON (semantic format — integrated into mcdoc).** Beyond structural
-     validation, the tool performs **version-aware semantic checks** on JSON
-     field names and layout that changed across MC versions. These are reported
-     under the same `mcdoc` source tag as structural issues:
-
-     - **Predicate field renames**: `alternative` → `any_of` and
-       `requirements` → `all_of` (1.20 boundary — flags incorrect format
-       in both directions).
-     - **Damage predicate flags**: `bypasses_armor`, `is_fire`, `is_explosion`
-       etc. removed in 1.19.4, replaced by damage type tags.
-     - **Biome precipitation**: `"precipitation": "rain"` (string) →
-       `"has_precipitation": true` (boolean) in 1.19.4.
-     - **Loot function type requirements**: `set_damage` needs a `type` field
-       since 1.17; `set_contents` and `set_loot_table` since 1.18.
-     - **Recipe result keys**: `"item": "minecraft:diamond"` →
-       `"id": "minecraft:diamond"` in 1.20.5. Only checks objects under
-       the `result` or `output` key to avoid false positives on ingredients.
-
-     These checks run as part of mcdoc validation for every JSON file in the
-     version loop, on both server and browser engines. Source:
-     `src/json-format-check.ts` / `web/src/engine/json-format-check.ts`.
-
-5. **Apply knowledge rules.** Some features are version-gated in ways the tree
-   alone doesn't show (e.g. item components need 1.20.5). A curated rule list
-   (**the knowledge base**) overrides the lenient walker and reports these as
-   breaks on older versions. Resource pack mode has its own knowledge rules in
-   `src/resource-knowledge.ts`.
-
-6. **Pull breaking changes.** For each version checked, the tool fetches
-   community-curated breaking changes from
-   [misode/technical-changes](https://github.com/misode/technical-changes)
-   (tagged `breaking`) and shows them as informational notes.
-
-7. **Combine with `pack.mcmeta`.** The declared load range tells us which
-   versions Minecraft will even *load* the pack on. The content check tells us
-   where it would *break*. Resource pack mode uses `resource_pack_version`
-   from the Spyglass version data rather than `data_pack_version`.
-
-8. **Cache everything.** Command trees, registries, and breaking changes are
-   cached locally for 24 hours. Use `--refresh` to force a fresh download.
+5-8. **Same as datapack steps 6-11** (deprecations, knowledge, analyzer,
+   breaking changes, `pack.mcmeta`).
 
 ### Why `pack.mcmeta` is used but not trusted
 
@@ -693,7 +642,7 @@ Examples of rules included:
 | `/posteffect` | 26.3 |
 
 This list is **not exhaustive** — Minecraft has hundreds of changes across
-versions. New rules are added over time. See section 11 if you want to add your
+versions. New rules are added over time. See section 12 if you want to add your
 own.
 
 ---
@@ -705,7 +654,6 @@ You pointed `--dir` at the wrong folder. Point it at the folder that contains
 `pack.mcmeta`.
 
 **GUI shows nothing / blank screen after running a check**
-The pack may have no `deprecation_issues` field. This was fixed in v0.6.0+.
 Rebuild with `npm run build` and make sure your browser cache is cleared.
 
 **"Could not fetch command tree" / network errors**
@@ -782,6 +730,13 @@ datapack-version-checker/
 │       │   └── types.ts          # Shared types (browser-compatible)
 │       └── components/
 │           └── Results.tsx  # Results display (version rows, issues, knowledge, analysis section)
+├── tests/
+│   ├── walker.test.ts          # Command walker tests
+│   ├── tokenizer.test.ts       # Tokenizer tests
+│   ├── pack-mcmeta.test.ts     # pack.mcmeta reader tests
+│   ├── mcdoc.test.ts           # mcdoc validation tests
+│   ├── json-format-check.test.ts # Semantic format check tests
+│   └── analyzer.test.ts        # Dependency graph analyzer tests
 ├── web/dist/             # Built frontend (served by `serve` command)
 └── dist/                 # Compiled server (after npm run build)
 ```
@@ -792,6 +747,14 @@ datapack-version-checker/
 npm install
 npm run build
 node dist/index.js --dir <datapack> [options]
+```
+
+### Running tests
+
+```bash
+npx vitest run        # run all tests
+npx vitest watch      # run in watch mode
+npx vitest run tests/analyzer.test.ts  # run a specific test file
 ```
 
 ### Adding a knowledge rule

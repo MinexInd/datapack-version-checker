@@ -78,7 +78,7 @@ Point it at a datapack folder (the folder that contains `pack.mcmeta`):
 node dist/index.js --dir "C:\Path\To\Your\Datapack"
 ```
 
-That's it. The tool prints a report (see [Sample output](#sample-output)).
+That's it. The tool prints a report showing compatibility, issues, and pack analysis.
 
 ---
 
@@ -177,8 +177,18 @@ node dist/index.js --dir "./my-pack" --mode auto
 ## How to read the report
 
 ```
-⚡ dpcheck v0.6.0 (content + load-range + structural + semantic format + registry deprecation + auto-fix)
+⚡ dpcheck v0.7.0 (content + load-range + structural + semantic format + registry deprecation + auto-fix + analysis)
 ══════════════════════════════════════════════════════════
+
+--- Pack Analysis ---
+Resources: 12 indexed
+  7 Functions, 5 JSON files
+  9 Commands, 1 Avg cmds/fn
+  Max exec depth: 0
+  Largest function: data/demo/functions/helper.mcfunction (5 lines)
+  Namespaces: demo (12)
+  12 cross-file references found
+  4 Orphans, 1 Broken ref, 1 Circular dep
 
 📦 Declared load range (pack.mcmeta): 1.19.3 – 1.19.3
 📋 Minimum version from content: 1.20.5
@@ -189,11 +199,12 @@ node dist/index.js --dir "./my-pack" --mode auto
 ⛔ Outside declared load range (won't load): 1.20.5, 1.20.6
 ```
 
-- **Declared load range** — what `pack.mcmeta` says Minecraft will load.
-- **Minimum version from content** — the *actual* oldest version the content can run on, based on the features it uses. If this is **newer** than the declared range, your `pack.mcmeta` is lying.
-- **Fully compatible** — versions where the pack both *loads* and has *no detected content breaks*.
-- **Outside declared load range** — versions where Minecraft wouldn't even load the pack (the `pack_format` doesn't match).
-- **Content breaks** — versions where the pack loads but specific commands/JSON would fail.
+- **Pack Analysis** — dependency graph snapshot: resource count by type, metrics, cross-file references, orphans (dead code), broken refs (typos), circular deps (A→B→A loops)
+- **Declared load range** — what `pack.mcmeta` says Minecraft will load
+- **Minimum version from content** — the *actual* oldest version the content can run on. If this is **newer** than the declared range, your `pack.mcmeta` is lying
+- **Fully compatible** — versions where the pack both *loads* and has *no detected content breaks*
+- **Outside declared load range** — versions where Minecraft wouldn't even load the pack (the `pack_format` doesn't match)
+- **Content breaks** — versions where the pack loads but specific commands/JSON would fail
 
 Each break lists the **file + line** and a **fix** suggestion:
 
@@ -216,7 +227,8 @@ At the end, a **"WHY THIS VERSION RANGE"** section explains which community-know
  3. **Validate** JSON string values against the target version's registries (entity types, items, etc.), with guards against common false positives.
  4. **Structurally validate** datapack JSON (`recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`) against the target version's [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema.
  5. **Semantic format checks** — version-aware validation of JSON field names and structures that changed between versions: predicate field renames, damage flags, biome precipitation, loot function type requirements, and recipe result key formats.
- 6. **Apply knowledge rules** — a feature that was added in a later version overrides the lenient walker and is reported as a break on older versions.
+ 6. **Analyze dependency graph** — build a resource index, trace cross-file references, detect orphans, broken refs, and circular dependencies.
+ 7. **Apply knowledge rules** — a feature added in a later version overrides the lenient walker and is reported as a break on older versions.
 
  **Resource pack mode** (`assets/`):
  1. **Scan** all `assets/**/*.json`, `*.png`, and `*.mcmeta` files.
@@ -225,8 +237,8 @@ At the end, a **"WHY THIS VERSION RANGE"** section explains which community-know
  4. **Apply resource knowledge rules** — model features, atlas sources, font provider fields, etc.
 
  **Both modes:**
- 7. **Pull breaking changes** per version from [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated, auto-updating) and show them as informational notes.
- 8. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range.
+  8. **Pull breaking changes** per version from [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated, auto-updating) and show them as informational notes.
+  9. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range.
 
 All downloaded data is **cached locally** (24h) so re-runs are fast and work offline; use `--refresh` to force an update.
 
