@@ -13,11 +13,12 @@ It is written for **beginners** — no programming experience required beyond op
 4. [Running your first check](#4-running-your-first-check)
 5. [Understanding the command options](#5-understanding-the-command-options)
 6. [Reading the report](#6-reading-the-report)
-7. [Worked examples (real datapacks)](#7-worked-examples-real-datapacks)
-8. [How the tool actually works](#8-how-the-tool-actually-works)
-9. [The knowledge base (version-change rules)](#9-the-knowledge-base-version-change-rules)
-10. [Troubleshooting](#10-troubleshooting)
-11. [For developers](#11-for-developers)
+7. [Pack analysis (dependency graph)](#7-pack-analysis-dependency-graph)
+8. [Worked examples (real datapacks)](#8-worked-examples-real-datapacks)
+9. [How the tool actually works](#9-how-the-tool-actually-works)
+10. [The knowledge base (version-change rules)](#10-the-knowledge-base-version-change-rules)
+11. [Troubleshooting](#11-troubleshooting)
+12. [For developers](#12-for-developers)
 
 ---
 
@@ -377,7 +378,109 @@ WHY THIS VERSION RANGE (community knowledge):
 
 ---
 
-## 7. Worked examples (real datapacks)
+## 7. Pack analysis (dependency graph)
+
+When you run a check, the tool also builds a **dependency graph** of your pack and shows a summary at the top of the report. This section explains what each part means.
+
+### What it shows
+
+```
+--- Pack Analysis ---
+Resources: 12 indexed
+  7 Functions, 5 JSON files
+  9 Commands, 1 Avg cmds/fn
+  Max exec depth: 0
+  Largest function: data/demo/functions/helper.mcfunction (5 lines)
+  Namespaces: demo (12)
+
+  12 cross-file references found
+  4 Orphans
+  1 Broken references
+  1 Circular dependency
+```
+
+### Resource types detected
+
+The tool scans every `.mcfunction` and `.json` file under `data/` and `assets/` and classifies them by path:
+
+| Type | Detected from path |
+|------|-------------------|
+| `function` | `data/*/functions/` |
+| `tag/function`, `tag/block`, `tag/item`, etc. | `data/*/tags/` |
+| `advancement` | `data/*/advancements/` |
+| `predicate` | `data/*/predicates/` |
+| `item_modifier` | `data/*/item_modifiers/` |
+| `loot_table` | `data/*/loot_tables/` |
+| `recipe` | `data/*/recipes/` |
+| `worldgen/biome`, `worldgen/configured_feature`, etc. | `data/*/worldgen/*/` |
+| `model` | `assets/*/models/` |
+| `texture` | `assets/*/textures/` |
+| `blockstate` | `assets/*/blockstates/` |
+
+### Cross-file references
+
+The tool traces how files reference each other:
+
+- **Function calls**: `/function namespace:path` and `/schedule function namespace:path`
+- **Predicate refs**: `/execute if|unless predicate namespace:path`
+- **Loot table refs**: `/loot namespace:path` and `"loot_table"` keys in JSON
+- **Advancement rewards**: `"function"` key in advancement JSON
+- **Recipe items**: `"item"` and `"result"` keys in recipe JSON
+- **Tag members**: `"values"` array in tag JSON
+- **Model parents/textures**: `"parent"` and `"textures"` keys in model JSON
+
+### Orphans
+
+Resources that are defined but **never referenced** by anything else in the pack. Common examples:
+
+- A `.mcfunction` file that no other function calls
+- A loot table not referenced by any block, entity, or advancement
+- An advancement with no parent or reward chain
+
+**Tags are excluded** from orphan detection because the game loads them by registry name, not by file reference. Vanilla resource references (like `minecraft:iron_ingot`) are also excluded.
+
+Use orphans to find **dead code** — files you might have forgotten to delete or that are no longer needed.
+
+### Broken references
+
+References that point to files **that don't exist** in the pack. For example:
+
+- `function mypack:do_stuff` but the file is `data/mypack/functions/do_stuf.mcfunction`
+- A loot table condition referencing `minecraft:random_chance` — this is a **vanilla reference**, not actually broken, but shown because the tool can't resolve it outside the pack
+
+Use broken refs to catch **typos** in function calls and JSON paths.
+
+### Circular dependencies
+
+When function A calls function B, and function B calls function A (directly or through a chain), that's a circular dependency. In-game this causes an **infinite loop** that freezes or crashes Minecraft.
+
+The tool detects cycles of any length and reports the full loop path:
+```
+data/demo/functions/loop_a.mcfunction → data/demo/functions/loop_b.mcfunction → data/demo/functions/loop_a.mcfunction
+```
+
+### Metrics
+
+- **Functions** — total `.mcfunction` files
+- **JSON files** — total `.json` data files (non-function, non-texture, non-model)
+- **Commands** — total executable command lines across all functions
+- **Avg cmds/fn** — average commands per function (rounded)
+- **Max exec depth** — deepest `/execute ... run` nesting found
+- **Largest function** — the function with the most lines
+
+### Porting plans
+
+When using `--fix <target>`, the tool first generates a **porting plan** showing every rewrite it will perform, plus:
+
+- **Cascade effects** — files that depend on a file being rewritten (so you know the ripple effect)
+- **Manual attention items** — features that need a rewrite but no automated rule exists yet
+- **Summary** — total actions, auto-fixable count, manual count, files affected
+
+The plan runs before any file is modified, so you can review what will change.
+
+---
+
+## 8. Worked examples (real datapacks)
 
 These are the three datapacks the tool was tested against.
 
@@ -419,7 +522,7 @@ declared 26.x versions work.
 
 ---
 
-## 8. How the tool actually works
+## 9. How the tool actually works
 
 In plain terms (datapack mode):
 
@@ -547,7 +650,7 @@ For resource pack mode:
 
 ---
 
-## 9. The knowledge base (version-change rules)
+## 10. The knowledge base (version-change rules)
 
 The knowledge base is a curated list in `src/knowledge.ts`. Each rule says:
 *"if the datapack uses feature X, it needs at least version Y."*
@@ -588,7 +691,7 @@ own.
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 **"Error: No pack.mcmeta found"**
 You pointed `--dir` at the wrong folder. Point it at the folder that contains
@@ -617,7 +720,7 @@ That's expected — the underlying command data has small gaps. Use the default
 
 ---
 
-## 11. For developers
+## 12. For developers
 
 ### Project layout
 
@@ -631,6 +734,7 @@ datapack-version-checker/
 │   ├── index.ts          # CLI entry point + argument parsing + serve
 │   ├── server.ts         # Express web server (GUI backend + API)
 │   ├── engine.ts         # Main compatibility engine
+│   ├── analyzer.ts       # Dependency graph analyzer (resource index, orphans, circular deps, porting plans)
 │   ├── fixer.ts          # Auto-fix / porting engine
 │   ├── api.ts            # Spyglass API client
 │   ├── tokenizer.ts      # Command line tokenizer
@@ -656,6 +760,7 @@ datapack-version-checker/
 │       ├── api.ts        # Frontend API client + TypeScript types
 │       ├── engine/
 │       │   ├── engine.ts         # Browser-side compatibility engine
+│       │   ├── analyzer.ts       # Dependency graph analyzer (browser-compatible)
 │       │   ├── json-check.ts     # Registry validation (browser-compatible)
 │       │   ├── json-format-check.ts # Format checks (browser-compatible)
 │       │   ├── mcdoc-check.ts    # mcdoc validation (browser-compatible)
@@ -669,7 +774,7 @@ datapack-version-checker/
 │       │   ├── logger.ts         # Logger (browser-compatible)
 │       │   └── types.ts          # Shared types (browser-compatible)
 │       └── components/
-│           └── Results.tsx  # Results display (version rows, issues, knowledge)
+│           └── Results.tsx  # Results display (version rows, issues, knowledge, analysis section)
 ├── web/dist/             # Built frontend (served by `serve` command)
 └── dist/                 # Compiled server (after npm run build)
 ```

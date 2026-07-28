@@ -36,7 +36,9 @@ This tool answers that question by:
 - ✅ Detects when `pack.mcmeta` is **wrong** (e.g. declares 1.19.3 but uses 1.20.5 features)
 - ✅ Lists the exact file + line of every break, with a suggested fix
 - ✅ Shows **community-curated breaking changes** per version (from [misode/technical-changes](https://github.com/misode/technical-changes)) — so you know what changes when updating to each version
-- ✅ **Auto-fix / porting** — `--fix <target>` rewrites commands (including inside `/execute run` and `$()` macros), removes invalid JSON fields via mcdoc schemas, converts advancement icons, and updates `pack.mcmeta` to port your datapack **or resource pack** to any target version
+- ✅ **Dependency graph analysis** — builds a full resource index of all functions, loot tables, advancements, predicates, recipes, tags, and worldgen files; traces cross-file references (function calls, loot table refs, advancement rewards, predicate refs, tag members, model parents, texture refs); detects **orphaned resources** (dead code), **broken references** (typos/missing files), and **circular dependencies** (A→B→A loops)
+- ✅ **Pack metrics** — total functions/JSON files/commands, avg commands per function, max execute depth, largest function, namespace distribution
+- ✅ **Porting plan** — `--fix <target>` generates a detailed plan showing every command rewrite needed, cascade effects (rewriting X will affect Y files), and manual-attention items for features with no auto-fix; then rewrites commands (including inside `/execute run` and `$()` macros), removes invalid JSON fields via mcdoc schemas, converts advancement icons, and updates `pack.mcmeta` to port your datapack **or resource pack** to any target version
 - ✅ Works on releases **and** snapshots
 - ✅ **Local caching** of all version data (fast re-runs, works offline) with `--refresh` to force re-download
 - ✅ JSON output (`--json`) for scripting/CI
@@ -132,6 +134,7 @@ Open **http://localhost:3001/** in your browser.
 The Check results show:
 - **Summary cards** — compatible, broken, outside-range, and total-issue counts
 - **Version rows** — expand each version to see **command issues**, **registry issues**, **structural (mcdoc) issues**, **registry deprecations**, and **breaking changes**
+- **Analysis section** — dependency graph snapshot showing resource counts by type, namespace pills, cross-file references, orphaned resources, broken references, and circular dependencies
 - **Knowledge hits** — community rules that set the minimum version
 - All lists are **scrollable** (showing 5 items) with custom dark scrollbars
 
@@ -249,6 +252,7 @@ See [`docs.md`](./docs.md) for the full technical details.
 - Registry deprecation detection only fires when checking versions NEWER than the datapack's declared `pack.mcmeta` range. When the source version is unknown (no `pack.mcmeta` range), deprecation detection is skipped.
 - The knowledge base covers the most common breaking changes; it is not an exhaustive list of every MC change. Contributions welcome.
 - **Auto-fix mode** (`--fix`) rewrites commands and JSON based on known patterns, including commands nested inside `/execute run` and `$()` macros. It is conservative — commands that can't be rewritten are commented out (with `## FIXED(...): original command`) rather than deleted. JSON structural fixes remove fields invalid for the target version using the mcdoc schema. Works for both datapacks and resource packs.
+- **Dependency graph analysis** is file-system based (server) or `PackFileMap` based (web). It detects references within your pack but cannot resolve vanilla Minecraft references (e.g., `minecraft:iron_ingot` will show as a broken ref if not declared in the pack). Tags (`tags/`) are excluded from orphan detection since they're loaded by the game engine by registry path.
 
 ---
 
