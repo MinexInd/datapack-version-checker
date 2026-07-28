@@ -82,6 +82,7 @@ interface KnowledgeHit {
   file?: string
   line?: number
   text?: string
+  snippet?: string
 }
 
 function applyKnowledgeRules(
@@ -94,15 +95,15 @@ function applyKnowledgeRules(
     for (const rule of FEATURE_RULES) {
       if (rule.type === 'command') {
         if (cmd.root === rule.match || cmd.root.replace(/^\//, '') === rule.match) {
-          hits.push({ rule, file: cmd.file, line: cmd.line, text: cmd.text })
+          hits.push({ rule, file: cmd.file, line: cmd.line, text: cmd.text, snippet: getSnippet(files[cmd.file] ?? '', cmd.line) })
         }
       } else if (rule.type === 'command_pattern') {
         if (new RegExp(rule.match).test(cmd.text)) {
-          hits.push({ rule, file: cmd.file, line: cmd.line, text: cmd.text })
+          hits.push({ rule, file: cmd.file, line: cmd.line, text: cmd.text, snippet: getSnippet(files[cmd.file] ?? '', cmd.line) })
         }
       } else if (rule.type === 'function_macro') {
         if (new RegExp(rule.match).test(cmd.text)) {
-          hits.push({ rule, file: cmd.file, line: cmd.line, text: cmd.text })
+          hits.push({ rule, file: cmd.file, line: cmd.line, text: cmd.text, snippet: getSnippet(files[cmd.file] ?? '', cmd.line) })
         }
       }
     }
@@ -502,6 +503,7 @@ export async function checkCompatibilityContentBased(
           line: hit.line ?? 0,
           command: hit.rule.id,
           issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
+          snippet: hit.snippet,
         })
       }
     }
@@ -718,6 +720,7 @@ export async function checkResourcePack(
           line: 0,
           command: hit.rule.id,
           issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
+          snippet: hit.snippet,
         })
       }
     }

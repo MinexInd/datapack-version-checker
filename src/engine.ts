@@ -548,11 +548,16 @@ async function checkPackCore(
         for (const cmd of commands) {
           const res = validateCommand(cmd.text, tree, !strict)
           if (!res.valid) {
+            let snippet: string | undefined
+            try {
+              snippet = getSnippet(readFileSync(join(packDir, cmd.file), 'utf-8'), cmd.line)
+            } catch {}
             mcfunctionIssues.push({
               file: cmd.file,
               line: cmd.line,
               command: cmd.root,
               issue: `Invalid in ${ver.name}: ${res.reason ?? 'syntax error'}`,
+              snippet,
             })
           }
         }
@@ -614,11 +619,20 @@ async function checkPackCore(
       const ruleMinDv = versionNameToDataVersion(hit.rule.minVersion, allVersions)
       if (ruleMinDv !== null && ver.data_version < ruleMinDv && !seenRules.has(hit.rule.id)) {
         seenRules.add(hit.rule.id)
+        let snippet: string | undefined
+        if (hit.file && hit.line) {
+          try {
+            const fullPath = join(packDir, hit.file)
+            const fileContent = readFileSync(fullPath, 'utf-8')
+            snippet = getSnippet(fileContent, hit.line)
+          } catch {}
+        }
         knowledgeIssues.push({
           file: hit.file ?? '(content)',
           line: hit.line ?? 0,
           command: hit.rule.id,
           issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
+          snippet,
         })
       }
     }
