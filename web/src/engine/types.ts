@@ -51,6 +51,7 @@ export interface McfunctionIssue {
   line: number
   command: string
   issue: string
+  snippet?: string
 }
 
 export interface RegistryIssue {

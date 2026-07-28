@@ -37,6 +37,17 @@ function findMcfunctionFiles(files: PackFileMap): string[] {
   return Object.keys(files).filter(k => k.startsWith('data/') && k.endsWith('.mcfunction'))
 }
 
+function getSnippet(fileContent: string, line: number, context: number = 3): string {
+  const lines = fileContent.split('\n')
+  const start = Math.max(0, line - 1 - context)
+  const end = Math.min(lines.length, line + context)
+  return lines.slice(start, end).map((l, i) => {
+    const num = start + i + 1
+    const marker = num === line ? '> ' : '  '
+    return `${marker}${String(num).padStart(3, ' ')} | ${l}`
+  }).join('\n')
+}
+
 function findJsonFiles(files: PackFileMap): string[] {
   return Object.keys(files).filter(k =>
     k.startsWith('data/') && k.endsWith('.json') && !k.endsWith('/pack.mcmeta') && k !== 'pack.mcmeta'
@@ -411,6 +422,7 @@ export async function checkCompatibilityContentBased(
             line: cmd.line,
             command: cmd.root,
             issue: `Invalid in ${ver.name}: ${res.reason ?? 'syntax error'}`,
+            snippet: getSnippet(files[cmd.file] ?? '', cmd.line),
           })
         }
       }

@@ -77,6 +77,17 @@ function scanCommands(files: string[], baseDir: string): CommandLine[] {
   return cmds
 }
 
+function getSnippet(fileContent: string, line: number, context: number = 3): string {
+  const lines = fileContent.split('\n')
+  const start = Math.max(0, line - 1 - context)
+  const end = Math.min(lines.length, line + context)
+  return lines.slice(start, end).map((l, i) => {
+    const num = start + i + 1
+    const marker = num === line ? '> ' : '  '
+    return `${marker}${String(num).padStart(3, ' ')} | ${l}`
+  }).join('\n')
+}
+
 interface KnowledgeHit {
   rule: FeatureRule
   file?: string

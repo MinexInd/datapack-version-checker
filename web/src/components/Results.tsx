@@ -37,7 +37,7 @@ function issueCounts(v: VersionCompatibility): IssueCounts {
 }
 
 type FlatIssue =
-  | { kind: 'cmd'; file: string; line: number; command: string; issue: string }
+  | { kind: 'cmd'; file: string; line: number; command: string; issue: string; snippet?: string }
   | { kind: 'reg'; file: string; registry: string; entry: string; issue: string }
   | { kind: 'struct'; file: string; issue: string }
   | { kind: 'ref'; file: string; line?: number; reference: string; issue: string; code?: string }
@@ -47,7 +47,7 @@ type FlatIssue =
 function flattenIssues(v: VersionCompatibility): FlatIssue[] {
   const issues: FlatIssue[] = []
   for (const i of v.mcfunction_issues ?? []) {
-    issues.push({ kind: 'cmd', file: i.file, line: i.line, command: i.command, issue: i.issue })
+    issues.push({ kind: 'cmd', file: i.file, line: i.line, command: i.command, issue: i.issue, snippet: i.snippet })
   }
   for (const i of v.registry_issues ?? []) {
     issues.push({ kind: 'reg', file: i.file, registry: i.registry, entry: i.entry, issue: i.issue })
@@ -106,6 +106,9 @@ function IssueItem({ issue, idx }: { issue: FlatIssue; idx: number }) {
       <div className="issue-item-body">{issue.issue}</div>
       {issue.kind === 'cmd' && 'command' in issue && issue.command && (
         <code className="issue-cmd">{issue.command}</code>
+      )}
+      {issue.kind === 'cmd' && 'snippet' in issue && issue.snippet && (
+        <pre className="issue-snippet">{issue.snippet}</pre>
       )}
       {issue.kind === 'reg' && (
         <code className="issue-cmd">{issue.registry} → {issue.entry}</code>
