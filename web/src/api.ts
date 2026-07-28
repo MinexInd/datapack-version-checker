@@ -2,6 +2,9 @@ import { fetchVersions as engineFetchVersions } from './engine/api'
 import { checkCompatibilityContentBased, checkResourcePack, type ProgressCallback } from './engine/engine'
 import { fixDatapack, fixResourcePack } from './engine/fixer'
 import type { PackFileMap as EngineFileMap } from './engine/engine'
+import type { AnalysisResult } from './engine/analyzer'
+
+export type { AnalysisResult }
 import JSZip from 'jszip'
 
 export type PackFileMap = Record<string, string>
@@ -105,6 +108,7 @@ export interface CheckResult {
   min_version: string | null
   knowledge_hits: KnowledgeHit[]
   load_range: LoadRange | null
+  analysis: AnalysisResult | null
 }
 
 export interface CheckRequest {

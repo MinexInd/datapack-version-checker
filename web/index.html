@@ -1103,6 +1103,62 @@
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
     }
 
+    /* --- Analysis section --- */
+    .analysis-section h2 { margin-bottom: 14px; }
+    .section-icon.purple { color: #a78bfa; }
+
+    .ref-type-grid {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;
+    }
+    .ref-type-pill {
+      font-size: 0.72rem; font-family: var(--mono);
+      padding: 3px 10px; border-radius: 14px;
+      background: var(--bg-elev-2); border: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+
+    .namespace-pill {
+      display: inline-block; font-size: 0.76rem; font-family: var(--mono);
+      padding: 2px 8px; border-radius: 8px; margin: 0 3px;
+      background: var(--bg-elev-2); border: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+
+    .orphan-list {
+      margin-top: 8px; max-height: 300px; overflow-y: auto;
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px; background: var(--bg-elev-1);
+    }
+    .orphan-type-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 4px 0; border-bottom: 1px solid var(--border-faint);
+      font-size: 0.82rem;
+    }
+    .orphan-type-header:last-child { border-bottom: none; }
+    .orphan-type { font-family: var(--mono); color: var(--text-dim); }
+    .orphan-count {
+      font-size: 0.72rem; font-weight: 600;
+      color: var(--red); background: var(--red-bg);
+      padding: 1px 8px; border-radius: 10px;
+    }
+
+    .broken-ref-item {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 0.78rem; font-family: var(--mono);
+      padding: 3px 0; color: var(--text-dim);
+    }
+    .broken-ref-from { color: var(--text); }
+    .broken-ref-arrow { color: var(--red); font-weight: 700; }
+    .broken-ref-to { color: var(--red); }
+    .broken-ref-type { color: var(--text-faint); font-size: 0.7rem; margin-left: 4px; }
+
+    .circular-dep-item {
+      font-size: 0.78rem; font-family: var(--mono);
+      padding: 4px 0; color: var(--text-dim);
+    }
+    .circular-dep-file { color: var(--amber); font-weight: 600; }
+    .circular-dep-arrow { color: var(--red); }
+
     /* --- Footer --- */
     .app-footer {
       text-align: center;

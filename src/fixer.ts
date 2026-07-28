@@ -27,7 +27,7 @@ export interface FixFileResult {
 // Each strategy applies when porting FROM sourceVer TO targetVer
 // ---------------------------------------------------------------------------
 
-interface CmdRewrite {
+export interface CmdRewrite {
   id: string
   /** Match command root (e.g. 'item', 'place') */
   matchRoot: string
@@ -45,7 +45,7 @@ interface CmdRewrite {
   targetSince?: string
 }
 
-const CMD_REWRITES: CmdRewrite[] = [
+export const CMD_REWRITES: CmdRewrite[] = [
   // ---- /item -> /replaceitem (backport pre-1.20.5) ----
   {
     id: 'item_to_replaceitem',

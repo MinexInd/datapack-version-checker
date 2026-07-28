@@ -9,6 +9,7 @@ import type {
   StructuralIssue,
   ReferenceIssue,
   RegistryDeprecation,
+  AnalysisResult,
 } from '../api'
 
 interface Props {
@@ -309,6 +310,154 @@ function exportMarkdown(result: CheckResult) {
   downloadFile('dpcheck-report.md', lines.join('\n'), 'text/markdown')
 }
 
+function AnalysisSection({ analysis }: { analysis: AnalysisResult }) {
+  const [expanded, setExpanded] = useState(false)
+  const m = analysis.metrics
+  const orphansByType = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const o of analysis.orphans) {
+      map.set(o.type, (map.get(o.type) ?? 0) + 1)
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1])
+  }, [analysis.orphans])
+
+  const refsByType = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const r of analysis.references) {
+      map.set(r.type, (map.get(r.type) ?? 0) + 1)
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1])
+  }, [analysis.references])
+
+  return (
+    <div className="card analysis-section">
+      <h2>
+        <span className="section-icon purple">A</span>
+        Pack Analysis
+        <span className="sub">{m.totalResources} resources indexed</span>
+      </h2>
+
+      <div className="stats">
+        <div className="stat blue">
+          <div className="num">{m.totalFunctions}</div>
+          <div className="label">Functions</div>
+        </div>
+        <div className="stat blue">
+          <div className="num">{m.totalJsonFiles}</div>
+          <div className="label">JSON files</div>
+        </div>
+        <div className="stat blue">
+          <div className="num">{m.totalCommands}</div>
+          <div className="label">Commands</div>
+        </div>
+        <div className="stat blue">
+          <div className="num">{m.avgCommandsPerFunction}</div>
+          <div className="label">Avg cmds/fn</div>
+        </div>
+        <div className="stat blue">
+          <div className="num">{m.maxExecuteDepth}</div>
+          <div className="label">Max exec depth</div>
+        </div>
+        <div className="stat red">
+          <div className="num">{analysis.orphans.length}</div>
+          <div className="label">Orphans</div>
+        </div>
+        <div className="stat red">
+          <div className="num">{analysis.brokenRefs.length}</div>
+          <div className="label">Broken refs</div>
+        </div>
+        <div className="stat red">
+          <div className="num">{analysis.circularDeps.length}</div>
+          <div className="label">Circular deps</div>
+        </div>
+      </div>
+
+      {m.largestFunction && (
+        <div className="meta-line">
+          Largest function: <b>{m.largestFunction.file}</b> ({m.largestFunction.lines} lines)
+        </div>
+      )}
+
+      {Object.keys(m.namespaceCounts).length > 0 && (
+        <div className="meta-line">
+          Namespaces: {Object.entries(m.namespaceCounts).map(([ns, count]) => (
+            <span key={ns} className="namespace-pill">{ns} ({count})</span>
+          ))}
+        </div>
+      )}
+
+      {/* Reference types */}
+      {refsByType.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div className="meta-line" style={{ fontWeight: 600 }}>Cross-file references ({analysis.references.length} total):</div>
+          <div className="ref-type-grid">
+            {refsByType.map(([type, count]) => (
+              <span key={type} className="ref-type-pill">{type}: {count}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Orphans */}
+      {analysis.orphans.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setExpanded(e => !e)}>
+            {expanded ? 'Hide' : 'Show'} orphaned resources ({analysis.orphans.length})
+          </button>
+          {expanded && (
+            <div className="orphan-list">
+              {orphansByType.map(([type, count]) => (
+                <div key={type} className="orphan-type-header">
+                  <span className="orphan-type">{type}</span>
+                  <span className="orphan-count">{count}</span>
+                </div>
+              ))}
+              <div style={{ marginTop: 8, fontSize: '0.8rem', color: 'var(--text-faint)' }}>
+                These resources are defined but not referenced by anything in the pack.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Broken references */}
+      {analysis.brokenRefs.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div className="meta-line" style={{ fontWeight: 600 }}>Broken references:</div>
+          {analysis.brokenRefs.slice(0, 20).map((ref, i) => (
+            <div key={i} className="broken-ref-item">
+              <span className="broken-ref-from">{ref.file}</span>
+              <span className="broken-ref-arrow"> --{`>`}</span>
+              <span className="broken-ref-to">{ref.to}</span>
+              <span className="broken-ref-type">({ref.type})</span>
+            </div>
+          ))}
+          {analysis.brokenRefs.length > 20 && (
+            <div className="meta-line">...and {analysis.brokenRefs.length - 20} more</div>
+          )}
+        </div>
+      )}
+
+      {/* Circular dependencies */}
+      {analysis.circularDeps.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div className="meta-line" style={{ fontWeight: 600, color: 'var(--red)' }}>Circular dependencies:</div>
+          {analysis.circularDeps.map((cycle, i) => (
+            <div key={i} className="circular-dep-item">
+              {cycle.map((f, j) => (
+                <span key={j}>
+                  <span className="circular-dep-file">{f.split('/').pop()}</span>
+                  {j < cycle.length - 1 && <span className="circular-dep-arrow"> {'->'} </span>}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
@@ -497,6 +646,11 @@ export default function Results({ result, mode, duration }: Props) {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Analysis */}
+      {result.analysis && (
+        <AnalysisSection analysis={result.analysis} />
       )}
     </>
   )

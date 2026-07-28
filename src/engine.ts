@@ -12,6 +12,7 @@ import { readPackMcmeta } from './pack-mcmeta.js'
 import { getMcdocSymbols, checkMcdocFile, fileKindFromPath } from './mcdoc-check.js'
 import { checkJsonFormatFile } from './json-format-check.js'
 import { getLogger } from './logger.js'
+import { analyzePack, type AnalysisResult } from './analyzer.js'
 import type {
   McmetaVersion,
   VersionCompatibility,
@@ -456,6 +457,8 @@ async function checkPackCore(
   const commands = scanCommands(mcfunctionFiles, packDir)
   const knowledgeHits = ctx.applyKnowledge(commands, jsonFiles, packDir)
   const minDv = knowledgeMinDataVersion(knowledgeHits, allVersions)
+
+  const analysis = await analyzePack(packDir)
   const minVersionName = minDv > 0
     ? allVersions.find(v => v.data_version === minDv)?.name ?? null
     : null
@@ -677,6 +680,7 @@ async function checkPackCore(
     min_version: minVersionName,
     knowledge_hits: knowledgeHits,
     load_range: loadRange,
+    analysis,
   }
 }
 

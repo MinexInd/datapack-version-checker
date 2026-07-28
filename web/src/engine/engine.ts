@@ -10,6 +10,7 @@ import { readPackMcmetaFromString } from './pack-mcmeta'
 import { getMcdocSymbols, checkMcdocData, fileKindFromPath } from './mcdoc-check'
 import { checkJsonFormatSemantics } from './json-format-check'
 import { getLogger } from './logger'
+import { analyzePack, type AnalysisResult } from './analyzer'
 import type {
   McmetaVersion,
   VersionCompatibility,
@@ -293,6 +294,7 @@ export async function checkCompatibilityContentBased(
   min_version: string | null
   knowledge_hits: KnowledgeHit[]
   load_range: { min: number; max: number; min_name: string | null; max_name: string | null } | null
+  analysis: AnalysisResult | null
 }> {
   const log = getLogger()
   log.time('checkCompatibilityContentBased')
@@ -539,6 +541,14 @@ export async function checkCompatibilityContentBased(
   log.timeEnd('version-loop', `checked ${relevantVersions.length} versions`)
   log.timeEnd('checkCompatibilityContentBased')
 
+  let analysis: AnalysisResult | null = null
+  try {
+    onProgress?.('Running pack analysis...')
+    analysis = await analyzePack(files)
+  } catch (e) {
+    log.debug('Analysis failed:', e)
+  }
+
   return {
     target_version_id: loadRange ? `${loadRange.min}-${loadRange.max}` : 'content-based',
     pack_format: loadRange?.min ?? 0,
@@ -548,6 +558,7 @@ export async function checkCompatibilityContentBased(
     min_version: minVersionName,
     knowledge_hits: knowledgeHits,
     load_range: loadRange,
+    analysis,
   }
 }
 
@@ -555,10 +566,12 @@ export async function checkResourcePack(
   files: PackFileMap,
   targetVersions?: string[],
   allVersionsFlag: boolean = false,
+  onProgress?: ProgressCallback,
 ): Promise<CheckResult & {
   min_version: string | null
   knowledge_hits: KnowledgeHit[]
   load_range: { min: number; max: number; min_name: string | null; max_name: string | null } | null
+  analysis: AnalysisResult | null
 }> {
   const log = getLogger()
   log.time('checkResourcePack')
@@ -754,6 +767,14 @@ export async function checkResourcePack(
   log.timeEnd('rp-version-loop', `checked ${relevantVersions.length} versions`)
   log.timeEnd('checkResourcePack')
 
+  let analysis: AnalysisResult | null = null
+  try {
+    onProgress?.('Running pack analysis...')
+    analysis = await analyzePack(files)
+  } catch (e) {
+    log.debug('Analysis failed:', e)
+  }
+
   return {
     target_version_id: loadRange ? `${loadRange.min}-${loadRange.max}` : 'content-based',
     pack_format: loadRange?.min ?? 0,
@@ -763,6 +784,7 @@ export async function checkResourcePack(
     min_version: minVersionName,
     knowledge_hits: knowledgeHits,
     load_range: loadRange,
+    analysis,
   }
 }
 

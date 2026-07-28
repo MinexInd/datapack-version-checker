@@ -6,3 +6,4 @@ report.json
 *.tsbuildinfo
 *.zip
 server.log
+/graphify-out

@@ -90,3 +90,84 @@ export interface CheckResult {
   compatible: VersionCompatibility[]
   incompatible: VersionCompatibility[]
 }
+
+export interface AnalysisMetrics {
+  totalFunctions: number
+  totalJsonFiles: number
+  totalResources: number
+  totalCommands: number
+  avgCommandsPerFunction: number
+  maxExecuteDepth: number
+  largestFunction: { file: string; lines: number } | null
+  namespaceCounts: Record<string, number>
+}
+
+export interface AnalysisResult {
+  resources: Array<{
+    type: string
+    namespace: string
+    name: string
+    fullPath: string
+    file: string
+    size: number
+  }>
+  references: Array<{
+    from: string
+    to: string
+    type: string
+    file: string
+    line?: number
+    code?: string
+  }>
+  orphans: Array<{
+    type: string
+    namespace: string
+    name: string
+    fullPath: string
+    file: string
+    size: number
+  }>
+  brokenRefs: Array<{
+    from: string
+    to: string
+    type: string
+    file: string
+    line?: number
+    code?: string
+  }>
+  circularDeps: string[][]
+  metrics: AnalysisMetrics
+}
+
+export interface PortingPlan {
+  sourceVersion: string
+  targetVersion: string
+  portingForward: boolean
+  actions: Array<{
+    file: string
+    line?: number
+    type: string
+    description: string
+    oldCode?: string
+    newCode?: string
+    autoFixable: boolean
+  }>
+  cascadeEffects: Array<{
+    trigger: string
+    triggerFile: string
+    affectedFiles: string[]
+    description: string
+  }>
+  manualAttention: Array<{
+    file: string
+    description: string
+    reason: string
+  }>
+  summary: {
+    totalActions: number
+    autoFixable: number
+    manualRequired: number
+    filesAffected: number
+    cascadeCount: number
+  }
+}

@@ -25,7 +25,7 @@ export interface FixSummary {
   errors: string[]
 }
 
-interface CmdRewrite {
+export interface CmdRewrite {
   id: string
   matchRoot: string
   pattern: RegExp
@@ -33,9 +33,10 @@ interface CmdRewrite {
   description: string
   sourceSince?: string
   targetUntil?: string
+  targetSince?: string
 }
 
-const CMD_REWRITES: CmdRewrite[] = [
+export const CMD_REWRITES: CmdRewrite[] = [
   {
     id: 'item_to_replaceitem',
     matchRoot: 'item',
@@ -61,7 +62,7 @@ const CMD_REWRITES: CmdRewrite[] = [
     replacement: '/item replace $1 $2 $3 with $4 $5',
     description: '/replaceitem -> /item replace (1.20.5+ syntax)',
     sourceSince: '1.13',
-    targetUntil: '0',
+    targetSince: '1.20.5',
   },
   {
     id: 'placefeature_to_place',
@@ -70,7 +71,7 @@ const CMD_REWRITES: CmdRewrite[] = [
     replacement: '/place feature $1',
     description: '/placefeature -> /place feature',
     sourceSince: '1.18',
-    targetUntil: '0',
+    targetSince: '1.19',
   },
   {
     id: 'place_to_placefeature',
@@ -262,6 +263,24 @@ const CMD_REWRITES: CmdRewrite[] = [
     targetUntil: '26.2',
   },
   {
+    id: 'give_item_model_comment',
+    matchRoot: 'give',
+    pattern: /^\/give\s+\S+\s+\S+\s*.*minecraft:item_model\b/,
+    replacement: '## FIXED(minecraft:item_model requires 1.21.4+): $0',
+    description: '/give with item_model component commented out (pre-1.21.4)',
+    sourceSince: '1.21.4',
+    targetUntil: '1.21.3',
+  },
+  {
+    id: 'give_consumable_comment',
+    matchRoot: 'give',
+    pattern: /^\/give\s+\S+\s+\S+\s*.*minecraft:consumable\b/,
+    replacement: '## FIXED(minecraft:consumable requires 1.21.2+): $0',
+    description: '/give with consumable component commented out (pre-1.21.2)',
+    sourceSince: '1.21.2',
+    targetUntil: '1.21.1',
+  },
+  {
     id: 'bossbar_players_comment',
     matchRoot: 'bossbar',
     pattern: /^\/bossbar\s+set\s+\S+\s+players\s/,
@@ -317,9 +336,13 @@ function getApplicableFixes(
     const rwTargetUntilDv = rw.targetUntil && rw.targetUntil !== '0'
       ? versionNameToDataVersion(rw.targetUntil, allVersions)
       : null
+    const rwTargetSinceDv = rw.targetSince
+      ? versionNameToDataVersion(rw.targetSince, allVersions)
+      : null
 
     if (rwSourceSinceDv !== null && svDv < rwSourceSinceDv) continue
     if (rwTargetUntilDv !== null && tvDv > rwTargetUntilDv) continue
+    if (rwTargetSinceDv !== null && tvDv < rwTargetSinceDv) continue
 
     rewrites.push(rw)
   }
@@ -606,6 +629,64 @@ function fixAdvancementIcon(
   return { data: walk(data, '$'), patches, details }
 }
 
+function renameBiomeField(
+  data: any,
+  targetName: string,
+  relPath: string,
+): { data: any; patches: number; details: string[] } {
+  const details: string[] = []
+  let patches = 0
+
+  function walk(obj: any): any {
+    if (!obj || typeof obj !== 'object') return obj
+    if (Array.isArray(obj)) return obj.map(walk)
+    const result: any = {}
+    for (const [key, val] of Object.entries(obj)) {
+      if (key === 'has_precipitation' && typeof val === 'boolean') {
+        result['precipitation'] = val ? 'rain' : 'none'
+        patches++
+        details.push(`${relPath}: Renamed has_precipitation -> precipitation for pre-1.19.4`)
+      } else {
+        result[key] = walk(val)
+      }
+    }
+    return result
+  }
+
+  return { data: walk(data), patches, details }
+}
+
+function renamePredicateFields(
+  data: any,
+  targetName: string,
+  relPath: string,
+): { data: any; patches: number; details: string[] } {
+  const details: string[] = []
+  let patches = 0
+
+  function walk(obj: any): any {
+    if (!obj || typeof obj !== 'object') return obj
+    if (Array.isArray(obj)) return obj.map(walk)
+    const result: any = {}
+    for (const [key, val] of Object.entries(obj)) {
+      if (key === 'any_of') {
+        result['alternative'] = walk(val)
+        patches++
+        details.push(`${relPath}: Renamed any_of -> alternative for pre-1.20`)
+      } else if (key === 'all_of') {
+        result['requirements'] = walk(val)
+        patches++
+        details.push(`${relPath}: Renamed all_of -> requirements for pre-1.20`)
+      } else {
+        result[key] = walk(val)
+      }
+    }
+    return result
+  }
+
+  return { data: walk(data), patches, details }
+}
+
 export async function fixDatapack(options: FixOptions): Promise<{
   files: PackFileMap
   results: FixFileResult[]
@@ -698,6 +779,22 @@ export async function fixDatapack(options: FixOptions): Promise<{
       details.push(...advResult.details)
     }
 
+    // Biome precipitation field rename: has_precipitation (1.19.4+) -> precipitation (pre-1.19.4)
+    if (!portingForward && file.includes('/worldgen/biome') && cmpVer(targetName, '1.19.4') < 0) {
+      const fixResult = renameBiomeField(currentData, targetName, file)
+      currentData = fixResult.data
+      patches += fixResult.patches
+      details.push(...fixResult.details)
+    }
+
+    // Predicate any_of -> alternative rename (backport pre-1.20)
+    if (!portingForward && file.includes('/predicate') && cmpVer(targetName, '1.20') < 0) {
+      const fixResult = renamePredicateFields(currentData, targetName, file)
+      currentData = fixResult.data
+      patches += fixResult.patches
+      details.push(...fixResult.details)
+    }
+
     // Registry reference fixing
     if (!portingForward) {
       const registryRules = FEATURE_RULES.filter(r => r.type === 'registry')
@@ -707,10 +804,11 @@ export async function fixDatapack(options: FixOptions): Promise<{
         const ruleMinDv = versionNameToDataVersion(rule.minVersion, allVersions)
         if (ruleMinDv === null) continue
         if (svDv >= ruleMinDv && tvDv < ruleMinDv) {
-          const searchStr = `${rule.match}/`
+          const searchStr = rule.match.endsWith('/') ? rule.match : `${rule.match}/`
           const contentStr = JSON.stringify(currentData)
-          if (contentStr.includes(searchStr)) {
-            const fixed = contentStr.replace(new RegExp(`"${searchStr}`, 'g'), `"## FIXED(${rule.match} not available in ${targetName})/`)
+          const re = new RegExp(`"(?:[\\w-]+:)?${searchStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g')
+          if (re.test(contentStr)) {
+            const fixed = contentStr.replace(re, `"## FIXED(${rule.match} not available in ${targetName})/`)
             try { currentData = JSON.parse(fixed); patches++; details.push(`${file}: Replaced ${rule.match} references`) } catch { }
           }
         }
