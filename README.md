@@ -176,6 +176,8 @@ node dist/index.js --dir "./my-pack" --mode auto
 
 ## How to read the report
 
+### Check mode output
+
 ```
 ⚡ dpcheck v0.7.0 (content + load-range + structural + semantic format + registry deprecation + auto-fix + analysis)
 ══════════════════════════════════════════════════════════
@@ -199,14 +201,17 @@ Resources: 12 indexed
 ⛔ Outside declared load range (won't load): 1.20.5, 1.20.6
 ```
 
-- **Pack Analysis** — dependency graph snapshot: resource count by type, metrics, cross-file references, orphans (dead code), broken refs (typos), circular deps (A→B→A loops)
-- **Declared load range** — what `pack.mcmeta` says Minecraft will load
-- **Minimum version from content** — the *actual* oldest version the content can run on. If this is **newer** than the declared range, your `pack.mcmeta` is lying
-- **Fully compatible** — versions where the pack both *loads* and has *no detected content breaks*
-- **Outside declared load range** — versions where Minecraft wouldn't even load the pack (the `pack_format` doesn't match)
-- **Content breaks** — versions where the pack loads but specific commands/JSON would fail
+**Pack Analysis** — dependency graph snapshot at the top. Shows resource counts by type, pack metrics, cross-file references found, number of orphans (resources with no inbound refs — possible dead code), broken refs (function calls to files that don't exist — typos), and circular dependencies (A calls B calls A — infinite loops). Tags and vanilla references are excluded from orphan/broken detection.
 
-Each break lists the **file + line** and a **fix** suggestion:
+**Declared load range** — what `pack.mcmeta` says Minecraft will load.
+
+**Minimum version from content** — the *actual* oldest version the content can run on based on the features it uses. If this is **newer** than the declared range, your `pack.mcmeta` is wrong.
+
+**Fully compatible** — versions where the pack both *loads* and has *no detected content breaks*.
+
+**Outside declared load range** — versions where Minecraft wouldn't load the pack because the `pack_format` doesn't match.
+
+**Content breaks** — versions where the pack loads but specific commands or JSON would fail. Each break shows the file, line number, and what needs to change:
 
 ```
 ▶ 1.20.4
@@ -215,7 +220,36 @@ Each break lists the **file + line** and a **fix** suggestion:
       ✗ Uses The /item command (replace/modify) overhaul requires 1.20.5+ — needs >= 1.20.5 but this is 1.20.4
 ```
 
-At the end, a **"WHY THIS VERSION RANGE"** section explains which community-known features set the minimum version, and a **"KNOWN BREAKING CHANGES BY VERSION"** section lists curated breaking changes for each version you checked (what changes when updating *to* that version).
+At the bottom, **"WHY THIS VERSION RANGE"** lists which community-known features set the minimum version, and **"KNOWN BREAKING CHANGES BY VERSION"** shows curated changes per version.
+
+### Fix mode output (porting plan)
+
+When running `--fix <target>`, the tool first prints a porting plan showing what it will change, then creates the ported pack:
+
+```
+⚡ Porting Plan: 1.20.4 → 1.21
+══════════════════════════════════════════════════════════════
+Source: 1.20.4 | Target: 1.21 | Direction: forward
+
+Actions: 5 (4 auto-fixable, 1 manual)
+Files affected: 3
+Cascade effects: 2
+
+Rewrites:
+  data/demo/functions/commands.mcfunction:12
+    replaceitem → item (auto-fix)
+  data/demo/functions/commands.mcfunction:45
+    execute if predicate → execute if predicate (needs manual review)
+
+Manual attention:
+  data/demo/functions/commands.mcfunction:60
+    Command "tick" not available in 1.21 — no auto-rewrite exists
+
+Cascade effects:
+  Rewriting commands.mcfunction may affect 2 dependent files:
+    data/demo/functions/start.mcfunction
+    data/demo/advancements/root.json
+```
 
 ---
 
