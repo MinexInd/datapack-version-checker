@@ -266,6 +266,13 @@ Fixes are **conservative**: commands that can't be rewritten are commented out
 (with `## FIXED(...): original command`) rather than deleted. You can review
 and manually adjust the output.
 
+**Important: `--fix` is a partial port, not a complete one.** It handles command
+syntax changes, JSON field renames/removals, icon format changes, and pack format
+updates. It cannot fix game mechanic changes (mob behavior, redstone, world
+generation), deep NBT structure changes not covered by mcdoc schemas, or entirely
+new features with no old equivalent. Always test the ported pack in-game and
+review the `## FIXED(...)` comments for manual attention items.
+
 ### `serve` — launch the web GUI
 
 ```bash

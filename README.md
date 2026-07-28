@@ -252,6 +252,7 @@ See [`docs.md`](./docs.md) for the full technical details.
 - Registry deprecation detection only fires when checking versions NEWER than the datapack's declared `pack.mcmeta` range. When the source version is unknown (no `pack.mcmeta` range), deprecation detection is skipped.
 - The knowledge base covers the most common breaking changes; it is not an exhaustive list of every MC change. Contributions welcome.
 - **Auto-fix mode** (`--fix`) rewrites commands and JSON based on known patterns, including commands nested inside `/execute run` and `$()` macros. It is conservative — commands that can't be rewritten are commented out (with `## FIXED(...): original command`) rather than deleted. JSON structural fixes remove fields invalid for the target version using the mcdoc schema. Works for both datapacks and resource packs.
+- **`--fix` is a partial port, not a complete one.** It handles command syntax changes, JSON field renames/removals, icon format changes, and pack format updates. It cannot fix game mechanic changes (mob behavior, redstone, world generation), deep NBT structure changes, or entirely new features with no old equivalent. Always test the ported pack in-game.
 - **Dependency graph analysis** is file-system based (server) or `PackFileMap` based (web). It detects references within your pack but cannot resolve vanilla Minecraft references (e.g., `minecraft:iron_ingot` will show as a broken ref if not declared in the pack). Tags (`tags/`) are excluded from orphan detection since they're loaded by the game engine by registry path.
 
 ---
