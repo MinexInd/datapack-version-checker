@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { highlightMcfunction } from '../engine/highlight'
 import type {
   CheckResult,
   VersionCompatibility,
@@ -108,7 +109,7 @@ function IssueItem({ issue, idx }: { issue: FlatIssue; idx: number }) {
         <code className="issue-cmd">{issue.command}</code>
       )}
       {issue.kind === 'cmd' && 'snippet' in issue && issue.snippet && (
-        <pre className="issue-snippet">{issue.snippet}</pre>
+        <pre className="issue-snippet" dangerouslySetInnerHTML={{ __html: highlightMcfunction(issue.snippet) }} />
       )}
       {issue.kind === 'reg' && (
         <code className="issue-cmd">{issue.registry} → {issue.entry}</code>
