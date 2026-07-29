@@ -343,17 +343,6 @@ async function main() {
       console.log()
     }
 
-    // Apply fixes and show results
-    console.log(`  ${'─'.repeat(60)}`)
-    console.log(`  Applying fixes...`)
-    console.log()
-
-    // (fixes already applied by fixDatapack/fixResourcePack above)
-
-    const cmdTotal = fixResult.summary.totalPatches
-    console.log(`  ${'✓'.repeat(1)} Done: ${fixResult.summary.filesFixed} files patched (${cmdTotal} changes)`)
-    console.log()
-
     // Group results by type
     const cmdResults = fixResult.results.filter(r => r.file.endsWith('.mcfunction'))
     const jsonResults = fixResult.results.filter(r => r.file.endsWith('.json'))
@@ -366,7 +355,7 @@ async function main() {
         console.log(`  │`)
         console.log(`  ├ ${r.file}`)
         for (const d of r.details) {
-          const icon = d.includes('->') ? '→' : d.includes('FIXED') ? '!' : '·'
+          const icon = d.includes('->') ? '→' : '!'
           console.log(`  │  ${icon} ${d}`)
         }
       }
@@ -381,7 +370,7 @@ async function main() {
         console.log(`  │`)
         console.log(`  ├ ${r.file}`)
         for (const d of r.details) {
-          const icon = d.includes('->') ? '→' : d.includes('FIXED') ? '!' : '·'
+          const icon = d.includes('->') ? '→' : '!'
           console.log(`  │  ${icon} ${d}`)
         }
       }
