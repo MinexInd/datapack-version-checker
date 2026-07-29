@@ -1023,6 +1023,67 @@
       font-family: var(--mono);
     }
 
+    .fix-detail.detail-ok { color: var(--green); }
+    .fix-detail.detail-warn { color: var(--amber); }
+    .fix-detail.detail-error { color: var(--red); }
+
+    .detail-arrow { color: var(--green); margin-right: 6px; }
+    .detail-icon { margin-right: 6px; }
+
+    .fix-file-header.clickable { cursor: pointer; }
+    .fix-file-header.clickable:hover { color: var(--accent); }
+
+    .fix-file-icon { font-size: 0.65rem; color: var(--text-faint); width: 14px; flex-shrink: 0; }
+    .fix-file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+    .fix-file.expanded {
+      background: var(--bg-elev);
+      border-radius: 8px;
+      padding: 8px 0;
+      border: 1px solid var(--border-soft);
+      margin-bottom: 12px;
+    }
+    .fix-file.expanded .fix-file-header {
+      padding: 0 12px;
+    }
+    .fix-file.expanded .fix-detail {
+      padding: 2px 12px 2px 30px;
+    }
+
+    .fix-diff-area {
+      border-top: 1px solid var(--border-soft); margin-top: 8px; padding-top: 8px;
+    }
+
+    .diff-view {
+      font-family: var(--mono); font-size: 0.75rem; line-height: 1.6;
+      max-height: 400px; overflow: auto; padding: 4px 0;
+    }
+
+    .diff-columns { display: flex; gap: 0; }
+    .diff-col { flex: 1; min-width: 0; border: 1px solid var(--border-soft); border-radius: 6px; overflow: hidden; }
+    .diff-col + .diff-col { margin-left: 8px; }
+    .diff-col-header { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 6px 12px; }
+    .diff-col-header.removed { background: var(--red-bg); color: var(--red); border-bottom: 1px solid var(--red-border); }
+    .diff-col-header.added { background: var(--green-bg); color: var(--green); border-bottom: 1px solid var(--green-border); }
+    .diff-code { padding: 8px 12px; margin: 0; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+
+    .diff-line { display: flex; gap: 0; padding: 0 4px; min-height: 1.5em; }
+    .diff-line.removed { background: rgba(248,113,113,0.05); }
+    .diff-line.added { background: rgba(74,222,128,0.05); }
+    .diff-line.context { color: var(--text-faint); }
+
+    .diff-ln { color: var(--text-faint); width: 2.5em; text-align: right; padding-right: 8px; flex-shrink: 0; user-select: none; }
+    .diff-op { width: 1.2em; text-align: center; flex-shrink: 0; font-weight: 700; }
+    .diff-line.removed .diff-op { color: var(--red); }
+    .diff-line.added .diff-op { color: var(--green); }
+
+    .diff-text { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+
+    .diff-detail {
+      font-size: 0.7rem; color: var(--text-faint); margin-left: 8px;
+      background: var(--bg-elev-2); padding: 0 6px; border-radius: 4px; white-space: nowrap;
+    }
+
     /* --- Porting plan --- */
     .porting-plan {
       animation: fadeIn 0.3s ease;

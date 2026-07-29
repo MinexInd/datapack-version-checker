@@ -1,11 +1,74 @@
 #!/usr/bin/env node
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { checkCompatibilityContentBased, checkResourcePack } from './engine.js'
 import { fixDatapack, fixResourcePack, type FixPlan, type FixJsonFixEntry } from './fixer.js'
 import { clearCache } from './cache.js'
 import { setLogLevel, getLogger } from './logger.js'
 import type { VersionCompatibility, McfunctionIssue, RegistryIssue, RegistryDeprecation } from './types.js'
+
+
+const C = {
+  r: '\x1b[31m', g: '\x1b[32m', y: '\x1b[33m', b: '\x1b[34m',
+  c: '\x1b[36m', m: '\x1b[35m', d: '\x1b[2m', bd: '\x1b[1m',
+  R: '\x1b[0m',
+}
+
+function ansiHighlightCmd(cmd: string): string {
+  let result = ''
+  let i = 0
+  const tokens: string[] = []
+  let buf = ''
+  for (const ch of cmd) {
+    if (ch === ' ' || ch === '\t') { if (buf) { tokens.push(buf); buf = '' } tokens.push(ch); continue }
+    if (ch === '[' || ch === ']' || ch === '{' || ch === '}' || ch === '(' || ch === ')' || ch === '-' || ch === ':') { if (buf) { tokens.push(buf); buf = '' } tokens.push(ch); continue }
+    buf += ch
+  }
+  if (buf) tokens.push(buf)
+  for (const t of tokens) {
+    if (t.startsWith('/') || t.startsWith('$')) result += `${C.c}${t}${C.R}`
+    else if (/^(?:@[pares]|@s|@e\[.*\]|@p\[.*\]|@a\[.*\]|@r\[.*\]|@initiator)/.test(t)) result += `${C.y}${t}${C.R}`
+    else if (/^(?:true|false|\d+)$/.test(t)) result += `${C.m}${t}${C.R}`
+    else if (/^[a-z_]+:[a-z_/]+$/.test(t)) result += `${C.g}${t}${C.R}`
+    else if (/^{.+}$/.test(t)) result += `${C.d}${t}${C.R}`
+    else result += t
+  }
+  return result
+}
+
+function showFixDiff(srcDir: string, outDir: string, file: string, details: string[]) {
+  const srcPath = join(srcDir, file)
+  const outPath = join(outDir, file)
+  if (!existsSync(srcPath) || !existsSync(outPath)) return
+  const srcLines = readFileSync(srcPath, 'utf-8').split('\n')
+  const outLines = readFileSync(outPath, 'utf-8').split('\n')
+  const maxLen = Math.max(srcLines.length, outLines.length)
+
+  const changedLines = new Map<number, string>()
+  for (const d of details) {
+    const m = d.match(/^(.+?):(\d+):/)
+    if (m) changedLines.set(parseInt(m[2]), d)
+  }
+
+  const width = String(maxLen).length
+  let diffOutput = ''
+  for (let i = 0; i < maxLen; i++) {
+    const lineNum = i + 1
+    const s = srcLines[i] ?? ''
+    const o = outLines[i] ?? ''
+    if (s !== o) {
+      const detail = changedLines.get(lineNum)
+      diffOutput += `  ${C.y}${String(lineNum).padStart(width)}${C.R} ${C.r}-${C.R} ${ansiHighlightCmd(s)}\n`
+      diffOutput += `  ${C.y}${String(lineNum).padStart(width)}${C.R} ${C.g}+${C.R} ${ansiHighlightCmd(o)}`
+      if (detail) diffOutput += ` ${C.d}${detail.replace(/^.*?:\d+:/, '').trim()}${C.R}`
+      diffOutput += '\n'
+    }
+  }
+  if (diffOutput) {
+    console.log(`  ${C.bd}${C.c}Changes in: ${file}${C.R}`)
+    console.log(diffOutput)
+  }
+}
 
 type Mode = 'datapack' | 'resourcepack' | 'auto'
 
@@ -23,6 +86,7 @@ interface CliOptions {
   mode: Mode
   versions?: string[]
   serve?: boolean
+  diff?: boolean
 }
 
 function printHelp() {
@@ -48,6 +112,7 @@ function printHelp() {
     dpcheck --dir <path> --mode resourcepack  Check a resource pack
     dpcheck --mode auto                  Auto-detect pack type
     dpcheck --verbose                    Show detailed progress and timing
+    dpcheck --diff                       Show before/after code diff for each fix
     dpcheck --debug                      Show all debug messages (very verbose)
     dpcheck serve                        Start GUI web server on localhost:3001
 
@@ -128,6 +193,7 @@ function parseArgs(): CliOptions {
     else if (arg === '--refresh') result.refresh = true
     else if (arg === '--verbose') result.verbose = true
     else if (arg === '--debug') result.debug = true
+    else if (arg === '--diff') result.diff = true
     else if (!arg.startsWith('-') && !dirSet) result.dir = resolve(arg)
   }
   return result
@@ -260,11 +326,11 @@ async function main() {
     const targetVersion = opts.fix
     const outputDir = opts.outputDir ?? resolve(dir + '_fixed_' + targetVersion.replace(/[^a-zA-Z0-9._-]/g, '_'))
     const packType = isRp ? 'Resource Pack' : 'Datapack'
-    console.log(`\n  🔧 ${packType} Version Checker — Auto-Fix Mode`)
-    console.log(`  ${'═'.repeat(60)}`)
-    console.log(`  Source: ${dir}`)
-    console.log(`  Target: ${targetVersion}`)
-    console.log(`  Output: ${outputDir}`)
+    console.log(`\n  ${C.bd}${C.c}🔧 ${packType} Version Checker — Auto-Fix Mode${C.R}`)
+    console.log(`  ${C.d}${'═'.repeat(60)}${C.R}`)
+    console.log(`  ${C.d}Source:${C.R} ${dir}`)
+    console.log(`  ${C.d}Target:${C.R} ${C.bd}${targetVersion}${C.R}`)
+    console.log(`  ${C.d}Output:${C.R} ${outputDir}`)
     console.log()
 
     let lastProgress = ''
@@ -283,7 +349,7 @@ async function main() {
 
     if (fixResult.summary.errors.length > 0) {
       for (const err of fixResult.summary.errors) {
-        console.error(`  Error: ${err}`)
+        console.error(`  ${C.r}${C.bd}Error:${C.R} ${err}`)
       }
       if (fixResult.results.length === 0) process.exit(1)
     }
@@ -292,54 +358,54 @@ async function main() {
 
     // Show porting plan
     if (plan && plan.sourceVersion) {
-      console.log(`  ═══ Porting Plan ═══`)
-      console.log(`  ${plan.sourceVersion} → ${plan.targetVersion}  (${plan.direction} port)`)
+      console.log(`  ${C.bd}═══ Porting Plan ═══${C.R}`)
+      console.log(`  ${C.c}${plan.sourceVersion}${C.R} → ${C.g}${plan.targetVersion}${C.R}  (${plan.direction} port)`)
       console.log()
 
       if (plan.rewrites.length > 0) {
-        console.log(`  Command rewrites: ${plan.summary.commandRewrites}`)
+        console.log(`  ${C.bd}${C.y}Command rewrites:${C.R} ${plan.summary.commandRewrites}`)
         for (const rw of plan.rewrites) {
-          console.log(`    ${rw.description.padEnd(50)} ${rw.count}×  (${rw.files.length} files)`)
+          console.log(`    ${ansiHighlightCmd(rw.description.padEnd(50))} ${C.c}${rw.count}×${C.R}  (${C.d}${rw.files.length} files${C.R})`)
         }
       }
       if (plan.manualAttention.length > 0) {
         console.log()
-        console.log(`  Manual attention: ${plan.summary.manualAttention}`)
+        console.log(`  ${C.bd}${C.r}Manual attention:${C.R} ${plan.summary.manualAttention}`)
         for (const m of plan.manualAttention) {
-          console.log(`    ${m.description}`)
-          console.log(`      Reason: ${m.reason}`)
-          console.log(`      Files: ${m.files.join(', ')}`)
+          console.log(`    ${C.y}${m.description}${C.R}`)
+          console.log(`      ${C.d}Reason:${C.R} ${m.reason}`)
+          console.log(`      ${C.d}Files:${C.R} ${m.files.join(', ')}`)
         }
       }
       if (plan.jsonFixes.some((j: FixJsonFixEntry) => j.files.length > 0)) {
         console.log()
-        console.log(`  JSON fixes:`)
+        console.log(`  ${C.bd}JSON fixes:${C.R}`)
         for (const jf of plan.jsonFixes) {
           if (jf.files.length > 0) {
-            console.log(`    ${jf.type}: ${jf.files.length} file(s)`)
+            console.log(`    ${jf.type}: ${C.c}${jf.files.length} file(s)${C.R}`)
           }
         }
       }
       if (plan.cascadeEffects.length > 0) {
         console.log()
-        console.log(`  Cascade effects: ${plan.cascadeEffects.length}`)
+        console.log(`  ${C.bd}Cascade effects:${C.R} ${plan.cascadeEffects.length}`)
         for (const ce of plan.cascadeEffects) {
           console.log(`    ${ce.description}`)
           for (const af of ce.affectedFiles) {
-            console.log(`      -> ${af}`)
+            console.log(`      ${C.d}->${C.R} ${af}`)
           }
         }
       }
       console.log()
-      console.log(`  ${'─'.repeat(40)}`)
-      console.log(`  Files to patch: ${plan.summary.totalFilesToPatch}`)
-      console.log(`  Command rewrites: ${plan.summary.commandRewrites}`)
-      console.log(`  JSON fixes: ${plan.summary.jsonFixes}`)
-      console.log(`  Manual attention: ${plan.summary.manualAttention}`)
+      console.log(`  ${C.d}${'─'.repeat(40)}${C.R}`)
+      console.log(`  ${C.d}Files to patch:${C.R} ${C.bd}${plan.summary.totalFilesToPatch}${C.R}`)
+      console.log(`  ${C.d}Command rewrites:${C.R} ${plan.summary.commandRewrites}`)
+      console.log(`  ${C.d}JSON fixes:${C.R} ${plan.summary.jsonFixes}`)
+      console.log(`  ${C.d}Manual attention:${C.R} ${plan.summary.manualAttention}`)
       if (plan.cascadeEffects.length > 0) {
-        console.log(`  Cascade effects: ${plan.cascadeEffects.length}`)
+        console.log(`  ${C.d}Cascade effects:${C.R} ${plan.cascadeEffects.length}`)
       }
-      console.log(`  ${'═'.repeat(40)}`)
+      console.log(`  ${C.bd}${'═'.repeat(40)}${C.R}`)
       console.log()
     }
 
@@ -350,48 +416,68 @@ async function main() {
 
     if (cmdResults.length > 0) {
       const cmdTotalPatches = cmdResults.reduce((s, r) => s + r.patches, 0)
-      console.log(`  ┌─ Command rewrites (${cmdResults.length} files, ${cmdTotalPatches} patches)`)
+      console.log(`  ${C.bd}${C.c}┌─ Command rewrites (${cmdResults.length} files, ${cmdTotalPatches} patches)${C.R}`)
       for (const r of cmdResults) {
-        console.log(`  │`)
-        console.log(`  ├ ${r.file}`)
+        console.log(`  ${C.d}│${C.R}`)
+        console.log(`  ${C.bd}├ ${r.file}${C.R}`)
         for (const d of r.details) {
-          const icon = d.includes('->') ? '→' : '!'
-          console.log(`  │  ${icon} ${d}`)
+          const icon = d.includes('->') ? `${C.g}→${C.R}` : `${C.r}!${C.R}`
+          const parts = d.split(': ')
+          if (parts.length >= 2) {
+            const prefix = parts[0]
+            const suffix = parts.slice(1).join(': ')
+            const coloredSuffix = d.includes('->')
+              ? suffix.replace(/(\/\S+)/g, (m) => `${C.c}${m}${C.R}`)
+              : suffix
+            console.log(`  ${C.d}│${C.R}  ${icon} ${C.d}${prefix}${C.R}: ${coloredSuffix}`)
+          } else {
+            console.log(`  ${C.d}│${C.R}  ${icon} ${d}`)
+          }
+        }
+        if (opts.diff) {
+          showFixDiff(dir, outputDir, r.file, r.details)
         }
       }
-      console.log(`  └${'─'.repeat(55)}`)
+      console.log(`  ${C.d}└${'─'.repeat(55)}${C.R}`)
       console.log()
     }
 
     if (jsonResults.length > 0) {
       const jsonTotalPatches = jsonResults.reduce((s, r) => s + r.patches, 0)
-      console.log(`  ┌─ JSON fixes (${jsonResults.length} files, ${jsonTotalPatches} patches)`)
+      console.log(`  ${C.bd}${C.m}┌─ JSON fixes (${jsonResults.length} files, ${jsonTotalPatches} patches)${C.R}`)
       for (const r of jsonResults) {
-        console.log(`  │`)
-        console.log(`  ├ ${r.file}`)
+        console.log(`  ${C.d}│${C.R}`)
+        console.log(`  ${C.bd}├ ${r.file}${C.R}`)
         for (const d of r.details) {
-          const icon = d.includes('->') ? '→' : '!'
-          console.log(`  │  ${icon} ${d}`)
+          const icon = d.includes('->') ? `${C.g}→${C.R}` : `${C.r}!${C.R}`
+          console.log(`  ${C.d}│${C.R}  ${icon} ${d}`)
+        }
+        if (opts.diff) {
+          showFixDiff(dir, outputDir, r.file, r.details)
         }
       }
-      console.log(`  └${'─'.repeat(55)}`)
+      console.log(`  ${C.d}└${'─'.repeat(55)}${C.R}`)
       console.log()
     }
 
     if (mcmetaResult.length > 0) {
-      console.log(`  ┌─ pack.mcmeta`)
+      console.log(`  ${C.bd}${C.c}┌─ pack.mcmeta${C.R}`)
       for (const r of mcmetaResult) {
-        console.log(`  │`)
-        console.log(`  ├ ${r.file}`)
+        console.log(`  ${C.d}│${C.R}`)
+        console.log(`  ${C.bd}├ ${r.file}${C.R}`)
         for (const d of r.details) {
-          console.log(`  │  → ${d}`)
+          console.log(`  ${C.d}│${C.R}  ${C.g}→${C.R} ${d}`)
         }
       }
-      console.log(`  └${'─'.repeat(55)}`)
+      console.log(`  ${C.d}└${'─'.repeat(55)}${C.R}`)
       console.log()
     }
 
-    console.log(`  ${'═'.repeat(60)}`)
+    console.log(`  ${C.bd}${'═'.repeat(60)}${C.R}`)
+    console.log(`  ${C.g}✓${C.R} ${C.bd}${fixResult.summary.filesFixed} files fixed${C.R}, ${C.c}${fixResult.summary.totalPatches} patches${C.R} applied → ${C.bd}${outputDir}${C.R}`)
+    if (fixResult.summary.errors.length > 0) {
+      console.log(`  ${C.r}${C.bd}${fixResult.summary.errors.length} error(s)${C.R} — some fixes may be incomplete`)
+    }
     console.log()
     return
   }

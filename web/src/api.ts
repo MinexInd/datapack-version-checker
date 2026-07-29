@@ -166,6 +166,7 @@ export interface FixPreview {
   summary: FixSummary
   plan: FixPlan
   isRp: boolean
+  outputFiles?: PackFileMap
 }
 
 export async function fetchVersions(): Promise<McmetaVersion[]> {
@@ -224,6 +225,7 @@ export async function runFixPreview(req: FixRequest): Promise<FixPreview> {
     summary: fixResult.summary,
     plan: fixResult.plan,
     isRp,
+    outputFiles: fixResult.files as PackFileMap,
   }
 }
 

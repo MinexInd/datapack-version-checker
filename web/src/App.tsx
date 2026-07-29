@@ -204,6 +204,7 @@ export default function App() {
           onDownload={handleFix}
           loading={loading}
           hasFiles={!!files}
+          originalFiles={files}
         />
       )}
 

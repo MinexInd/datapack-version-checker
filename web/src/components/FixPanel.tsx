@@ -1,4 +1,6 @@
+import { useState, useRef } from 'react'
 import type { McmetaVersion, FixPreview } from '../api'
+import { highlightMcfunction } from '../engine/highlight'
 
 const TYPE_LABELS: Record<string, string> = {
   advancement_icon: 'Advancement icon format',
@@ -8,6 +10,8 @@ const TYPE_LABELS: Record<string, string> = {
   mcdoc_removal: 'mcdoc removals',
   mcdoc_structural: 'mcdoc structural',
 }
+
+import type { PackFileMap } from '../api'
 
 interface Props {
   versions: McmetaVersion[]
@@ -20,6 +24,61 @@ interface Props {
   onDownload: () => void
   loading: boolean
   hasFiles: boolean
+  originalFiles?: PackFileMap | null
+}
+
+function DiffView({ file, srcContent, outContent, details }: { file: string; srcContent: string; outContent: string; details: string[] }) {
+  const isJson = file.endsWith('.json')
+  const srcLines = srcContent.split('\n')
+  const outLines = outContent.split('\n')
+  const maxLen = Math.max(srcLines.length, outLines.length)
+
+  const changedLines = new Map<number, string>()
+  for (const d of details) {
+    const m = d.match(/^(.+?):(\d+):/)
+    if (m) changedLines.set(parseInt(m[2]), d)
+  }
+
+  const maxLineWidth = String(maxLen).length
+
+  if (isJson) {
+    return (
+      <div className="diff-view">
+        <div className="diff-columns">
+          <div className="diff-col">
+            <div className="diff-col-header removed">Original</div>
+            <pre className="diff-code" dangerouslySetInnerHTML={{ __html: srcContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }} />
+          </div>
+          <div className="diff-col">
+            <div className="diff-col-header added">Ported</div>
+            <pre className="diff-code" dangerouslySetInnerHTML={{ __html: outContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  let diffHtml = ''
+  for (let i = 0; i < maxLen; i++) {
+    const lineNum = (i + 1).toString().padStart(maxLineWidth, ' ')
+    const s = srcLines[i] ?? ''
+    const o = outLines[i] ?? ''
+    if (s !== o) {
+      const d = changedLines.get(i + 1)
+      const detail = d ? d.replace(/^.*?:\d+:/, '').trim() : ''
+      const sHl = highlightMcfunction(s)
+      const oHl = highlightMcfunction(o)
+      diffHtml += `<div class="diff-line removed"><span class="diff-ln">${lineNum}</span><span class="diff-op">-</span><span class="diff-text">${sHl}</span></div>`
+      diffHtml += `<div class="diff-line added"><span class="diff-ln">${lineNum}</span><span class="diff-op">+</span><span class="diff-text">${oHl}${detail ? ` <span class="diff-detail">${detail}</span>` : ''}</span></div>`
+    } else {
+      if (i < 3 || i >= maxLen - 2) {
+        diffHtml += `<div class="diff-line context"><span class="diff-ln">${lineNum}</span><span class="diff-op"> </span><span class="diff-text">${highlightMcfunction(s)}</span></div>`
+      } else if (srcLines[i - 1] !== outLines[i - 1] || srcLines[i + 1] !== outLines[i + 1]) {
+        diffHtml += `<div class="diff-line context"><span class="diff-ln">${lineNum}</span><span class="diff-op"> </span><span class="diff-text">${highlightMcfunction(s)}</span></div>`
+      }
+    }
+  }
+  return <div className="diff-view" dangerouslySetInnerHTML={{ __html: diffHtml }} />
 }
 
 export default function FixPanel({
@@ -27,8 +86,11 @@ export default function FixPanel({
   fixTarget, onFixTargetChange,
   fixSource, onFixSourceChange,
   fixPreview, onPreview, onDownload,
-  loading, hasFiles,
+  loading, hasFiles, originalFiles,
 }: Props) {
+  const [expandedFiles, setExpandedFiles] = useState<Set<number>>(new Set())
+  const sclRef = useRef<HTMLDivElement>(null)
+
   return (
     <div className="card animate-in-d3">
       <h2>Auto-Fix / Port <span className="sub">rewrites commands, fixes JSON, updates pack.mcmeta</span></h2>
@@ -114,20 +176,57 @@ export default function FixPanel({
           )}
 
           {fixPreview.results.length > 0 ? (
-            <div className="scl-box" style={{ maxHeight: 350 }}>
-              {fixPreview.results.map((r, i) => (
-                <div key={i} className="fix-file">
-                  <div className="fix-file-header">
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.file}</span>
-                    <span className="patch-count">({r.patches} patch{r.patches !== 1 ? 'es' : ''})</span>
-                  </div>
-                  {r.details.map((d, j) => (
-                    <div key={j} className="fix-detail">
-                      {d}
+            <div className="scl-box" style={{ maxHeight: 500 }} ref={sclRef}>
+              {fixPreview.results.map((r, i) => {
+                const isExpanded = expandedFiles.has(i)
+                const hasOutput = !!fixPreview.outputFiles?.[r.file]
+                return (
+                  <div key={i} className={`fix-file${isExpanded ? ' expanded' : ''}`}>
+                    <div
+                      className="fix-file-header clickable"
+                      onClick={() => {
+                        const next = new Set(expandedFiles)
+                        if (isExpanded) next.delete(i)
+                        else {
+                          next.clear()
+                          next.add(i)
+                        }
+                        setExpandedFiles(next)
+                      }}
+                    >
+                      <span className="fix-file-icon">{isExpanded ? '▼' : '▶'}</span>
+                      <span className="fix-file-path">{r.file}</span>
+                      <span className="patch-count">({r.patches} patch{r.patches !== 1 ? 'es' : ''})</span>
                     </div>
-                  ))}
-                </div>
-              ))}
+                    {r.details.map((d, j) => {
+                      const isCmdChange = d.includes('->')
+                      const isManual = d.includes('manual') || d.includes('Manual')
+                      const isError = d.includes('!') || d.includes('error') || d.includes('Error')
+                      const cls = isError ? 'detail-error' : isManual ? 'detail-warn' : isCmdChange ? 'detail-ok' : ''
+                      const parts = d.split(': ')
+                      const detailLabel = parts.length >= 2 ? parts.slice(1).join(': ') : d
+                      return (
+                        <div key={j} className={`fix-detail ${cls}`}>
+                          {isCmdChange && <span className="detail-arrow">→</span>}
+                          {isManual && <span className="detail-icon">⚠</span>}
+                          {isError && <span className="detail-icon">✗</span>}
+                          <span>{detailLabel}</span>
+                        </div>
+                      )
+                    })}
+                    {isExpanded && hasOutput && (
+                      <div className="fix-diff-area">
+                        <DiffView
+                          file={r.file}
+                          srcContent={originalFiles?.[r.file] ?? ''}
+                          outContent={fixPreview.outputFiles![r.file]}
+                          details={r.details}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <div className="empty-sm">No changes needed — pack is already compatible with {fixTarget}</div>
