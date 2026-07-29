@@ -988,6 +988,91 @@ function renamePredicateFields(
   return { data: walk(data), patches, details }
 }
 
+function fileToResourceId(relPath: string): string | null {
+  if (relPath.endsWith('.mcfunction')) {
+    const m = relPath.match(/^data\/([^/]+)\/functions\/(.+)\.mcfunction$/)
+    if (m) return `${m[1]}:${m[2].replace(/\//g, '/')}`
+    return null
+  }
+  if (relPath.endsWith('.json')) {
+    const m = relPath.match(/^data\/([^/]+)\/(loot_tables|advancements|recipes|predicates|item_modifiers|functions|tags\/[^/]+|worldgen\/[^/]+)\/(.+)\.json$/)
+    if (m) return `${m[1]}:${m[3].replace(/\//g, '/')}`
+    const m2 = relPath.match(/^data\/([^/]+)\/(loot_table|advancement|recipe|predicate|item_modifier|function)\/(.+)\.json$/)
+    if (m2) return `${m2[1]}:${m2[3].replace(/\//g, '/')}`
+    return null
+  }
+  return null
+}
+
+interface SimpleRef {
+  from: string
+  to: string
+  file: string
+  line?: number
+}
+
+function collectReferences(files: { file: string; content: string }[]): SimpleRef[] {
+  const refs: SimpleRef[] = []
+
+  for (const { file, content } of files) {
+    if (file.endsWith('.mcfunction')) {
+      const lines = content.split('\n')
+      for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim()
+        if (!trimmed || trimmed.startsWith('#')) continue
+        const tokens = tokenizeCommand(trimmed.startsWith('/') ? trimmed : '/' + trimmed)
+        if (tokens.length === 0) continue
+        const root = tokens[0].value.replace(/^\//, '')
+
+        if (root === 'function' && tokens.length > 1 && tokens[1].value.includes(':')) {
+          refs.push({ from: file, to: tokens[1].value, file, line: i + 1 })
+        }
+        if (root === 'schedule' && tokens.length > 2 && tokens[1].value === 'function' && tokens[2].value.includes(':')) {
+          refs.push({ from: file, to: tokens[2].value, file, line: i + 1 })
+        }
+        if (root === 'execute') {
+          for (let j = 1; j < tokens.length; j++) {
+            if ((tokens[j].value === 'if' || tokens[j].value === 'unless') && j + 2 < tokens.length) {
+              const subType = tokens[j + 1].value
+              if ((subType === 'predicate' || subType === 'function') && tokens[j + 2].value.includes(':')) {
+                refs.push({ from: file, to: tokens[j + 2].value, file, line: i + 1 })
+              }
+            }
+          }
+        }
+        if (root === 'loot' && tokens.length > 1 && tokens[1].value.includes(':')) {
+          refs.push({ from: file, to: tokens[1].value, file, line: i + 1 })
+        }
+      }
+    } else if (file.endsWith('.json')) {
+      let data: any
+      try { data = JSON.parse(content) } catch { continue }
+      const walk = (obj: any) => {
+        if (!obj || typeof obj !== 'object') return
+        if (Array.isArray(obj)) { obj.forEach(walk); return }
+        for (const [key, val] of Object.entries(obj)) {
+          if (typeof val === 'string' && val.includes(':') && !val.startsWith('#') && !val.startsWith('$')) {
+            if (key === 'function' || key === 'loot_table' || key === 'condition' || key === 'parent' || key === 'item' || key === 'result') {
+              refs.push({ from: file, to: val, file })
+            }
+          }
+          if (key === 'values' && Array.isArray(val)) {
+            for (const item of val) {
+              if (typeof item === 'string' && item.includes(':') && !item.startsWith('#')) {
+                refs.push({ from: file, to: item, file })
+              }
+            }
+          }
+          if (typeof val === 'object') walk(val)
+        }
+      }
+      walk(data)
+    }
+  }
+
+  return refs
+}
+
 function generateFixPlan(
   sourceVer: McmetaVersion,
   targetVer: McmetaVersion,
@@ -1077,6 +1162,33 @@ function generateFixPlan(
   for (const m of manualAttention) m.files.forEach(f => filesAffected.add(f))
   for (const j of jsonFixes) j.files.forEach(f => filesAffected.add(f))
 
+  // Compute cascade effects: find files that reference resources defined in patched files
+  const cascadeEffects: FixCascadeEntry[] = []
+  const allFiles = [...mcfunctionFiles, ...jsonFiles]
+
+  for (const patchedFile of filesAffected) {
+    const resourceId = fileToResourceId(patchedFile)
+    if (!resourceId) continue
+
+    const affected: string[] = []
+    const refs = collectReferences(allFiles.map(f => ({ file: relative(baseDir, f).replace(/\\/g, '/'), content: readFileSync(f, 'utf-8') })))
+
+    for (const ref of refs) {
+      if (ref.to === resourceId && patchedFile !== ref.file) {
+        if (!affected.includes(ref.file)) affected.push(ref.file)
+      }
+    }
+
+    if (affected.length > 0) {
+      cascadeEffects.push({
+        trigger: resourceId,
+        triggerFile: patchedFile,
+        description: `Changes to ${patchedFile} may affect consumers (found in ${affected.length} file${affected.length !== 1 ? 's' : ''})`,
+        affectedFiles: affected,
+      })
+    }
+  }
+
   return {
     sourceVersion: sourceName,
     targetVersion: targetName,
@@ -1084,7 +1196,7 @@ function generateFixPlan(
     rewrites: rewritesList,
     jsonFixes,
     manualAttention,
-    cascadeEffects: [],
+    cascadeEffects,
     summary: {
       totalFilesToPatch: filesAffected.size,
       commandRewrites: rewritesCount,

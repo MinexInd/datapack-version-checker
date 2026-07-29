@@ -312,9 +312,12 @@ async function main() {
       }
       if (plan.cascadeEffects.length > 0) {
         console.log()
-        console.log(`  Cascade effects: ${plan.summary.commandRewrites}`)
+        console.log(`  Cascade effects: ${plan.cascadeEffects.length}`)
         for (const ce of plan.cascadeEffects) {
           console.log(`    ${ce.description}`)
+          for (const af of ce.affectedFiles) {
+            console.log(`      -> ${af}`)
+          }
         }
       }
       console.log()
@@ -323,6 +326,9 @@ async function main() {
       console.log(`  Command rewrites: ${plan.summary.commandRewrites}`)
       console.log(`  JSON fixes: ${plan.summary.jsonFixes}`)
       console.log(`  Manual attention: ${plan.summary.manualAttention}`)
+      if (plan.cascadeEffects.length > 0) {
+        console.log(`  Cascade effects: ${plan.cascadeEffects.length}`)
+      }
       console.log(`  ${'═'.repeat(40)}`)
       console.log()
     }
