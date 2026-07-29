@@ -201,20 +201,20 @@ function parseArgs(): CliOptions {
 
 function printTable(versions: VersionCompatibility[], label: string) {
   if (versions.length === 0) return
-  console.log(`\n  ${label}:`)
-  console.log(`  ${'─'.repeat(68)}`)
-  console.log(`  ${'Version'.padEnd(22)} ${'Issues'.padEnd(40)}`)
-  console.log(`  ${'─'.repeat(68)}`)
+  console.log(`\n  ${C.r}${C.bd}${label}${C.R}`)
+  console.log(`  ${C.d}${'─'.repeat(68)}${C.R}`)
+  console.log(`  ${C.d}${'Version'.padEnd(22)}${C.R} ${C.d}${'Issues'.padEnd(40)}${C.R}`)
+  console.log(`  ${C.d}${'─'.repeat(68)}${C.R}`)
   for (const v of versions) {
     const ver = v.version
-    const name = `${ver.name}`.padEnd(22)
+    const name = `${C.y}${ver.name}${C.R}`.padEnd(28)
     const funcIssues = v.mcfunction_issues.length
     const regIssues = v.registry_issues.length
     const structIssues = v.structural_issues?.length ?? 0
     const depIssues = v.deprecation_issues?.length ?? 0
     const issues = funcIssues + regIssues + structIssues + depIssues > 0
-      ? `${funcIssues} cmd, ${regIssues} reg, ${structIssues} struct, ${depIssues} deprec`
-      : 'none'
+      ? `${funcIssues > 0 ? `${C.r}${funcIssues} cmd${C.R}` : `0 cmd`}, ${regIssues > 0 ? `${C.m}${regIssues} reg${C.R}` : `0 reg`}, ${structIssues > 0 ? `${C.c}${structIssues} struct${C.R}` : `0 struct`}, ${depIssues > 0 ? `${C.y}${depIssues} deprec${C.R}` : `0 deprec`}`
+      : `${C.g}none${C.R}`
     console.log(`  ${name} ${issues}`)
   }
 }
@@ -230,40 +230,40 @@ function printDetailedIssues(versions: VersionCompatibility[]) {
     ]
     if (issues.length === 0 && !(v.breaking_changes && v.breaking_changes.length)) continue
     hasIssues = true
-    console.log(`\n  ▶ ${v.version.name}`)
-    console.log(`  ${'─'.repeat(60)}`)
+    console.log(`\n  ${C.bd}${C.r}▶ ${v.version.name}${C.R}`)
+    console.log(`  ${C.d}${'─'.repeat(60)}${C.R}`)
     for (const issue of issues.slice(0, 15)) {
       if ('command' in issue && issue.command) {
-        console.log(`    ${issue.file}:${issue.line}`)
-        console.log(`      ✗ ${issue.issue}`)
+        console.log(`    ${C.d}${issue.file}:${issue.line}${C.R}`)
+        console.log(`      ${C.r}✗${C.R} ${issue.issue}`)
       } else if ('registry' in issue && issue.registry) {
-        const icon = issue.issue.includes('REMOVED') ? '⚠' : '✗'
-        console.log(`    ${issue.file}`)
+        const icon = issue.issue.includes('REMOVED') ? `${C.y}⚠${C.R}` : `${C.r}✗${C.R}`
+        console.log(`    ${C.d}${issue.file}${C.R}`)
         console.log(`      ${icon} ${issue.issue}`)
       } else {
-        console.log(`    ${issue.file}`)
-        console.log(`      ✗ ${issue.issue}`)
+        console.log(`    ${C.d}${issue.file}${C.R}`)
+        console.log(`      ${C.r}✗${C.R} ${issue.issue}`)
       }
     }
-    if (issues.length > 15) console.log(`    ... and ${issues.length - 15} more`)
+    if (issues.length > 15) console.log(`    ${C.d}... and ${issues.length - 15} more${C.R}`)
   }
-  if (!hasIssues) console.log('\n  ✓ No issues found across any version.')
+  if (!hasIssues) console.log(`\n  ${C.g}✓${C.R} No issues found across any version.`)
 }
 
 function printPortingGuide(hits: { rule: { id: string; description: string; minVersion: string; fix?: string }; file?: string; line?: number; text?: string }[]) {
   if (hits.length === 0) return
-  console.log(`\n\n  WHY THIS VERSION RANGE (community knowledge):`)
-  console.log(`  ${'═'.repeat(68)}`)
+  console.log(`\n  ${C.bd}${C.c}WHY THIS VERSION RANGE (community knowledge)${C.R}`)
+  console.log(`  ${C.d}${'═'.repeat(68)}${C.R}`)
   const seen = new Set<string>()
   for (const hit of hits) {
     if (seen.has(hit.rule.id)) continue
     seen.add(hit.rule.id)
-    console.log(`\n  • ${hit.rule.description}`)
-    console.log(`    Requires: >= ${hit.rule.minVersion}`)
-    if (hit.rule.fix) console.log(`    Fix: ${hit.rule.fix}`)
+    console.log(`\n  ${C.bd}•${C.R} ${hit.rule.description}`)
+    console.log(`    ${C.d}Requires:${C.R} ${C.y}>= ${hit.rule.minVersion}${C.R}`)
+    if (hit.rule.fix) console.log(`    ${C.g}Fix:${C.R} ${hit.rule.fix}`)
     const locs = hits.filter(h => h.rule.id === hit.rule.id).slice(0, 3)
     for (const loc of locs) {
-      if (loc.file) console.log(`    Found: ${loc.file}${loc.line ? ':' + loc.line : ''}`)
+      if (loc.file) console.log(`    ${C.d}Found:${C.R} ${C.d}${loc.file}${loc.line ? ':' + loc.line : ''}${C.R}`)
     }
   }
 }
@@ -271,13 +271,13 @@ function printPortingGuide(hits: { rule: { id: string; description: string; minV
 function printBreakingChanges(versions: VersionCompatibility[]) {
   const withChanges = versions.filter(v => v.breaking_changes && v.breaking_changes.length > 0)
   if (withChanges.length === 0) return
-  console.log(`\n\n  KNOWN BREAKING CHANGES BY VERSION (misode/technical-changes)`)
-  console.log(`  ${'═'.repeat(68)}`)
-  console.log(`  (Informational — what changes when updating TO each version)`)
+  console.log(`\n  ${C.bd}${C.m}KNOWN BREAKING CHANGES BY VERSION (misode/technical-changes)${C.R}`)
+  console.log(`  ${C.d}${'═'.repeat(68)}${C.R}`)
+  console.log(`  ${C.d}(Informational — what changes when updating TO each version)${C.R}`)
   for (const v of withChanges) {
-    console.log(`\n  ▶ ${v.version.name}`)
+    console.log(`\n  ${C.bd}▶ ${v.version.name}${C.R}`)
     for (const b of v.breaking_changes!.slice(0, 12)) {
-      console.log(`      ⚠ ${b}`)
+      console.log(`      ${C.y}⚠${C.R} ${b}`)
     }
   }
 }
@@ -485,8 +485,8 @@ async function main() {
   // ---- CHECK MODE ----
   const isRpMode = mode === 'resourcepack'
   const banner = isRpMode
-    ? '\n  ⚡ Resource Pack Checker v0.5.0 (content + load-range + structural + breaking changes)'
-    : '\n  ⚡ Datapack Version Checker v0.5.0 (content + load-range + structural + breaking changes)'
+    ? `\n  ${C.bd}${C.c}⚡ Resource Pack Checker v0.5.0${C.R} (content + load-range + structural + breaking changes)`
+    : `\n  ${C.bd}${C.c}⚡ Datapack Version Checker v0.5.0${C.R} (content + load-range + structural + breaking changes)`
 
   const result = isRpMode
     ? await checkResourcePack(dir, opts.versions, opts.all)
@@ -498,26 +498,29 @@ async function main() {
   }
 
   console.log(banner)
-  console.log(`  ${'═'.repeat(50)}`)
+  console.log(`  ${C.d}${'═'.repeat(50)}${C.R}`)
   console.log()
   if ('load_range' in result && result.load_range) {
     const lr = (result as any).load_range
-    console.log(`  📦 Declared load range (pack.mcmeta): ${lr.min_name ?? lr.min} – ${lr.max_name ?? lr.max}`)
+    console.log(`  ${C.d}📦 Declared load range (pack.mcmeta):${C.R} ${C.y}${lr.min_name ?? lr.min} – ${lr.max_name ?? lr.max}${C.R}`)
   }
   if ('min_version' in result && result.min_version !== undefined) {
-    console.log(`  📋 Minimum version from content: ${(result as any).min_version ?? 'any (no version-specific features detected)'}`)
+    const mv = (result as any).min_version ?? 'any (no version-specific features detected)'
+    console.log(`  ${C.d}📋 Minimum version from content:${C.R} ${C.bd}${mv}${C.R}`)
   }
-  console.log(`  🔍 Versions checked: ${result.versions_checked}`)
-  console.log(`  ✅ Fully compatible: ${result.compatible.length}`)
-  console.log(`  ❌ Breaks / outside range: ${result.incompatible.length}`)
+  console.log(`  ${C.d}🔍 Versions checked:${C.R} ${C.bd}${result.versions_checked}${C.R}`)
+  const compatCount = result.compatible.length
+  const incompatCount = result.incompatible.length
+  console.log(`  ${compatCount > 0 ? C.g + '✅' : C.d + '  '} Fully compatible:${C.R} ${compatCount}`)
+  console.log(`  ${incompatCount > 0 ? C.r + '❌' : C.d + '  '} Breaks / outside range:${C.R} ${incompatCount}`)
 
   if (result.compatible.length > 0) {
-    console.log(`\n  ✅ Compatible versions: ${result.compatible.map(v => v.version.name).join(', ')}`)
+    console.log(`\n  ${C.g}✅${C.R} Compatible versions: ${result.compatible.map(v => `${C.g}${v.version.name}${C.R}`).join(', ')}`)
   }
   const outside = result.incompatible.filter(v => v.status === 'outside_load_range')
   const broken = result.incompatible.filter(v => v.status !== 'outside_load_range')
   if (outside.length > 0) {
-    console.log(`\n  ⛔ Outside declared load range (won't load): ${outside.map(v => v.version.name).join(', ')}`)
+    console.log(`\n  ${C.y}⛔${C.R} Outside declared load range (won't load): ${outside.map(v => `${C.y}${v.version.name}${C.R}`).join(', ')}`)
   }
   if (broken.length > 0) {
     printTable(broken, '❌ CONTENT BREAKS ON THESE VERSIONS')
@@ -531,8 +534,8 @@ async function main() {
 
   logger.timeEnd('total', `(${result.versions_checked} versions)`)
 
-  console.log(`  ${'═'.repeat(50)}`)
-  console.log(`  Data from: api.spyglassmc.com/mcje + vanilla-mcdoc + misode/technical-changes + community knowledge`)
+  console.log(`  ${C.d}${'═'.repeat(50)}${C.R}`)
+  console.log(`  ${C.d}Data from:${C.R} api.spyglassmc.com/mcje + vanilla-mcdoc + misode/technical-changes + community knowledge`)
   console.log()
 }
 
