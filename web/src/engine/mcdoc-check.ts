@@ -6,6 +6,13 @@ function parseVer(v: string): number[] | null {
   return [parseInt(m[1], 10), m[2] ? parseInt(m[2], 10) : 0, m[3] ? parseInt(m[3], 10) : 0]
 }
 
+/** True when `v` has a trailing suffix after its numeric prefix (e.g. "26.3 Snapshot 1"). */
+function hasVersionSuffix(v: string): boolean {
+  const m = v.match(/^(\d+(?:\.\d+)*)/)
+  if (!m) return false
+  return m[0].length < v.trim().length
+}
+
 export function cmpVer(a: string, b: string): number {
   const pa = parseVer(a)
   const pb = parseVer(b)
@@ -13,6 +20,11 @@ export function cmpVer(a: string, b: string): number {
     for (let i = 0; i < 3; i++) {
       if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1
     }
+    // Numerically equal: a suffix means pre-release (less than bare version)
+    const aSuffix = hasVersionSuffix(a)
+    const bSuffix = hasVersionSuffix(b)
+    if (aSuffix && !bSuffix) return -1
+    if (!aSuffix && bSuffix) return 1
     return 0
   }
   return a < b ? -1 : a > b ? 1 : 0

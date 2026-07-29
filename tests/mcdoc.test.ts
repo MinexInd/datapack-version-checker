@@ -23,6 +23,18 @@ describe('cmpVer', () => {
     expect(cmpVer('24w09a', '23w45a')).toBeGreaterThan(0)
   })
 
+  it('treats suffixed versions as less than bare versions', () => {
+    expect(cmpVer('26.3 Snapshot 1', '26.3')).toBeLessThan(0)
+    expect(cmpVer('26.3', '26.3 Snapshot 1')).toBeGreaterThan(0)
+    expect(cmpVer('26.2 Pre-Release 1', '26.2')).toBeLessThan(0)
+    expect(cmpVer('1.21.5 Pre-Release 2', '1.21.5')).toBeLessThan(0)
+  })
+
+  it('treats equal suffixed versions as equal', () => {
+    expect(cmpVer('26.3 Snapshot 1', '26.3 Snapshot 1')).toBe(0)
+    expect(cmpVer('26.2', '26.2')).toBe(0)
+  })
+
   it('handles unparsable versions with string fallback', () => {
     expect(cmpVer('a', 'b')).toBeLessThan(0)
   })
@@ -51,6 +63,15 @@ describe('inRange', () => {
 
   it('returns true when both bounds are undefined', () => {
     expect(inRange('1.20', undefined, undefined)).toBe(true)
+  })
+
+  it('handles suffix versions with until gate', () => {
+    // "26.3 Snapshot 1" should be < "26.3" (pre-release), so still in range
+    expect(inRange('26.3 Snapshot 1', undefined, '26.3')).toBe(true)
+    // "26.3" itself should be out of range
+    expect(inRange('26.3', undefined, '26.3')).toBe(false)
+    // "26.2" should be in range
+    expect(inRange('26.2', undefined, '26.3')).toBe(true)
   })
 })
 
