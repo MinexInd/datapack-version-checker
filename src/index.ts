@@ -344,13 +344,14 @@ async function main() {
     }
 
     // Apply fixes and show results
-    console.log(`  ${'─'.repeat(40)}`)
+    console.log(`  ${'─'.repeat(60)}`)
     console.log(`  Applying fixes...`)
     console.log()
 
     // (fixes already applied by fixDatapack/fixResourcePack above)
 
-    console.log(`  Done: ${fixResult.summary.filesFixed} files patched (${fixResult.summary.totalPatches} changes)`)
+    const cmdTotal = fixResult.summary.totalPatches
+    console.log(`  ${'✓'.repeat(1)} Done: ${fixResult.summary.filesFixed} files patched (${cmdTotal} changes)`)
     console.log()
 
     // Group results by type
@@ -359,35 +360,48 @@ async function main() {
     const mcmetaResult = fixResult.results.filter(r => r.file === 'pack.mcmeta')
 
     if (cmdResults.length > 0) {
-      console.log(`  Command rewrites:`)
+      const cmdTotalPatches = cmdResults.reduce((s, r) => s + r.patches, 0)
+      console.log(`  ┌─ Command rewrites (${cmdResults.length} files, ${cmdTotalPatches} patches)`)
       for (const r of cmdResults) {
-        console.log(`    ${r.file}  (${r.patches} patches)`)
+        console.log(`  │`)
+        console.log(`  ├ ${r.file}`)
         for (const d of r.details) {
-          console.log(`      ${d}`)
+          const icon = d.includes('->') ? '→' : d.includes('FIXED') ? '!' : '·'
+          console.log(`  │  ${icon} ${d}`)
         }
       }
+      console.log(`  └${'─'.repeat(55)}`)
+      console.log()
     }
+
     if (jsonResults.length > 0) {
-      console.log()
-      console.log(`  JSON fixes:`)
+      const jsonTotalPatches = jsonResults.reduce((s, r) => s + r.patches, 0)
+      console.log(`  ┌─ JSON fixes (${jsonResults.length} files, ${jsonTotalPatches} patches)`)
       for (const r of jsonResults) {
-        console.log(`    ${r.file}  (${r.patches} patches)`)
+        console.log(`  │`)
+        console.log(`  ├ ${r.file}`)
         for (const d of r.details) {
-          console.log(`      ${d}`)
+          const icon = d.includes('->') ? '→' : d.includes('FIXED') ? '!' : '·'
+          console.log(`  │  ${icon} ${d}`)
         }
       }
-    }
-    if (mcmetaResult.length > 0) {
+      console.log(`  └${'─'.repeat(55)}`)
       console.log()
-      console.log(`  pack.mcmeta:`)
+    }
+
+    if (mcmetaResult.length > 0) {
+      console.log(`  ┌─ pack.mcmeta`)
       for (const r of mcmetaResult) {
-        console.log(`    ${r.file}  (${r.patches} patches)`)
+        console.log(`  │`)
+        console.log(`  ├ ${r.file}`)
         for (const d of r.details) {
-          console.log(`      ${d}`)
+          console.log(`  │  → ${d}`)
         }
       }
+      console.log(`  └${'─'.repeat(55)}`)
+      console.log()
     }
-    console.log()
+
     console.log(`  ${'═'.repeat(60)}`)
     console.log()
     return
