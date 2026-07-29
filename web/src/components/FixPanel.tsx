@@ -1,5 +1,14 @@
 import type { McmetaVersion, FixPreview } from '../api'
 
+const TYPE_LABELS: Record<string, string> = {
+  advancement_icon: 'Advancement icon format',
+  biome_field_rename: 'Biome field rename',
+  predicate_field_rename: 'Predicate field rename',
+  registry_comment: 'Registry refs',
+  mcdoc_removal: 'mcdoc removals',
+  mcdoc_structural: 'mcdoc structural',
+}
+
 interface Props {
   versions: McmetaVersion[]
   fixTarget: string
@@ -55,6 +64,110 @@ export default function FixPanel({
           </button>
         )}
       </div>
+
+      {fixPreview && fixPreview.plan && fixPreview.plan.sourceVersion && (
+        <div className="porting-plan" style={{ marginTop: 16 }}>
+          <div className="plan-header">
+            <span className={`plan-direction ${fixPreview.plan.direction === 'forward' ? 'fwd' : 'bwd'}`}>{fixPreview.plan.direction === 'forward' ? 'Upgrade' : 'Backport'}</span>
+            <span className="plan-versions">
+              {fixPreview.plan.sourceVersion} → {fixPreview.plan.targetVersion}
+            </span>
+          </div>
+
+          {/* Summary stats */}
+          <div className="stats" style={{ marginBottom: 14, marginTop: 14 }}>
+            <div className="stat blue">
+              <div className="num">{fixPreview.plan.summary.totalFilesToPatch}</div>
+              <div className="label">Files to patch</div>
+            </div>
+            {fixPreview.plan.summary.commandRewrites > 0 && (
+              <div className="stat green">
+                <div className="num">{fixPreview.plan.summary.commandRewrites}</div>
+                <div className="label">Cmd rewrites</div>
+              </div>
+            )}
+            {fixPreview.plan.summary.jsonFixes > 0 && (
+              <div className="stat purple">
+                <div className="num">{fixPreview.plan.summary.jsonFixes}</div>
+                <div className="label">JSON fixes</div>
+              </div>
+            )}
+            {fixPreview.plan.summary.manualAttention > 0 && (
+              <div className="stat red">
+                <div className="num">{fixPreview.plan.summary.manualAttention}</div>
+                <div className="label">Manual</div>
+              </div>
+            )}
+          </div>
+
+          {/* Command rewrites */}
+          {fixPreview.plan.rewrites.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div className="plan-section-title">Command rewrites</div>
+              <div className="scl-box" style={{ maxHeight: 180 }}>
+                {fixPreview.plan.rewrites.map((rw, i) => (
+                  <div key={i} className="plan-rewrite">
+                    <div className="plan-rewrite-info">
+                      <span className="plan-rewrite-desc">{rw.description}</span>
+                      <span className="plan-rewrite-count">{rw.count}× ({rw.files.length} files)</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* JSON fixes */}
+          {fixPreview.plan.jsonFixes.filter(j => j.files.length > 0).length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div className="plan-section-title">JSON fixes</div>
+              <div className="scl-box" style={{ maxHeight: 130 }}>
+                {fixPreview.plan.jsonFixes.filter(j => j.files.length > 0).map((jf, i) => (
+                  <div key={i} className="plan-rewrite">
+                    <div className="plan-rewrite-info">
+                      <span className="plan-rewrite-desc">{TYPE_LABELS[jf.type] ?? jf.type}</span>
+                      <span className="plan-rewrite-count">{jf.files.length} file(s)</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Manual attention */}
+          {fixPreview.plan.manualAttention.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div className="plan-section-title" style={{ color: 'var(--red)' }}>Manual attention needed</div>
+              <div className="scl-box" style={{ maxHeight: 150 }}>
+                {fixPreview.plan.manualAttention.map((m, i) => (
+                  <div key={i} className="plan-manual">
+                    <div className="plan-manual-desc">{m.description}</div>
+                    <div className="plan-manual-reason">Reason: {m.reason}</div>
+                    <div className="plan-manual-files">{m.files.join(', ')}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cascade effects */}
+          {fixPreview.plan.cascadeEffects.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div className="plan-section-title" style={{ color: 'var(--amber)' }}>Cascade effects</div>
+              <div className="scl-box" style={{ maxHeight: 130 }}>
+                {fixPreview.plan.cascadeEffects.map((ce, i) => (
+                  <div key={i} className="plan-rewrite">
+                    <div className="plan-rewrite-info">
+                      <span className="plan-rewrite-desc">{ce.description}</span>
+                      <span className="plan-rewrite-count">{ce.affectedFiles.length} file(s)</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {fixPreview && (
         <div style={{ marginTop: 16 }}>

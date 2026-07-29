@@ -22,6 +22,50 @@ export interface FixFileResult {
   details: string[]
 }
 
+export interface FixRewriteEntry {
+  id: string
+  description: string
+  count: number
+  files: string[]
+}
+
+export interface FixJsonFixEntry {
+  type: string
+  count: number
+  files: string[]
+}
+
+export interface FixManualEntry {
+  description: string
+  reason: string
+  files: string[]
+}
+
+export interface FixCascadeEntry {
+  trigger: string
+  triggerFile: string
+  affectedFiles: string[]
+  description: string
+}
+
+export interface FixPlan {
+  sourceVersion: string
+  targetVersion: string
+  direction: 'forward' | 'backward'
+  rewrites: FixRewriteEntry[]
+  jsonFixes: FixJsonFixEntry[]
+  manualAttention: FixManualEntry[]
+  cascadeEffects: FixCascadeEntry[]
+  summary: {
+    totalFilesToPatch: number
+    commandRewrites: number
+    jsonFixes: number
+    manualAttention: number
+    mcdocRemovals: number
+    packMcmetaUpdate: boolean
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Command rewrite patterns
 // Each strategy applies when porting FROM sourceVer TO targetVer
@@ -944,19 +988,129 @@ function renamePredicateFields(
   return { data: walk(data), patches, details }
 }
 
-// ---------------------------------------------------------------------------
-// Main fix entry point
-// ---------------------------------------------------------------------------
+function generateFixPlan(
+  sourceVer: McmetaVersion,
+  targetVer: McmetaVersion,
+  rewrites: CmdRewrite[],
+  removals: FeatureRule[],
+  mcfunctionFiles: string[],
+  jsonFiles: string[],
+  baseDir: string,
+): FixPlan {
+  const sourceName = sourceVer.name
+  const targetName = targetVer.name
+  const portingForward = targetVer.data_version >= sourceVer.data_version
+
+  const rewriteMap = new Map<string, FixRewriteEntry>()
+  const manualAttention: FixManualEntry[] = []
+  const jsonFixes: FixJsonFixEntry[] = []
+
+  const seenManual = new Set<string>()
+
+  for (const file of mcfunctionFiles) {
+    const rel = relative(baseDir, file).replace(/\\/g, '/')
+    const content = readFileSync(file, 'utf-8')
+    const lines = content.split('\n')
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const cmdLine = trimmed.startsWith('/') ? trimmed : '/' + trimmed
+
+      for (const rw of rewrites) {
+        if (!rw.pattern.test(cmdLine)) continue
+        if (!rewriteMap.has(rw.id)) {
+          rewriteMap.set(rw.id, { id: rw.id, description: rw.description, count: 0, files: [] })
+        }
+        const entry = rewriteMap.get(rw.id)!
+        entry.count++
+        if (!entry.files.includes(rel)) entry.files.push(rel)
+      }
+
+      const tokens = tokenizeCommand(cmdLine)
+      if (tokens.length === 0) continue
+      const root = tokens[0].value.replace(/^\//, '')
+      for (const rule of removals) {
+        if (rule.match !== root) continue
+        const key = rule.id
+        if (!seenManual.has(key)) {
+          seenManual.add(key)
+          manualAttention.push({
+            description: rule.description,
+            reason: rule.fix || 'No automatic rewrite available',
+            files: [],
+          })
+        }
+        const entry = manualAttention.find(m => m.description === rule.description)
+        if (entry && !entry.files.includes(rel)) entry.files.push(rel)
+      }
+    }
+  }
+
+  const jfTypes = ['advancement_icon', 'biome_field_rename', 'predicate_field_rename', 'registry_comment', 'mcdoc_removal']
+  for (const type of jfTypes) {
+    jsonFixes.push({ type, count: 0, files: [] })
+  }
+
+  for (const file of jsonFiles) {
+    const rel = relative(baseDir, file).replace(/\\/g, '/')
+    if (!portingForward && (rel.includes('/advancement') || rel.includes('/advancements'))) {
+      const jf = jsonFixes.find(f => f.type === 'advancement_icon')
+      if (jf && !jf.files.includes(rel)) jf.files.push(rel)
+    }
+    if (rel.includes('/worldgen/biome')) {
+      const jf = jsonFixes.find(f => f.type === 'biome_field_rename')
+      if (jf && !jf.files.includes(rel)) jf.files.push(rel)
+    }
+    if (rel.includes('/predicate') || rel.includes('/predicates')) {
+      const jf = jsonFixes.find(f => f.type === 'predicate_field_rename')
+      if (jf && !jf.files.includes(rel)) jf.files.push(rel)
+    }
+  }
+
+  const rewritesList = Array.from(rewriteMap.values()).sort((a, b) => b.count - a.count)
+  const rewritesCount = rewritesList.reduce((s, r) => s + r.count, 0)
+  const jsonFixesTotal = jsonFixes.reduce((s, f) => s + f.files.length, 0)
+
+  const filesAffected = new Set<string>()
+  for (const r of rewritesList) r.files.forEach(f => filesAffected.add(f))
+  for (const m of manualAttention) m.files.forEach(f => filesAffected.add(f))
+  for (const j of jsonFixes) j.files.forEach(f => filesAffected.add(f))
+
+  return {
+    sourceVersion: sourceName,
+    targetVersion: targetName,
+    direction: portingForward ? 'forward' : 'backward',
+    rewrites: rewritesList,
+    jsonFixes,
+    manualAttention,
+    cascadeEffects: [],
+    summary: {
+      totalFilesToPatch: filesAffected.size,
+      commandRewrites: rewritesCount,
+      jsonFixes: jsonFixesTotal,
+      manualAttention: manualAttention.length,
+      mcdocRemovals: 0,
+      packMcmetaUpdate: true,
+    },
+  }
+}
 
 export async function fixDatapack(options: FixOptions): Promise<{
   results: FixFileResult[]
+  plan: FixPlan
   summary: { filesFixed: number; totalPatches: number; errors: string[] }
 }> {
   const { datapackDir, outputDir, targetVersion, sourceVersion: explicitSource } = options
   const allVersions = await fetchVersions()
   const targetVer = allVersions.find(v => v.name === targetVersion || v.id === targetVersion)
   if (!targetVer) {
-    return { results: [], summary: { filesFixed: 0, totalPatches: 0, errors: [`Target version '${targetVersion}' not found`] } }
+    const plan: FixPlan = {
+      sourceVersion: '', targetVersion, direction: 'forward',
+      rewrites: [], jsonFixes: [], manualAttention: [], cascadeEffects: [],
+      summary: { totalFilesToPatch: 0, commandRewrites: 0, jsonFixes: 0, manualAttention: 0, mcdocRemovals: 0, packMcmetaUpdate: false },
+    }
+    return { results: [], plan, summary: { filesFixed: 0, totalPatches: 0, errors: [`Target version '${targetVersion}' not found`] } }
   }
 
   // Determine source version
@@ -974,7 +1128,12 @@ export async function fixDatapack(options: FixOptions): Promise<{
     } catch { }
   }
   if (!sourceVer) {
-    return { results: [], summary: { filesFixed: 0, totalPatches: 0, errors: ['Could not determine source version. Use --from-version <ver>'] } }
+    const plan: FixPlan = {
+      sourceVersion: '', targetVersion, direction: 'forward',
+      rewrites: [], jsonFixes: [], manualAttention: [], cascadeEffects: [],
+      summary: { totalFilesToPatch: 0, commandRewrites: 0, jsonFixes: 0, manualAttention: 0, mcdocRemovals: 0, packMcmetaUpdate: false },
+    }
+    return { results: [], plan, summary: { filesFixed: 0, totalPatches: 0, errors: ['Could not determine source version. Use --from-version <ver>'] } }
   }
 
   const sourceName = sourceVer.name
@@ -997,6 +1156,9 @@ export async function fixDatapack(options: FixOptions): Promise<{
   const results: FixFileResult[] = []
   let totalPatches = 0
   const errors: string[] = []
+
+  // Generate porting plan
+  const plan = generateFixPlan(sourceVer, targetVer, rewrites, removals, mcfunction, json, baseDir)
 
   // Create output directory
   if (!existsSync(outputDir)) {
@@ -1165,6 +1327,7 @@ export async function fixDatapack(options: FixOptions): Promise<{
 
   return {
     results,
+    plan,
     summary: {
       filesFixed: results.length,
       totalPatches,
@@ -1187,13 +1350,19 @@ export interface ResourcePackFixOptions {
 
 export async function fixResourcePack(options: ResourcePackFixOptions): Promise<{
   results: FixFileResult[]
+  plan: FixPlan
   summary: { filesFixed: number; totalPatches: number; errors: string[] }
 }> {
   const { packDir, outputDir, targetVersion } = options
   const allVersions = await fetchVersions()
   const targetVer = allVersions.find(v => v.name === targetVersion || v.id === targetVersion)
   if (!targetVer) {
-    return { results: [], summary: { filesFixed: 0, totalPatches: 0, errors: [`Target version '${targetVersion}' not found`] } }
+    const plan: FixPlan = {
+      sourceVersion: '', targetVersion, direction: 'forward',
+      rewrites: [], jsonFixes: [], manualAttention: [], cascadeEffects: [],
+      summary: { totalFilesToPatch: 0, commandRewrites: 0, jsonFixes: 0, manualAttention: 0, mcdocRemovals: 0, packMcmetaUpdate: false },
+    }
+    return { results: [], plan, summary: { filesFixed: 0, totalPatches: 0, errors: [`Target version '${targetVersion}' not found`] } }
   }
 
   const targetName = targetVer.name
@@ -1349,8 +1518,32 @@ export async function fixResourcePack(options: ResourcePackFixOptions): Promise<
     }
   } catch { }
 
+  const jsonFixesList: FixJsonFixEntry[] = []
+  const mcdocRemovals = results.reduce((s, r) => s + r.details.filter(d => d.includes('mcdoc')).length, 0)
+  if (results.length > 0) {
+    jsonFixesList.push({ type: 'mcdoc_structural', count: results.filter(r => r.details.some(d => d.includes('mcdoc'))).length, files: results.map(r => r.file) })
+  }
+  const plan: FixPlan = {
+    sourceVersion: '',
+    targetVersion: targetName,
+    direction: 'forward',
+    rewrites: [],
+    jsonFixes: jsonFixesList,
+    manualAttention: [],
+    cascadeEffects: [],
+    summary: {
+      totalFilesToPatch: results.length,
+      commandRewrites: 0,
+      jsonFixes: results.length,
+      manualAttention: 0,
+      mcdocRemovals,
+      packMcmetaUpdate: true,
+    },
+  }
+
   return {
     results,
+    plan,
     summary: {
       filesFixed: results.length,
       totalPatches,

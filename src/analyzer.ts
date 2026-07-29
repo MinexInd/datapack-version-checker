@@ -83,8 +83,6 @@ export interface PortingPlan {
 }
 
 const PATH_TYPE_MAP: [RegExp, string][] = [
-
-const PATH_TYPE_MAP: [RegExp, string][] = [
   [/^data\/[^/]+\/functions\//, 'function'],
   [/^data\/[^/]+\/tags\/functions\//, 'tag/function'],
   [/^data\/[^/]+\/tags\/blocks\//, 'tag/block'],

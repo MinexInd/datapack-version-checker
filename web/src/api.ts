@@ -143,9 +143,28 @@ export interface FixSummary {
   errors: string[]
 }
 
+export interface FixPlan {
+  sourceVersion: string
+  targetVersion: string
+  direction: 'forward' | 'backward'
+  rewrites: { id: string; description: string; count: number; files: string[] }[]
+  jsonFixes: { type: string; count: number; files: string[] }[]
+  manualAttention: { description: string; reason: string; files: string[] }[]
+  cascadeEffects: { description: string; affectedFiles: string[] }[]
+  summary: {
+    totalFilesToPatch: number
+    commandRewrites: number
+    jsonFixes: number
+    manualAttention: number
+    mcdocRemovals: number
+    packMcmetaUpdate: boolean
+  }
+}
+
 export interface FixPreview {
   results: FixFileDetail[]
   summary: FixSummary
+  plan: FixPlan
   isRp: boolean
 }
 
@@ -203,6 +222,7 @@ export async function runFixPreview(req: FixRequest): Promise<FixPreview> {
   return {
     results: fixResult.results,
     summary: fixResult.summary,
+    plan: fixResult.plan,
     isRp,
   }
 }

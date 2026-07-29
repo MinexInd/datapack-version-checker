@@ -2,7 +2,7 @@
 import { existsSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { checkCompatibilityContentBased, checkResourcePack } from './engine.js'
-import { fixDatapack, fixResourcePack } from './fixer.js'
+import { fixDatapack, fixResourcePack, type FixPlan, type FixJsonFixEntry } from './fixer.js'
 import { clearCache } from './cache.js'
 import { setLogLevel, getLogger } from './logger.js'
 import type { VersionCompatibility, McfunctionIssue, RegistryIssue, RegistryDeprecation } from './types.js'
@@ -261,10 +261,10 @@ async function main() {
     const outputDir = opts.outputDir ?? resolve(dir + '_fixed_' + targetVersion.replace(/[^a-zA-Z0-9._-]/g, '_'))
     const packType = isRp ? 'Resource Pack' : 'Datapack'
     console.log(`\n  🔧 ${packType} Version Checker — Auto-Fix Mode`)
-    console.log(`  ${'═'.repeat(50)}`)
-    console.log(`  📂 Source: ${dir}`)
-    console.log(`  🎯 Target: ${targetVersion}`)
-    console.log(`  📁 Output: ${outputDir}`)
+    console.log(`  ${'═'.repeat(60)}`)
+    console.log(`  Source: ${dir}`)
+    console.log(`  Target: ${targetVersion}`)
+    console.log(`  Output: ${outputDir}`)
     console.log()
 
     const fixResult = isRp
@@ -273,20 +273,106 @@ async function main() {
 
     if (fixResult.summary.errors.length > 0) {
       for (const err of fixResult.summary.errors) {
-        console.error(`  ✗ Error: ${err}`)
+        console.error(`  Error: ${err}`)
       }
       if (fixResult.results.length === 0) process.exit(1)
     }
 
-    console.log(`  ✅ Fix complete: ${fixResult.summary.filesFixed} files patched (${fixResult.summary.totalPatches} changes)`)
-    for (const r of fixResult.results) {
-      console.log(`     • ${r.file} (${r.patches} patches)`)
-      for (const d of r.details) {
-        console.log(`        ${d}`)
+    const plan = fixResult.plan
+
+    // Show porting plan
+    if (plan && plan.sourceVersion) {
+      console.log(`  ═══ Porting Plan ═══`)
+      console.log(`  ${plan.sourceVersion} → ${plan.targetVersion}  (${plan.direction} port)`)
+      console.log()
+
+      if (plan.rewrites.length > 0) {
+        console.log(`  Command rewrites: ${plan.summary.commandRewrites}`)
+        for (const rw of plan.rewrites) {
+          console.log(`    ${rw.description.padEnd(50)} ${rw.count}×  (${rw.files.length} files)`)
+        }
+      }
+      if (plan.manualAttention.length > 0) {
+        console.log()
+        console.log(`  Manual attention: ${plan.summary.manualAttention}`)
+        for (const m of plan.manualAttention) {
+          console.log(`    ${m.description}`)
+          console.log(`      Reason: ${m.reason}`)
+          console.log(`      Files: ${m.files.join(', ')}`)
+        }
+      }
+      if (plan.jsonFixes.some((j: FixJsonFixEntry) => j.files.length > 0)) {
+        console.log()
+        console.log(`  JSON fixes:`)
+        for (const jf of plan.jsonFixes) {
+          if (jf.files.length > 0) {
+            console.log(`    ${jf.type}: ${jf.files.length} file(s)`)
+          }
+        }
+      }
+      if (plan.cascadeEffects.length > 0) {
+        console.log()
+        console.log(`  Cascade effects: ${plan.summary.commandRewrites}`)
+        for (const ce of plan.cascadeEffects) {
+          console.log(`    ${ce.description}`)
+        }
+      }
+      console.log()
+      console.log(`  ${'─'.repeat(40)}`)
+      console.log(`  Files to patch: ${plan.summary.totalFilesToPatch}`)
+      console.log(`  Command rewrites: ${plan.summary.commandRewrites}`)
+      console.log(`  JSON fixes: ${plan.summary.jsonFixes}`)
+      console.log(`  Manual attention: ${plan.summary.manualAttention}`)
+      console.log(`  ${'═'.repeat(40)}`)
+      console.log()
+    }
+
+    // Apply fixes and show results
+    console.log(`  ${'─'.repeat(40)}`)
+    console.log(`  Applying fixes...`)
+    console.log()
+
+    // (fixes already applied by fixDatapack/fixResourcePack above)
+
+    console.log(`  Done: ${fixResult.summary.filesFixed} files patched (${fixResult.summary.totalPatches} changes)`)
+    console.log()
+
+    // Group results by type
+    const cmdResults = fixResult.results.filter(r => r.file.endsWith('.mcfunction'))
+    const jsonResults = fixResult.results.filter(r => r.file.endsWith('.json'))
+    const mcmetaResult = fixResult.results.filter(r => r.file === 'pack.mcmeta')
+
+    if (cmdResults.length > 0) {
+      console.log(`  Command rewrites:`)
+      for (const r of cmdResults) {
+        console.log(`    ${r.file}  (${r.patches} patches)`)
+        for (const d of r.details) {
+          console.log(`      ${d}`)
+        }
       }
     }
-    console.log(`  ${'═'.repeat(50)}`)
-    console.log(`  Data from: api.spyglassmc.com/mcje + vanilla-mcdoc + misode/technical-changes + community knowledge`)
+    if (jsonResults.length > 0) {
+      console.log()
+      console.log(`  JSON fixes:`)
+      for (const r of jsonResults) {
+        console.log(`    ${r.file}  (${r.patches} patches)`)
+        for (const d of r.details) {
+          console.log(`      ${d}`)
+        }
+      }
+    }
+    if (mcmetaResult.length > 0) {
+      console.log()
+      console.log(`  pack.mcmeta:`)
+      for (const r of mcmetaResult) {
+        console.log(`    ${r.file}  (${r.patches} patches)`)
+        for (const d of r.details) {
+          console.log(`      ${d}`)
+        }
+      }
+    }
+    console.log()
+    console.log(`  ${'═'.repeat(60)}`)
     console.log()
     return
   }
