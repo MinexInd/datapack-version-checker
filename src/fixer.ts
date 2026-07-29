@@ -14,6 +14,7 @@ export interface FixOptions {
   targetVersion: string
   targetPackFormat?: number
   sourceVersion?: string
+  onProgress?: (message: string, current?: number, total?: number) => void
 }
 
 export interface FixFileResult {
@@ -1269,7 +1270,7 @@ export async function fixDatapack(options: FixOptions): Promise<{
   let totalPatches = 0
   const errors: string[] = []
 
-  // Generate porting plan
+  options.onProgress?.('Scanning files for porting plan...')
   const plan = generateFixPlan(sourceVer, targetVer, rewrites, removals, mcfunction, json, baseDir)
 
   // Create output directory
@@ -1277,8 +1278,15 @@ export async function fixDatapack(options: FixOptions): Promise<{
     mkdirSync(outputDir, { recursive: true })
   }
 
+  const totalFiles = mcfunction.length + json.length
+  let processed = 0
+
+  options.onProgress?.('Processing functions...')
+
   // Process mcfunction files
   for (const file of mcfunction) {
+    processed++
+    options.onProgress?.(`Rewriting ${relative(baseDir, file)}`, processed, totalFiles)
     const rel = relative(baseDir, file).replace(/\\/g, '/')
     const content = readFileSync(file, 'utf-8')
     const { result, patches, details } = fixMcfunctionFile(content, rel, rewrites, removals)
@@ -1298,8 +1306,12 @@ export async function fixDatapack(options: FixOptions): Promise<{
     }
   }
 
+  options.onProgress?.('Processing JSON files...')
+
   // Process JSON files (structural + advancement icon + registry fixes)
   for (const file of json) {
+    processed++
+    options.onProgress?.(`Fixing ${relative(baseDir, file)}`, processed, totalFiles)
     const rel = relative(baseDir, file).replace(/\\/g, '/')
     let content: string
     try {
@@ -1393,6 +1405,8 @@ export async function fixDatapack(options: FixOptions): Promise<{
     }
   }
 
+  options.onProgress?.('Updating pack.mcmeta...')
+
   // Update pack.mcmeta
   const targetPackFormat = options.targetPackFormat ?? targetVer.data_pack_version
   try {
@@ -1437,6 +1451,8 @@ export async function fixDatapack(options: FixOptions): Promise<{
     }
   } catch { }
 
+  options.onProgress?.('Done.')
+
   return {
     results,
     plan,
@@ -1458,6 +1474,7 @@ export interface ResourcePackFixOptions {
   targetVersion: string
   targetPackFormat?: number
   sourceVersion?: string
+  onProgress?: (message: string, current?: number, total?: number) => void
 }
 
 export async function fixResourcePack(options: ResourcePackFixOptions): Promise<{
@@ -1508,8 +1525,15 @@ export async function fixResourcePack(options: ResourcePackFixOptions): Promise<
     walk(assetsDir)
   }
 
+  const totalFiles = jsonFiles.length
+  const finishProgress = () => options.onProgress?.('Done.')
+
+  options.onProgress?.('Processing resource pack files...')
+
   // Process JSON files with mcdoc structural fixes
-  for (const file of jsonFiles) {
+  for (let fi = 0; fi < jsonFiles.length; fi++) {
+    const file = jsonFiles[fi]
+    options.onProgress?.(`Processing ${relative(baseDir, file)}`, fi + 1, totalFiles)
     const rel = relative(baseDir, file).replace(/\\/g, '/')
     let content: string
     try {
@@ -1652,6 +1676,8 @@ export async function fixResourcePack(options: ResourcePackFixOptions): Promise<
       packMcmetaUpdate: true,
     },
   }
+
+  finishProgress()
 
   return {
     results,

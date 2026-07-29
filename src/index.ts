@@ -267,9 +267,19 @@ async function main() {
     console.log(`  Output: ${outputDir}`)
     console.log()
 
+    let lastProgress = ''
+    const onProgress = (msg: string, current?: number, total?: number) => {
+      const line = total ? `  [${current}/${total}] ${msg}` : `  ${msg}`
+      if (line !== lastProgress) {
+        lastProgress = line
+        process.stderr.write(`\r${' '.repeat(80)}\r${line}`)
+      }
+    }
+
     const fixResult = isRp
-      ? await fixResourcePack({ packDir: dir, outputDir, targetVersion, sourceVersion: opts.fromVersion })
-      : await fixDatapack({ datapackDir: dir, outputDir, targetVersion, sourceVersion: opts.fromVersion })
+      ? await fixResourcePack({ packDir: dir, outputDir, targetVersion, sourceVersion: opts.fromVersion, onProgress })
+      : await fixDatapack({ datapackDir: dir, outputDir, targetVersion, sourceVersion: opts.fromVersion, onProgress })
+    process.stderr.write('\r' + ' '.repeat(80) + '\r')
 
     if (fixResult.summary.errors.length > 0) {
       for (const err of fixResult.summary.errors) {
