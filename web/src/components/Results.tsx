@@ -223,23 +223,10 @@ function VersionRow({ v, defaultOpen, index, filterKind, onFilterKind }: {
             onKind={(k) => { onFilterKind(k); setOpen(true) }}
           />
         )}
-        {v.status === 'outside_load_range' && (
-          <span className="pill outside">outside range</span>
-        )}
         <span className="chev">▶</span>
       </div>
       <div className="vbody">
         <div className="vbody-inner">
-          {v.status === 'outside_load_range' && (
-            <div className="outside-notice">
-              <span className="outside-icon">!</span>
-              <div>
-                <strong>Outside declared load range</strong>
-                <span>Minecraft will not load this pack for this version.</span>
-              </div>
-            </div>
-          )}
-
           {grouped && grouped.size > 0 ? (
             <div className="issues-scroll">
               {[...grouped.entries()].map(([filePath, issues]) => (
@@ -712,11 +699,25 @@ export default function Results({ result, mode, duration }: Props) {
           <span className="sub">{outside.length}</span>
         </h2>
         {outside.length > 0 ? (
-          <div className="vlist">
-            {outside.map((v, i) => (
-              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} filterKind={filterKind} onFilterKind={toggleFilter} />
-            ))}
-          </div>
+          <>
+            <div className="outside-notice">
+              <span className="outside-icon">!</span>
+              <div>
+                <strong>Not declared in pack.mcmeta</strong>
+                <span>These versions aren't covered by the declared load range. Minecraft still loads the pack, but marks it as incompatible in these versions.</span>
+              </div>
+            </div>
+            <div className="outside-list">
+              {outside.map(v => (
+                <div key={v.version.id} className="outside-row">
+                  <span className="vname">{v.version.name}</span>
+                  <span className={`vtag ${v.version.type === 'snapshot' ? 'snapshot' : 'release'}`}>{v.version.type}</span>
+                  <div className="spacer" />
+                  <span className="pill outside">outside range</span>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="empty-state">All versions are within the declared load range</div>
         )}

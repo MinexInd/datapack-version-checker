@@ -1005,6 +1005,21 @@
       font-size: 0.78rem; color: var(--text-dim);
     }
 
+    .outside-list {
+      display: flex; flex-direction: column; gap: 6px;
+      margin-top: 14px;
+    }
+
+    .outside-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 16px;
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      background: var(--bg);
+    }
+
+    .outside-row .spacer { flex: 1; min-width: 8px; }
+
     .empty-state {
       font-size: 0.85rem; color: var(--text-faint);
       padding: 20px 4px; text-align: center;

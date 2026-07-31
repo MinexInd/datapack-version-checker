@@ -341,12 +341,12 @@ These are safe to use.
 ### Outside declared load range
 
 ```
-⛔ Outside declared load range (won't load): 1.20.5, 1.20.6
+⛔ Outside declared load range (not declared in pack.mcmeta): 1.20.5, 1.20.6
 ```
 
-Minecraft would refuse to load the pack on these versions because the
-`pack_format` number in `pack.mcmeta` doesn't match. (Even if the content would
-technically work, the game won't enable the pack.)
+These versions aren't covered by the load range declared in `pack.mcmeta`.
+Minecraft still loads the pack, but marks it as incompatible in these
+versions.
 
 ### Content breaks
 

@@ -198,7 +198,7 @@ Resources: 12 indexed
 ✅ Fully compatible: 0
 ❌ Breaks / outside range: 26
 
-⛔ Outside declared load range (won't load): 1.20.5, 1.20.6
+⛔ Outside declared load range (not declared in pack.mcmeta): 1.20.5, 1.20.6
 ```
 
 **Pack Analysis** — dependency graph snapshot at the top. Shows resource counts by type, pack metrics, cross-file references found, number of orphans (resources with no inbound refs — possible dead code), broken refs (function calls to files that don't exist — typos), and circular dependencies (A calls B calls A — infinite loops). Tags and vanilla references are excluded from orphan/broken detection.
@@ -209,7 +209,7 @@ Resources: 12 indexed
 
 **Fully compatible** — versions where the pack both *loads* and has *no detected content breaks*.
 
-**Outside declared load range** — versions where Minecraft wouldn't load the pack because the `pack_format` doesn't match.
+**Outside declared load range** — versions not covered by the load range declared in `pack.mcmeta`. Minecraft still loads the pack, but marks it as incompatible in these versions.
 
 **Content breaks** — versions where the pack loads but specific commands or JSON would fail. Each break shows the file, line number, and what needs to change:
 

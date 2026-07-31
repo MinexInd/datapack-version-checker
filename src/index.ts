@@ -617,7 +617,7 @@ async function main() {
   const outside = result.incompatible.filter(v => v.status === 'outside_load_range')
   const broken = result.incompatible.filter(v => v.status !== 'outside_load_range')
   if (outside.length > 0) {
-    console.log(`\n  ${C.y}⛔${C.R} Outside declared load range (won't load): ${outside.map(v => `${C.y}${v.version.name}${C.R}`).join(', ')}`)
+    console.log(`\n  ${C.y}⛔${C.R} Outside declared load range (not declared in pack.mcmeta): ${outside.map(v => `${C.y}${v.version.name}${C.R}`).join(', ')}`)
   }
   if (broken.length > 0) {
     printTable(broken, '❌ CONTENT BREAKS ON THESE VERSIONS')
