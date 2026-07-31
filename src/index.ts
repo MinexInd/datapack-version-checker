@@ -282,6 +282,103 @@ function printBreakingChanges(versions: VersionCompatibility[]) {
   }
 }
 
+function printFixSuggestions(
+  broken: VersionCompatibility[],
+  compatible: VersionCompatibility[],
+  isRp: boolean,
+  dir: string,
+) {
+  if (broken.length === 0) return
+
+  // Analyze issue types across all broken versions
+  let cmdIssues = 0
+  let regIssues = 0
+  let structIssues = 0
+  let deprecIssues = 0
+
+  for (const v of broken) {
+    cmdIssues += v.mcfunction_issues.length
+    regIssues += v.registry_issues.length
+    structIssues += v.structural_issues?.length ?? 0
+    deprecIssues += v.deprecation_issues?.length ?? 0
+  }
+
+  const totalIssues = cmdIssues + regIssues + structIssues + deprecIssues
+  if (totalIssues === 0) return
+
+  // Determine what can be auto-fixed
+  const autoFixable = cmdIssues + structIssues
+  const manualNeeded = regIssues + deprecIssues
+
+  // Find best target version (first compatible version that's newer, or latest release)
+  let targetVersion = ''
+  if (compatible.length > 0) {
+    // Prefer the first compatible version
+    targetVersion = compatible[0].version.name
+  }
+
+  console.log(`\n  ${C.bd}${C.g}💡 AUTO-FIX SUGGESTIONS${C.R}`)
+  console.log(`  ${C.d}${'─'.repeat(50)}${C.R}`)
+  console.log()
+
+  // Summary of what can be fixed
+  if (autoFixable > 0) {
+    console.log(`  ${C.g}✓${C.R} ${C.bd}${autoFixable} issues can be auto-fixed${C.R}`)
+    if (cmdIssues > 0) {
+      console.log(`    ${C.d}•${C.R} ${cmdIssues} command rewrites (${isRp ? 'mcmeta' : 'mcfunction'} files)`)
+    }
+    if (structIssues > 0) {
+      console.log(`    ${C.d}•${C.R} ${structIssues} structural fixes (JSON/mcdoc)`)
+    }
+  }
+
+  if (manualNeeded > 0) {
+    console.log(`  ${C.y}⚠${C.R} ${C.bd}${manualNeeded} issues need manual attention${C.R}`)
+    if (regIssues > 0) {
+      console.log(`    ${C.d}•${C.R} ${regIssues} registry issues (removed/renamed entries)`)
+    }
+    if (deprecIssues > 0) {
+      console.log(`    ${C.d}•${C.R} ${deprecIssues} deprecation warnings`)
+    }
+  }
+
+  // Show the suggested command
+  if (autoFixable > 0 && targetVersion) {
+    console.log()
+    console.log(`  ${C.bd}${C.c}To auto-fix, run:${C.R}`)
+    const cmd = isRp
+      ? `dpcheck --dir ${dir} --fix ${targetVersion} --mode resourcepack`
+      : `dpcheck --dir ${dir} --fix ${targetVersion}`
+    console.log(`    ${C.g}$ ${cmd}${C.R}`)
+
+    // Show what versions would be fixed
+    const fixableVersions = broken.filter(v => {
+      const hasIssues = v.mcfunction_issues.length > 0 || (v.structural_issues?.length ?? 0) > 0
+      return hasIssues
+    })
+
+    if (fixableVersions.length > 0) {
+      console.log()
+      console.log(`  ${C.d}This would fix issues on:${C.R} ${fixableVersions.map(v => `${C.y}${v.version.name}${C.R}`).join(', ')}`)
+    }
+
+    // Show which issues need manual work
+    if (manualNeeded > 0) {
+      console.log()
+      console.log(`  ${C.d}Manual attention needed for:${C.R}`)
+      for (const v of broken) {
+        const manual = v.registry_issues.length + (v.deprecation_issues?.length ?? 0)
+        if (manual > 0) {
+          console.log(`    ${C.d}•${C.R} ${C.y}${v.version.name}${C.R}: ${manual} issues`)
+        }
+      }
+    }
+  } else if (manualNeeded > 0 && autoFixable === 0) {
+    console.log()
+    console.log(`  ${C.d}All issues require manual fixes. Review the details above.${C.R}`)
+  }
+}
+
 function detectMode(dir: string): Mode {
   const hasData = existsSync(join(dir, 'data'))
   const hasAssets = existsSync(join(dir, 'assets'))
@@ -531,6 +628,11 @@ async function main() {
     printPortingGuide((result as any).knowledge_hits)
   }
   printBreakingChanges([...result.compatible, ...result.incompatible])
+
+  // Show auto-fix suggestions if there are fixable issues
+  if (broken.length > 0) {
+    printFixSuggestions(broken, result.compatible, isRpMode, dir)
+  }
 
   logger.timeEnd('total', `(${result.versions_checked} versions)`)
 
