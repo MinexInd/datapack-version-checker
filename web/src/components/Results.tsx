@@ -224,7 +224,7 @@ function VersionRow({ v, defaultOpen, index, filterKind, onFilterKind }: {
           />
         )}
         {v.status === 'outside_load_range' && (
-          <span className="badge outside">outside range</span>
+          <span className="pill outside">outside range</span>
         )}
         <span className="chev">▶</span>
       </div>
@@ -547,6 +547,21 @@ export default function Results({ result, mode, duration }: Props) {
   const broken = incompat.filter(v => v.status !== 'outside_load_range')
   const totalIssues = incompat.reduce((acc, v) => acc + issueCounts(v).total, 0)
 
+  // Filter broken versions by selected issue kind (hide versions with 0 matching issues)
+  const filteredBroken = useMemo(() => {
+    if (!filterKind) return broken
+    return broken.filter(v => {
+      const c = issueCounts(v)
+      if (filterKind === 'cmd') return c.cmd > 0
+      if (filterKind === 'reg') return c.reg > 0
+      if (filterKind === 'struct') return c.structural > 0
+      if (filterKind === 'ref') return c.ref > 0
+      if (filterKind === 'dep') return c.dep > 0
+      if (filterKind === 'bc') return c.bc > 0
+      return true
+    })
+  }, [broken, filterKind])
+
   const dedupedKnowledge = useMemo(() => {
     if (!result.knowledge_hits?.length) return []
     const seen = new Set<string>()
@@ -656,7 +671,7 @@ export default function Results({ result, mode, duration }: Props) {
         <h2>
           <span className="section-icon red">X</span>
           Content Breaks
-          <span className="sub">{broken.length}</span>
+          <span className="sub">{filterKind ? filteredBroken.length : broken.length}</span>
         </h2>
         {broken.length > 0 && (
           <div className="filter-bar">
@@ -674,14 +689,18 @@ export default function Results({ result, mode, duration }: Props) {
             ))}
           </div>
         )}
-        {broken.length > 0 ? (
+        {filteredBroken.length > 0 ? (
           <div className="vlist">
-            {broken.map((v, i) => (
+            {filteredBroken.map((v, i) => (
               <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} filterKind={filterKind} onFilterKind={toggleFilter} />
             ))}
           </div>
         ) : (
-          <div className="empty-state">No content issues found</div>
+          <div className="empty-state">
+            {filterKind
+              ? `No ${KIND_META[filterKind]?.label.toLowerCase() ?? ''} issues found across versions`
+              : 'No content issues found'}
+          </div>
         )}
       </div>
 
