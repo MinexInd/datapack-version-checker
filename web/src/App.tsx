@@ -144,12 +144,12 @@ export default function App() {
           </div>
           <div className="hero-card">
             <span className="hc-icon">#</span>
-            <h3>Registry &amp; mcdoc</h3>
+            <h3>Registry &amp; mcdoc validation</h3>
             <p>Validates JSON files against per-version registries and mcdoc schemas.</p>
           </div>
           <div className="hero-card">
             <span className="hc-icon">M</span>
-            <h3>mcdoc Structural</h3>
+            <h3>Structural JSON</h3>
             <p>Validates JSON against Minecraft's type system — catches field changes, removed fields, and structural issues across versions.</p>
           </div>
           <div className="hero-card">
@@ -169,9 +169,19 @@ export default function App() {
       />
 
       {/* Tabs */}
-      <div className="tab-bar animate-in-d3">
-        <button className={`tab ${tab === 'check' ? 'active' : ''}`} onClick={() => setTab('check')}>Check Compatibility</button>
-        <button className={`tab ${tab === 'fix' ? 'active' : ''}`} onClick={() => setTab('fix')}>Auto-Fix / Port</button>
+      <div className="tab-bar animate-in-d3" role="tablist" aria-label="Tools">
+        <button
+          className={`tab ${tab === 'check' ? 'active' : ''}`}
+          role="tab"
+          aria-selected={tab === 'check'}
+          onClick={() => setTab('check')}
+        >Check Compatibility</button>
+        <button
+          className={`tab ${tab === 'fix' ? 'active' : ''}`}
+          role="tab"
+          aria-selected={tab === 'fix'}
+          onClick={() => setTab('fix')}
+        >Auto-Fix / Port</button>
       </div>
 
       {tab === 'check' && (
@@ -221,7 +231,7 @@ export default function App() {
         </div>
       )}
 
-      {loading && !result && !error && (
+      {loading && tab === 'check' && !result && !error && (
         <div className="card" style={{ animation: 'fadeScale 0.25s ease both' }}>
           <h2>Results <span className="sub">checking…</span></h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginTop: 14 }}>

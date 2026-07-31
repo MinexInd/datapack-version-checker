@@ -84,7 +84,12 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
 
   return (
     <div className="card animate-in-d2">
-      <h2>Pack <span className="sub">folder or .zip containing pack.mcmeta</span></h2>
+      <h2>
+        Pack
+        <span className="sub">
+          {files ? <><span className="kbd">Esc</span> to clear</> : 'folder or .zip containing pack.mcmeta'}
+        </span>
+      </h2>
       {files ? (
         <div className="dz-loaded">
           <div className="checkicon">✓</div>
@@ -93,8 +98,8 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
             <div className="count">{fileCount} files loaded</div>
           </div>
           <div className="dz-btns">
-            <button className="btn btn-ghost" onClick={() => folderRef.current?.click()}>Change</button>
-            <button className="btn btn-ghost" onClick={onClear}>✕</button>
+            <button className="btn btn-ghost" onClick={() => folderRef.current?.click()}>Replace</button>
+            <button className="btn btn-ghost" aria-label="Remove pack" onClick={onClear}>✕</button>
           </div>
         </div>
       ) : (
@@ -112,9 +117,9 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
           <p>Drop a datapack / resource pack here</p>
           <div className="dz-hint">Drag a folder or .zip file</div>
           <div className="dz-browse">
-            <span className="browse-link" onClick={(e) => { e.stopPropagation(); folderRef.current?.click() }}>Browse folder</span>
+            <button type="button" className="browse-link" onClick={(e) => { e.stopPropagation(); folderRef.current?.click() }}>Browse folder</button>
             <span className="browse-sep">·</span>
-            <span className="browse-link" onClick={(e) => { e.stopPropagation(); zipRef.current?.click() }}>Browse .zip</span>
+            <button type="button" className="browse-link" onClick={(e) => { e.stopPropagation(); zipRef.current?.click() }}>Browse .zip</button>
           </div>
         </div>
       )}

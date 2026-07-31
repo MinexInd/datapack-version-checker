@@ -34,7 +34,7 @@ export default function VersionSelector({ versions, loading, selected, onSelect 
       <label>
         Versions to check
         <span style={{ color: 'var(--text-faint)', fontWeight: 400, marginLeft: 6 }}>
-          (leave all unchecked = auto-window around load range)
+          (empty = auto-select around your pack's load range)
         </span>
       </label>
       {loading ? (
@@ -49,26 +49,39 @@ export default function VersionSelector({ versions, loading, selected, onSelect 
             style={{ marginBottom: 10 }}
           />
           <div className="scl-list">
-            {filtered.map(v => (
-              <div
-                key={v.id}
-                className={`scl-row ${selected.includes(v.name) ? 'sel' : ''}`}
-                onClick={() => toggle(v.name)}
-              >
-                <span className="scl-name">{v.name}</span>
-                <span className={`scl-tag ${v.type === 'snapshot' ? 'snap' : 'rel'}`}>{v.type}</span>
-              </div>
-            ))}
+            {filtered.map(v => {
+              const isSel = selected.includes(v.name)
+              return (
+                <div
+                  key={v.id}
+                  className={`scl-row ${isSel ? 'sel' : ''}`}
+                  role="checkbox"
+                  aria-checked={isSel}
+                  tabIndex={0}
+                  onClick={() => toggle(v.name)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      toggle(v.name)
+                    }
+                  }}
+                >
+                  <span className="scl-check">{isSel ? '✓' : ''}</span>
+                  <span className="scl-name">{v.name}</span>
+                  <span className={`scl-tag ${v.type === 'snapshot' ? 'snap' : 'rel'}`}>{v.type}</span>
+                </div>
+              )
+            })}
           </div>
         </>
       )}
       <div className="hint" style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span>{versions.length} versions{search ? `, ${filtered.length} match` : ''}</span>
         <span style={{ display: 'flex', gap: 6 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => onSelect(filtered.filter(v => v.type === 'release').map(v => v.name))}>Releases</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => onSelect(filtered.filter(v => v.type === 'snapshot').map(v => v.name))}>Snapshots</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => onSelect(filtered.map(v => v.name))}>All</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => onSelect([])}>Clear</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onSelect(filtered.filter(v => v.type === 'release').map(v => v.name))}>Releases</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onSelect(filtered.filter(v => v.type === 'snapshot').map(v => v.name))}>Snapshots</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onSelect(filtered.map(v => v.name))}>All</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onSelect([])}>Clear</button>
         </span>
         {selected.length > 0 && (
           <span style={{ color: 'var(--accent)', fontSize: '0.76rem', fontWeight: 600 }}>{selected.length} selected</span>

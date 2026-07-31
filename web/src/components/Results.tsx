@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { highlightMcfunction } from '../engine/highlight'
 import type {
   CheckResult,
@@ -147,20 +147,37 @@ function FileGroup({ filePath, issues }: { filePath: string; issues: FlatIssue[]
   )
 }
 
-function IssueCountsBar({ c }: { c: IssueCounts }) {
+function IssueCountsBar({ c, activeKind, onKind }: { c: IssueCounts; activeKind: string | null; onKind: (k: string) => void }) {
+  const entries: Array<[keyof IssueCounts, string, string]> = [
+    ['cmd', 'cmd', 'cmd'],
+    ['reg', 'reg', 'reg'],
+    ['structural', 'struct', 'struct'],
+    ['ref', 'ref', 'ref'],
+    ['dep', 'dep', 'dep'],
+    ['bc', 'bc', 'breaking'],
+  ]
   return (
     <div className="issue-counts">
-      {c.cmd > 0 && <span className="pill cmd">{c.cmd} cmd</span>}
-      {c.reg > 0 && <span className="pill reg">{c.reg} reg</span>}
-      {c.structural > 0 && <span className="pill struct">{c.structural} struct</span>}
-      {c.ref > 0 && <span className="pill ref">{c.ref} ref</span>}
-      {c.dep > 0 && <span className="pill dep">{c.dep} dep</span>}
-      {c.bc > 0 && <span className="pill bc">{c.bc} breaking</span>}
+      {entries.map(([key, kind, label]) => c[key] > 0 ? (
+        <button
+          key={kind}
+          className={`pill ${kind} pill-btn${activeKind === kind ? ' active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); onKind(kind) }}
+        >
+          {c[key]} {label}
+        </button>
+      ) : null)}
     </div>
   )
 }
 
-function VersionRow({ v, defaultOpen, index }: { v: VersionCompatibility; defaultOpen?: boolean; index: number }) {
+function VersionRow({ v, defaultOpen, index, filterKind, onFilterKind }: {
+  v: VersionCompatibility
+  defaultOpen?: boolean
+  index: number
+  filterKind: string | null
+  onFilterKind: (k: string) => void
+}) {
   const [open, setOpen] = useState(defaultOpen ?? false)
   useEffect(() => { setOpen(defaultOpen ?? false) }, [defaultOpen])
   const c = issueCounts(v)
@@ -168,23 +185,43 @@ function VersionRow({ v, defaultOpen, index }: { v: VersionCompatibility; defaul
 
   const grouped = useMemo(() => {
     if (!open) return null
-    const flat = flattenIssues(v)
+    const flat = flattenIssues(v).filter(i => !filterKind || i.kind === filterKind)
     return groupByFile(flat)
-  }, [v, open])
+  }, [v, open, filterKind])
+
+  const emptyMsg = filterKind
+    ? `No ${(KIND_META[filterKind]?.label ?? 'matching').toLowerCase()} issues in this version`
+    : 'No issues in this version'
 
   return (
     <div
       className={`vrow ${open ? 'open' : ''}`}
       style={{ animationDelay: `${Math.min(index * 40, 400)}ms` }}
     >
-      <div className="vhead" onClick={() => setOpen(o => !o)}>
+      <div
+        className="vhead"
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setOpen(o => !o)
+          }
+        }}
+      >
         <span className="vname">{v.version.name}</span>
         <span className={`vtag ${tagClass}`}>{v.version.type}</span>
         <div className="spacer" />
         {v.status === 'compatible' ? (
           <span className="pill ok">compatible</span>
         ) : (
-          <IssueCountsBar c={c} />
+          <IssueCountsBar
+            c={c}
+            activeKind={filterKind}
+            onKind={(k) => { onFilterKind(k); setOpen(true) }}
+          />
         )}
         {v.status === 'outside_load_range' && (
           <span className="badge outside">outside range</span>
@@ -210,7 +247,7 @@ function VersionRow({ v, defaultOpen, index }: { v: VersionCompatibility; defaul
               ))}
             </div>
           ) : grouped && grouped.size === 0 ? (
-            <div className="empty-state">No issues in this version</div>
+            <div className="empty-state">{emptyMsg}</div>
           ) : null}
         </div>
       </div>
@@ -295,7 +332,7 @@ function exportMarkdown(result: CheckResult) {
     lines.push(``)
   }
   if (result.knowledge_hits?.length) {
-    lines.push(`## Features Setting Minimum Version`)
+    lines.push(`## Features Requiring a Minimum Version`)
     lines.push(``)
     const seen = new Set<string>()
     for (const h of result.knowledge_hits) {
@@ -352,11 +389,11 @@ function AnalysisSection({ analysis }: { analysis: AnalysisResult }) {
         </div>
         <div className="stat blue">
           <div className="num">{m.avgCommandsPerFunction}</div>
-          <div className="label">Avg cmds/fn</div>
+          <div className="label">Commands per function</div>
         </div>
         <div className="stat blue">
           <div className="num">{m.maxExecuteDepth}</div>
-          <div className="label">Max exec depth</div>
+          <div className="label">Max execute depth</div>
         </div>
         <div className="stat red">
           <div className="num">{analysis.orphans.length}</div>
@@ -520,6 +557,24 @@ export default function Results({ result, mode, duration }: Props) {
     })
   }, [result.knowledge_hits])
 
+  const kindTotals = useMemo(() => {
+    const t: Record<string, number> = { cmd: 0, reg: 0, struct: 0, ref: 0, dep: 0, bc: 0 }
+    for (const v of broken) {
+      const c = issueCounts(v)
+      t.cmd += c.cmd
+      t.reg += c.reg
+      t.struct += c.structural
+      t.ref += c.ref
+      t.dep += c.dep
+      t.bc += c.bc
+    }
+    return t
+  }, [broken])
+
+  const toggleFilter = useCallback((k: string) => {
+    setFilterKind(cur => cur === k ? null : k)
+  }, [])
+
   return (
     <>
       {/* Summary */}
@@ -588,7 +643,7 @@ export default function Results({ result, mode, duration }: Props) {
         {compat.length > 0 ? (
           <div className="vlist">
             {compat.map((v, i) => (
-              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} />
+              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} filterKind={filterKind} onFilterKind={toggleFilter} />
             ))}
           </div>
         ) : (
@@ -603,10 +658,26 @@ export default function Results({ result, mode, duration }: Props) {
           Content Breaks
           <span className="sub">{broken.length}</span>
         </h2>
+        {broken.length > 0 && (
+          <div className="filter-bar">
+            <span className="filter-label">Issue type</span>
+            <button className={`filter-chip${!filterKind ? ' active' : ''}`} onClick={() => setFilterKind(null)}>All</button>
+            {Object.entries(KIND_META).map(([k, meta]) => (
+              <button
+                key={k}
+                className={`filter-chip${filterKind === k ? ' active' : ''}`}
+                onClick={() => setFilterKind(filterKind === k ? null : k)}
+              >
+                {meta.label}
+                <span className="count">{kindTotals[k]}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {broken.length > 0 ? (
           <div className="vlist">
             {broken.map((v, i) => (
-              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} />
+              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} filterKind={filterKind} onFilterKind={toggleFilter} />
             ))}
           </div>
         ) : (
@@ -624,7 +695,7 @@ export default function Results({ result, mode, duration }: Props) {
         {outside.length > 0 ? (
           <div className="vlist">
             {outside.map((v, i) => (
-              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} />
+              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} filterKind={filterKind} onFilterKind={toggleFilter} />
             ))}
           </div>
         ) : (
@@ -637,7 +708,7 @@ export default function Results({ result, mode, duration }: Props) {
         <div className="card">
           <h2>
             <span className="section-icon blue">F</span>
-            Features Setting Minimum Version
+            Features Requiring a Minimum Version
             <span className="sub">{dedupedKnowledge.length} feature{dedupedKnowledge.length !== 1 ? 's' : ''}</span>
           </h2>
           <div className="knowledge-grid">

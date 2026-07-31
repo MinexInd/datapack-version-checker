@@ -50,16 +50,25 @@ export default function CheckPanel({
       <div className="checks">
         <label className="check">
           <input type="checkbox" checked={all} onChange={e => onAllChange(e.target.checked)} />
-          Check ALL versions (incl. snapshots)
+          All versions (incl. snapshots)
         </label>
         <label className="check">
           <input type="checkbox" checked={strict} onChange={e => onStrictChange(e.target.checked)} />
           Strict command validation
         </label>
-        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={onRun} disabled={loading || !hasFiles}>
+      </div>
+
+      <div className="run-row">
+        <span className="run-hint">
+          {!hasFiles ? (
+            <span>Upload a pack first</span>
+          ) : (
+            <><span className="kbd">Ctrl</span>+<span className="kbd">Enter</span> to run</>
+          )}
+        </span>
+        <button className="btn btn-primary" onClick={onRun} disabled={loading || !hasFiles} aria-busy={loading}>
           {loading ? <><span className="spinner" /> Running…</> : '▶ Run Check'}
         </button>
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>Ctrl+Enter</span>
       </div>
     </div>
   )

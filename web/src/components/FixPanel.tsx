@@ -43,15 +43,17 @@ function DiffView({ file, srcContent, outContent, details }: { file: string; src
 
   if (isJson) {
     return (
-      <div className="diff-view">
-        <div className="diff-columns">
-          <div className="diff-col">
-            <div className="diff-col-header removed">Original</div>
-            <pre className="diff-code" dangerouslySetInnerHTML={{ __html: srcContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }} />
-          </div>
-          <div className="diff-col">
-            <div className="diff-col-header added">Ported</div>
-            <pre className="diff-code" dangerouslySetInnerHTML={{ __html: outContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }} />
+      <div className="diff-panel">
+        <div className="diff-view">
+          <div className="diff-columns">
+            <div className="diff-col">
+              <div className="diff-col-header removed">Original</div>
+              <pre className="diff-code" dangerouslySetInnerHTML={{ __html: srcContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }} />
+            </div>
+            <div className="diff-col">
+              <div className="diff-col-header added">Ported</div>
+              <pre className="diff-code" dangerouslySetInnerHTML={{ __html: outContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }} />
+            </div>
           </div>
         </div>
       </div>
@@ -59,11 +61,15 @@ function DiffView({ file, srcContent, outContent, details }: { file: string; src
   }
 
   let diffHtml = ''
+  let added = 0
+  let removed = 0
   for (let i = 0; i < maxLen; i++) {
     const lineNum = (i + 1).toString().padStart(maxLineWidth, ' ')
     const s = srcLines[i] ?? ''
     const o = outLines[i] ?? ''
     if (s !== o) {
+      added++
+      removed++
       const d = changedLines.get(i + 1)
       const detail = d ? d.replace(/^.*?:\d+:/, '').trim() : ''
       const sHl = highlightMcfunction(s)
@@ -78,7 +84,19 @@ function DiffView({ file, srcContent, outContent, details }: { file: string; src
       }
     }
   }
-  return <div className="diff-view" dangerouslySetInnerHTML={{ __html: diffHtml }} />
+  return (
+    <div className="diff-panel">
+      <div className="diff-toolbar">
+        <span className="diff-file">{file}</span>
+        <span className="diff-stat">
+          <span className="add">+{added}</span>
+          <span className="sep">/</span>
+          <span className="del">−{removed}</span>
+        </span>
+      </div>
+      <div className="diff-view" dangerouslySetInnerHTML={{ __html: diffHtml }} />
+    </div>
+  )
 }
 
 export default function FixPanel({
@@ -112,17 +130,18 @@ export default function FixPanel({
               <option key={v.id} value={v.name}>{v.name}</option>
             ))}
           </select>
-          <div className="hint">Auto-detected from pack.mcmeta load range if blank.</div>
+          <div className="hint">Auto-detected from the pack.mcmeta load range if left blank.</div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <button className="btn btn-primary" onClick={onPreview} disabled={loading || !hasFiles || !fixTarget}>
+      <div className="fix-actions">
+        {!hasFiles && <span className="run-hint">Upload a pack first</span>}
+        <button className="btn btn-primary" onClick={onPreview} disabled={loading || !hasFiles || !fixTarget} aria-busy={loading}>
           {loading ? <><span className="spinner" /> Generating…</> : 'Preview Changes'}
         </button>
         {fixPreview && (
-          <button className="btn btn-success" onClick={onDownload} disabled={loading}>
-            {loading ? <><span className="spinner" /> Downloading…</> : 'Download Ported .zip'}
+          <button className="btn btn-success btn-lg" onClick={onDownload} disabled={loading} aria-busy={loading}>
+            {loading ? <><span className="spinner" /> Downloading…</> : '⬇ Download Ported .zip'}
           </button>
         )}
       </div>
@@ -151,7 +170,7 @@ export default function FixPanel({
             {fixPreview.plan.summary.commandRewrites > 0 && (
               <div className="stat green">
                 <div className="num">{fixPreview.plan.summary.commandRewrites}</div>
-                <div className="label">Cmd rewrites</div>
+                <div className="label">Command rewrites</div>
               </div>
             )}
             {fixPreview.plan.summary.jsonFixes > 0 && (
@@ -175,23 +194,41 @@ export default function FixPanel({
             </div>
           )}
 
+          {fixPreview.results.length > 0 && (
+            <div className="fix-toolbar">
+              <span className="fix-toolbar-title">Changed files</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setExpandedFiles(new Set(fixPreview.results.map((_, i) => i)))}>Expand all</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setExpandedFiles(new Set())}>Collapse all</button>
+            </div>
+          )}
+
           {fixPreview.results.length > 0 ? (
             <div className="scl-box" style={{ maxHeight: 500 }} ref={sclRef}>
               {fixPreview.results.map((r, i) => {
                 const isExpanded = expandedFiles.has(i)
                 const hasOutput = !!fixPreview.outputFiles?.[r.file]
+                const toggleFile = () => {
+                  const next = new Set(expandedFiles)
+                  if (isExpanded) next.delete(i)
+                  else {
+                    next.clear()
+                    next.add(i)
+                  }
+                  setExpandedFiles(next)
+                }
                 return (
                   <div key={i} className={`fix-file${isExpanded ? ' expanded' : ''}`}>
                     <div
                       className="fix-file-header clickable"
-                      onClick={() => {
-                        const next = new Set(expandedFiles)
-                        if (isExpanded) next.delete(i)
-                        else {
-                          next.clear()
-                          next.add(i)
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={isExpanded}
+                      onClick={toggleFile}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          toggleFile()
                         }
-                        setExpandedFiles(next)
                       }}
                     >
                       <span className="fix-file-icon">{isExpanded ? '▼' : '▶'}</span>
@@ -229,7 +266,10 @@ export default function FixPanel({
               })}
             </div>
           ) : (
-            <div className="empty-sm">No changes needed — pack is already compatible with {fixTarget}</div>
+            <div className="empty-ok">
+              <span className="ok-icon">✓</span>
+              <p>No changes needed — the pack is already compatible with <b>{fixTarget}</b>.</p>
+            </div>
           )}
         </div>
       )}
