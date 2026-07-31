@@ -647,7 +647,7 @@ async function checkPackCore(
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inLoadRange ? 'exact' : 'none',
-      status: hasContentIssues ? 'content_issues' : (inLoadRange ? 'compatible' : 'outside_load_range'),
+      status: !inLoadRange ? 'outside_load_range' : (hasContentIssues ? 'content_issues' : 'compatible'),
       in_load_range: inLoadRange,
       mcfunction_issues: [...mcfunctionIssues, ...knowledgeIssues],
       registry_issues: registryIssues,
