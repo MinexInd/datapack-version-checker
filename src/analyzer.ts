@@ -88,7 +88,7 @@ const PATH_TYPE_MAP: [RegExp, string][] = [
   [/^data\/[^/]+\/tags\/blocks\//, 'tag/block'],
   [/^data\/[^/]+\/tags\/items\//, 'tag/item'],
   [/^data\/[^/]+\/tags\/entity_types\//, 'tag/entity_type'],
-  [/^data\/[^/]+\/tags\/game事件\//, 'tag/game_event'],
+  [/^data\/[^/]+\/tags\/game_events\//, 'tag/game_event'],
   [/^data\/[^/]+\/tags\//, 'tag'],
   [/^data\/[^/]+\/advancements\//, 'advancement'],
   [/^data\/[^/]+\/predicates\//, 'predicate'],
