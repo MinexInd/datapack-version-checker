@@ -319,7 +319,7 @@ Here is a typical report, annotated:
 📋 Minimum version from content: 1.20.5
 🔍 Versions checked: 26
 ✅ Fully compatible: 0
-❌ Breaks / outside range: 26
+❌ Breaks / incompatible: 26
 ```
 
 - **Declared load range** — what `pack.mcmeta` claims. Here it claims only 1.19.3.
@@ -328,7 +328,7 @@ Here is a typical report, annotated:
   `pack.mcmeta` is wrong.**
 - **Versions checked** — how many versions were examined.
 - **Fully compatible** — versions where the pack loads *and* has no detected breaks.
-- **Breaks / outside range** — versions where something is wrong.
+- **Breaks / incompatible** — versions where something is wrong.
 
 ### Compatible versions
 
@@ -337,16 +337,6 @@ Here is a typical report, annotated:
 ```
 
 These are safe to use.
-
-### Outside declared load range
-
-```
-⛔ Outside declared load range (not declared in pack.mcmeta): 1.20.5, 1.20.6
-```
-
-These versions aren't covered by the load range declared in `pack.mcmeta`.
-Minecraft still loads the pack, but marks it as incompatible in these
-versions.
 
 ### Content breaks
 
@@ -497,7 +487,8 @@ node dist/index.js --dir "../real-tests/wither" -v 1.21.9 1.21.10 1.21.11 26.1 2
 
 Result: **compatible with 1.21.9, 1.21.10, 1.21.11, 26.1, 26.1.1, 26.1.2**.
 The content uses features down to 1.19.4 (`/damage`) but the declared load range
-starts at 1.21.10, so older versions are outside the load range.
+starts at 1.21.10, so older versions fall outside the declared range and aren't
+reported as compatible.
 
 ### Example B — Infinity Blade
 

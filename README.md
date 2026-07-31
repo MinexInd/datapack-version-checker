@@ -132,7 +132,7 @@ Open **http://localhost:3001/** in your browser.
 | **Fix** | Upload a pack, pick a source + target version, and download a ported `.zip` with rewritten commands, fixed JSON, and updated `pack.mcmeta`. |
 
 The Check results show:
-- **Summary cards** — compatible, broken, outside-range, and total-issue counts
+- **Summary cards** — compatible, broken, and total-issue counts
 - **Version rows** — expand each version to see **command issues**, **registry issues**, **structural (mcdoc) issues**, **registry deprecations**, and **breaking changes**
 - **Analysis section** — dependency graph snapshot showing resource counts by type, namespace pills, cross-file references, orphaned resources, broken references, and circular dependencies
 - **Knowledge hits** — community rules that set the minimum version
@@ -196,9 +196,7 @@ Resources: 12 indexed
 📋 Minimum version from content: 1.20.5
 🔍 Versions checked: 26
 ✅ Fully compatible: 0
-❌ Breaks / outside range: 26
-
-⛔ Outside declared load range (not declared in pack.mcmeta): 1.20.5, 1.20.6
+❌ Breaks / incompatible: 26
 ```
 
 **Pack Analysis** — dependency graph snapshot at the top. Shows resource counts by type, pack metrics, cross-file references found, number of orphans (resources with no inbound refs — possible dead code), broken refs (function calls to files that don't exist — typos), and circular dependencies (A calls B calls A — infinite loops). Tags and vanilla references are excluded from orphan/broken detection.
@@ -208,8 +206,6 @@ Resources: 12 indexed
 **Minimum version from content** — the *actual* oldest version the content can run on based on the features it uses. If this is **newer** than the declared range, your `pack.mcmeta` is wrong.
 
 **Fully compatible** — versions where the pack both *loads* and has *no detected content breaks*.
-
-**Outside declared load range** — versions not covered by the load range declared in `pack.mcmeta`. Minecraft still loads the pack, but marks it as incompatible in these versions.
 
 **Content breaks** — versions where the pack loads but specific commands or JSON would fail. Each break shows the file, line number, and what needs to change:
 
@@ -272,7 +268,7 @@ Cascade effects:
 
  **Both modes:**
   8. **Pull breaking changes** per version from [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated, auto-updating) and show them as informational notes.
-  9. **Combine** with `pack.mcmeta`'s load range to decide: loads? breaks? or outside range.
+  9. **Combine** with `pack.mcmeta`'s load range to decide: loads? or breaks.
 
 All downloaded data is **cached locally** (24h) so re-runs are fast and work offline; use `--refresh` to force an update.
 

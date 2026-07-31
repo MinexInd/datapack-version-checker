@@ -302,9 +302,10 @@ function exportMarkdown(result: CheckResult) {
     lines.push(`- **${v.version.name}** (${v.version.type})`)
   }
   lines.push(``)
-  lines.push(`## Broken (${result.incompatible.length})`)
+  const brokenVersions = result.incompatible.filter(v => v.status !== 'outside_load_range')
+  lines.push(`## Broken (${brokenVersions.length})`)
   lines.push(``)
-  for (const v of result.incompatible) {
+  for (const v of brokenVersions) {
     const issues: string[] = []
     for (const i of v.mcfunction_issues ?? []) issues.push(`- [cmd] ${i.file}:${i.line} — ${i.issue}`)
     for (const i of v.registry_issues ?? []) issues.push(`- [reg] ${i.file} — ${i.issue}`)
@@ -312,7 +313,6 @@ function exportMarkdown(result: CheckResult) {
     for (const i of v.reference_issues ?? []) issues.push(`- [ref] ${i.file}${i.line ? ':' + i.line : ''} — ${i.issue}`)
     for (const i of v.deprecation_issues ?? []) issues.push(`- [deprec] ${i.file} — ${i.issue}`)
     for (const bc of v.breaking_changes ?? []) issues.push(`- [breaking] ${bc}`)
-    if (issues.length === 0) issues.push(`- No specific issues (outside load range)`)
     lines.push(`### ${v.version.name} (${v.version.type})`)
     lines.push(``)
     lines.push(...issues)
@@ -530,7 +530,6 @@ export default function Results({ result, mode, duration }: Props) {
   const [filterKind, setFilterKind] = useState<string | null>(null)
   const compat = result.compatible || []
   const incompat = result.incompatible || []
-  const outside = incompat.filter(v => v.status === 'outside_load_range')
   const broken = incompat.filter(v => v.status !== 'outside_load_range')
   const totalIssues = incompat.reduce((acc, v) => acc + issueCounts(v).total, 0)
 
@@ -618,10 +617,6 @@ export default function Results({ result, mode, duration }: Props) {
             <div className="num">{broken.length}</div>
             <div className="label">Broken</div>
           </div>
-          <div className="stat amber">
-            <div className="num">{outside.length}</div>
-            <div className="label">Outside range</div>
-          </div>
           <div className="stat blue">
             <div className="num">{totalIssues}</div>
             <div className="label">Total issues</div>
@@ -688,38 +683,6 @@ export default function Results({ result, mode, duration }: Props) {
               ? `No ${KIND_META[filterKind]?.label.toLowerCase() ?? ''} issues found across versions`
               : 'No content issues found'}
           </div>
-        )}
-      </div>
-
-      {/* Outside load range */}
-      <div className="card">
-        <h2>
-          <span className="section-icon amber">!</span>
-          Outside Declared Load Range
-          <span className="sub">{outside.length}</span>
-        </h2>
-        {outside.length > 0 ? (
-          <>
-            <div className="outside-notice">
-              <span className="outside-icon">!</span>
-              <div>
-                <strong>Not declared in pack.mcmeta</strong>
-                <span>These versions aren't covered by the declared load range. Minecraft still loads the pack, but marks it as incompatible in these versions.</span>
-              </div>
-            </div>
-            <div className="outside-list">
-              {outside.map(v => (
-                <div key={v.version.id} className="outside-row">
-                  <span className="vname">{v.version.name}</span>
-                  <span className={`vtag ${v.version.type === 'snapshot' ? 'snapshot' : 'release'}`}>{v.version.type}</span>
-                  <div className="spacer" />
-                  <span className="pill outside">outside range</span>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="empty-state">All versions are within the declared load range</div>
         )}
       </div>
 

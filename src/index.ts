@@ -609,16 +609,12 @@ async function main() {
   const compatCount = result.compatible.length
   const incompatCount = result.incompatible.length
   console.log(`  ${compatCount > 0 ? C.g + '✅' : C.d + '  '} Fully compatible:${C.R} ${compatCount}`)
-  console.log(`  ${incompatCount > 0 ? C.r + '❌' : C.d + '  '} Breaks / outside range:${C.R} ${incompatCount}`)
+  console.log(`  ${incompatCount > 0 ? C.r + '❌' : C.d + '  '} Breaks / incompatible:${C.R} ${incompatCount}`)
 
   if (result.compatible.length > 0) {
     console.log(`\n  ${C.g}✅${C.R} Compatible versions: ${result.compatible.map(v => `${C.g}${v.version.name}${C.R}`).join(', ')}`)
   }
-  const outside = result.incompatible.filter(v => v.status === 'outside_load_range')
   const broken = result.incompatible.filter(v => v.status !== 'outside_load_range')
-  if (outside.length > 0) {
-    console.log(`\n  ${C.y}⛔${C.R} Outside declared load range (not declared in pack.mcmeta): ${outside.map(v => `${C.y}${v.version.name}${C.R}`).join(', ')}`)
-  }
   if (broken.length > 0) {
     printTable(broken, '❌ CONTENT BREAKS ON THESE VERSIONS')
     printDetailedIssues(broken)
