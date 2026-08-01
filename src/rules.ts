@@ -215,6 +215,11 @@ export const PORT_RULES: PortRule[] = [
   { id: 'predicate_alternative_to_any_of', type: 'json_field', jsonKind: 'predicate', match: 'alternative', since: '1.20', description: "Predicate field 'alternative' renamed to 'any_of' in 1.20", fix: { kind: 'rename_field', from: 'alternative', to: 'any_of', since: '1.20' } },
   { id: 'predicate_requirements_to_all_of', type: 'json_field', jsonKind: 'predicate', match: 'requirements', since: '1.20', description: "Predicate field 'requirements' renamed to 'all_of' in 1.20", fix: { kind: 'rename_field', from: 'requirements', to: 'all_of', since: '1.20' } },
   { id: 'recipe_result_item_to_id', type: 'json_field', jsonKind: 'recipe', match: 'item', since: '1.20.5', description: "Recipe result key 'item' renamed to 'id' in 1.20.5", fix: { kind: 'rename_field', from: 'item', to: 'id', since: '1.20.5' } },
+  { id: "trade_registry", type: "registry", scope: "datapack", match: "trade/", since: "26.1", description: "Data-driven villager trades (data/<ns>/trade/) require 26.1+", guidance: "Villager trades became data-driven in 26.1; use data/<namespace>/trade/ files.", note: "Trades data-driven since 26.1" },
+  { id: "worldgen_material_rule", type: "registry", scope: "datapack", match: "worldgen/material_rule", since: "26.3", description: "worldgen/material_rule registry added in 26.3", guidance: "material_rule entries are 26.3+ only.", note: "Added in 26.3" },
+  { id: "worldgen_material_condition", type: "registry", scope: "datapack", match: "worldgen/material_condition", since: "26.3", description: "worldgen/material_condition registry added in 26.3", guidance: "material_condition entries are 26.3+ only.", note: "Added in 26.3" },
+  { id: 'predicate_durability_removed', type: 'json_field', jsonKind: 'predicate', match: 'durability', since: '1.20.5', description: "Item predicate field 'durability' removed in 1.20.5 (use component sub-predicates)", guidance: "Replace 'durability' with component-based sub-predicates (minecraft:durability).", fix: { kind: 'remove_field', field: 'durability' } },
+  { id: 'predicate_potions_removed', type: 'json_field', jsonKind: 'predicate', match: 'potions', since: '1.20.5', description: "Item predicate field 'potions' removed in 1.20.5 (use component sub-predicates)", guidance: "Replace 'potions' with component-based sub-predicates (minecraft:potion_contents).", fix: { kind: 'remove_field', field: 'potions' } },
 ]
 
 export interface RegistryRename {
@@ -225,7 +230,10 @@ export interface RegistryRename {
 }
 
 export const REGISTRY_RENAMES: RegistryRename[] = [
-  // Curated renames — seed data comes in a later coverage task
+  // Curated renames — verified against Minecraft release notes.
+  { from: 'minecraft:grass', to: 'minecraft:short_grass', since: '1.20.3', registry: 'block' },
+  { from: 'minecraft:sweeping', to: 'minecraft:sweeping_edge', since: '1.20.5', registry: 'enchantment' },
+  // Pending verification: 1.21.11 game-rule renames (25 rules) — exact old/new pairs not yet confirmed.
 ]
 
 // =============================================================================

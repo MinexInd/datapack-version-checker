@@ -117,6 +117,14 @@ describe('derived views', () => {
   })
 })
 
+describe('REGISTRY_RENAMES seed', () => {
+  test('contains the verified block/enchantment renames', () => {
+    const byFrom = new Map(REGISTRY_RENAMES.map(r => [r.from, r]))
+    expect(byFrom.get('minecraft:grass')).toMatchObject({ to: 'minecraft:short_grass', since: '1.20.3' })
+    expect(byFrom.get('minecraft:sweeping')).toMatchObject({ to: 'minecraft:sweeping_edge', since: '1.20.5' })
+  })
+})
+
 describe('known-rule spot checks', () => {
   const byId = (id: string): PortRule => {
     const r = PORT_RULES.find(x => x.id === id)
@@ -147,5 +155,18 @@ describe('known-rule spot checks', () => {
     expect(r.type).toBe('json_field')
     expect(r.jsonKind).toBe('predicate')
     expect(r.fix?.kind).toBe('rename_field')
+  })
+
+  it('trade_registry is a registry rule from 26.1', () => {
+    const r = byId('trade_registry')
+    expect(r.type).toBe('registry')
+    expect(r.since).toBe('26.1')
+  })
+
+  it('predicate_durability_removed is json_field with remove_field fix', () => {
+    const r = byId('predicate_durability_removed')
+    expect(r.type).toBe('json_field')
+    expect(r.jsonKind).toBe('predicate')
+    expect(r.fix?.kind).toBe('remove_field')
   })
 })
