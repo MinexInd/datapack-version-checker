@@ -1,10 +1,9 @@
 import { cmpVer } from './mcdoc-check'
+import { jsonFieldRenames } from './rules'
 import type { StructuralIssue } from './types'
 
-const PREDICATE_RENAMES: [string, string, string][] = [
-  ['alternative', 'any_of', '1.20'],
-  ['requirements', 'all_of', '1.20'],
-]
+// Predicate fields that were renamed in 1.20 (single source: rules.ts)
+const PREDICATE_RENAMES: [string, string, string][] = jsonFieldRenames('predicate')
 
 const REMOVED_DAMAGE_FLAGS = [
   'bypasses_armor',
@@ -163,6 +162,8 @@ function checkLootFunctions(data: any, rel: string, ver: string): StructuralIssu
 
 function checkRecipeResult(data: any, rel: string, ver: string): StructuralIssue[] {
   const issues: StructuralIssue[] = []
+  // Single source of truth: the 'recipe' json_field rename rule from rules.ts
+  const recipeRename = jsonFieldRenames('recipe')[0]
   function walk(obj: any, path: string, parentKey?: string): void {
     if (!obj || typeof obj !== 'object') return
     if (Array.isArray(obj)) {
@@ -170,17 +171,18 @@ function checkRecipeResult(data: any, rel: string, ver: string): StructuralIssue
       return
     }
     const isResultObject = parentKey === 'result' || parentKey === 'output'
-    if (isResultObject) {
-      if ('item' in obj && !('id' in obj) && typeof (obj as any).item === 'string' && cmpVer(ver, '1.20.5') >= 0) {
+    if (isResultObject && recipeRename) {
+      const [oldName, newName, since] = recipeRename
+      if (oldName in obj && !(newName in obj) && typeof (obj as any)[oldName] === 'string' && cmpVer(ver, since) >= 0) {
         issues.push({
           file: rel,
-          issue: `Recipe result key 'item' renamed to 'id' in 1.20.5 (path: ${path}.item)`,
+          issue: `Recipe result key '${oldName}' renamed to '${newName}' in ${since} (path: ${path}.${oldName})`,
         })
       }
-      if ('id' in obj && !('item' in obj) && typeof (obj as any).id === 'string' && cmpVer(ver, '1.20.5') < 0) {
+      if (newName in obj && !(oldName in obj) && typeof (obj as any)[newName] === 'string' && cmpVer(ver, since) < 0) {
         issues.push({
           file: rel,
-          issue: `Recipe result key 'id' not available before 1.20.5 — use 'item' instead (path: ${path}.id)`,
+          issue: `Recipe result key '${newName}' not available before ${since} — use '${oldName}' instead (path: ${path}.${newName})`,
         })
       }
     }
