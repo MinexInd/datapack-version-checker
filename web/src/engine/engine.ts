@@ -10,6 +10,7 @@ import { readPackMcmetaFromString } from './pack-mcmeta'
 import { getMcdocSymbols, checkMcdocData, fileKindFromPath } from './mcdoc-check'
 import { checkJsonFormatSemantics } from './json-format-check'
 import { getLogger } from './logger'
+import { suggestForCommand, suggestForRegistry, suggestForDeprecation, suggestForStructural } from './suggest'
 import { analyzePack, type AnalysisResult } from './analyzer'
 import type {
   McmetaVersion,
@@ -409,8 +410,8 @@ export async function checkCompatibilityContentBased(
       ? ver.data_pack_version >= loadRange.min && ver.data_pack_version <= loadRange.max
       : true
 
-    const mcfunctionIssues: McfunctionIssue[] = []
-    const registryIssues: RegistryIssue[] = []
+    let mcfunctionIssues: McfunctionIssue[] = []
+    let registryIssues: RegistryIssue[] = []
 
     let tree: CommandTreeNode | null = null
     try {
@@ -439,7 +440,7 @@ export async function checkCompatibilityContentBased(
       })
     }
 
-    const deprecationIssues: RegistryDeprecation[] = []
+    let deprecationIssues: RegistryDeprecation[] = []
     let targetRegs: Record<string, string[]> | null = null
     try {
       onProgress?.(`Checking registries for ${ver.name}...`)
@@ -466,7 +467,7 @@ export async function checkCompatibilityContentBased(
       }
     }
 
-    const structuralIssues: StructuralIssue[] = []
+    let structuralIssues: StructuralIssue[] = []
     if (mcdocTable) {
       onProgress?.(`Running mcdoc structural check for ${ver.name}...`)
       for (const file of structuralJsonFiles) {
@@ -506,9 +507,19 @@ export async function checkCompatibilityContentBased(
           command: hit.rule.id,
           issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
           snippet: hit.snippet,
+          // Legacy FeatureRule view: `fix` carries the guidance prose, and
+          // rewrite/fix rules are excluded from FEATURE_RULES by design, so
+          // knowledge issues are informational only (never auto-fixable).
+          suggestion: hit.rule.fix,
+          autoFixable: false,
         })
       }
     }
+
+    mcfunctionIssues = mcfunctionIssues.map(i => ({ ...i, ...suggestForCommand(i.command) }))
+    registryIssues = registryIssues.map(i => ({ ...i, ...suggestForRegistry(i.registry, i.entry) }))
+    deprecationIssues = deprecationIssues.map(i => ({ ...i, ...suggestForDeprecation(i.registry, i.entry) }))
+    structuralIssues = structuralIssues.map(i => ({ ...i, ...suggestForStructural(i.issue) }))
 
     const hasContentIssues =
       mcfunctionIssues.length > 0 || registryIssues.length > 0 ||
@@ -666,10 +677,10 @@ export async function checkResourcePack(
       ? ver.resource_pack_version >= loadRange.min && ver.resource_pack_version <= loadRange.max
       : true
 
-    const mcfunctionIssues: McfunctionIssue[] = []
-    const registryIssues: RegistryIssue[] = []
+    let mcfunctionIssues: McfunctionIssue[] = []
+    let registryIssues: RegistryIssue[] = []
 
-    const deprecationIssues: RegistryDeprecation[] = []
+    let deprecationIssues: RegistryDeprecation[] = []
     let targetRegs: Record<string, string[]> | null = null
     try {
       targetRegs = await fetchRegistries(ver.id)
@@ -695,7 +706,7 @@ export async function checkResourcePack(
       }
     }
 
-    const structuralIssues: StructuralIssue[] = []
+    let structuralIssues: StructuralIssue[] = []
     if (mcdocTable) {
       for (const file of structuralJsonFiles) {
         const content = files[file]
@@ -734,9 +745,19 @@ export async function checkResourcePack(
           command: hit.rule.id,
           issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
           snippet: hit.snippet,
+          // Legacy FeatureRule view: `fix` carries the guidance prose, and
+          // rewrite/fix rules are excluded from FEATURE_RULES by design, so
+          // knowledge issues are informational only (never auto-fixable).
+          suggestion: hit.rule.fix,
+          autoFixable: false,
         })
       }
     }
+
+    mcfunctionIssues = mcfunctionIssues.map(i => ({ ...i, ...suggestForCommand(i.command) }))
+    registryIssues = registryIssues.map(i => ({ ...i, ...suggestForRegistry(i.registry, i.entry) }))
+    deprecationIssues = deprecationIssues.map(i => ({ ...i, ...suggestForDeprecation(i.registry, i.entry) }))
+    structuralIssues = structuralIssues.map(i => ({ ...i, ...suggestForStructural(i.issue) }))
 
     const hasContentIssues =
       registryIssues.length > 0 || knowledgeIssues.length > 0 ||

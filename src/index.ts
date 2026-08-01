@@ -222,7 +222,7 @@ function printTable(versions: VersionCompatibility[], label: string) {
 function printDetailedIssues(versions: VersionCompatibility[]) {
   let hasIssues = false
   for (const v of versions) {
-    const issues: (McfunctionIssue | RegistryIssue | RegistryDeprecation | { file: string; issue: string })[] = [
+    const issues: (McfunctionIssue | RegistryIssue | RegistryDeprecation | { file: string; issue: string; suggestion?: string; autoFixable?: boolean })[] = [
       ...v.mcfunction_issues,
       ...v.registry_issues,
       ...(v.structural_issues ?? []),
@@ -243,6 +243,9 @@ function printDetailedIssues(versions: VersionCompatibility[]) {
       } else {
         console.log(`    ${C.d}${issue.file}${C.R}`)
         console.log(`      ${C.r}✗${C.R} ${issue.issue}`)
+      }
+      if ('suggestion' in issue && issue.suggestion) {
+        console.log(`      ${C.d}→${C.R} ${issue.suggestion}${issue.autoFixable ? ` ${C.g}[auto-fixable]${C.R}` : ''}`)
       }
     }
     if (issues.length > 15) console.log(`    ${C.d}... and ${issues.length - 15} more${C.R}`)

@@ -217,6 +217,17 @@ export const PORT_RULES: PortRule[] = [
   { id: 'recipe_result_item_to_id', type: 'json_field', jsonKind: 'recipe', match: 'item', since: '1.20.5', description: "Recipe result key 'item' renamed to 'id' in 1.20.5", fix: { kind: 'rename_field', from: 'item', to: 'id', since: '1.20.5' } },
 ]
 
+export interface RegistryRename {
+  from: string
+  to: string
+  since: string
+  registry?: string
+}
+
+export const REGISTRY_RENAMES: RegistryRename[] = [
+  // Curated renames — seed data comes in a later coverage task
+]
+
 // =============================================================================
 // Backward-compatible derived views
 // =============================================================================

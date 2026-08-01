@@ -30,6 +30,8 @@ export interface McfunctionIssue {
   command: string
   issue: string
   snippet?: string
+  suggestion?: string
+  autoFixable?: boolean
 }
 
 export interface RegistryIssue {
@@ -37,12 +39,16 @@ export interface RegistryIssue {
   registry: string
   entry: string
   issue: string
+  suggestion?: string
+  autoFixable?: boolean
 }
 
 export interface StructuralIssue {
   file: string
   issue: string
   source?: 'mcdoc' | 'format'
+  suggestion?: string
+  autoFixable?: boolean
 }
 
 export interface RegistryDeprecation {
@@ -50,6 +56,8 @@ export interface RegistryDeprecation {
   registry: string
   entry: string
   issue: string
+  suggestion?: string
+  autoFixable?: boolean
 }
 
 export interface ReferenceIssue {
