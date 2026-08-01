@@ -6,7 +6,7 @@ import { FEATURE_RULES, type FeatureRule } from './knowledge'
 import { RESOURCE_FEATURE_RULES } from './resource-knowledge'
 import { isVersionAtLeast, versionNameToDataVersion } from './version'
 import { getBreakingChanges } from './technical-changes'
-import { readPackMcmetaFromString } from './pack-mcmeta'
+import { readPackMcmetaFromString, normalizeFormatTuple, type FormatTuple } from './pack-mcmeta'
 import { getMcdocSymbols, checkMcdocData, fileKindFromPath } from './mcdoc-check'
 import { checkJsonFormatSemantics } from './json-format-check'
 import { getLogger } from './logger'
@@ -215,7 +215,7 @@ function checkReferences(
           line: cmd.line,
           reference: ref,
           type: 'function',
-          issue: `References "${ref}" ΓÇö no matching .mcfunction found in the pack`,
+          issue: `References "${ref}" — no matching .mcfunction found in the pack`,
           code: cmd.text,
         })
       }
@@ -285,6 +285,46 @@ const BATCH_SIZE = 3
 
 export type ProgressCallback = (msg: string) => void
 
+type PackVersionField = 'data_pack_version' | 'resource_pack_version'
+type PackVersionMinorField = 'data_pack_version_minor' | 'resource_pack_version_minor'
+
+function findVersionByFormat(
+  allVersions: McmetaVersion[],
+  tuple: FormatTuple,
+  field: PackVersionField,
+  minorField: PackVersionMinorField,
+): McmetaVersion | undefined {
+  const exact = allVersions.find(v => v[field] === tuple[0] && (v[minorField] ?? 0) === tuple[1])
+  // Packs legitimately declare "any minor" (e.g. max_format [101, 2147483647]);
+  // fall back to a major-only match when the tuple has no exact counterpart.
+  return exact ?? allVersions.find(v => v[field] === tuple[0])
+}
+
+// New-style (25w31a+) load range from min_format/max_format [major, minor]
+// tuples. A missing max_format means "any newer format"; resolve it against the
+// newest known version so the checker never silently shrinks the window.
+function buildNewStyleLoadRange(
+  allVersions: McmetaVersion[],
+  minFormat: FormatTuple,
+  maxFormat: FormatTuple | null,
+  field: PackVersionField,
+  minorField: PackVersionMinorField,
+): { min: number; max: number; min_name: string | null; max_name: string | null } {
+  const minVer = findVersionByFormat(allVersions, minFormat, field, minorField)
+  const maxMajor = maxFormat
+    ? maxFormat[0]
+    : allVersions.reduce((hi, v) => Math.max(hi, v[field] ?? 0), 0)
+  const maxVer = maxFormat
+    ? findVersionByFormat(allVersions, maxFormat, field, minorField)
+    : allVersions.find(v => v[field] === maxMajor)
+  return {
+    min: minFormat[0],
+    max: maxMajor,
+    min_name: minVer?.name ?? null,
+    max_name: maxVer?.name ?? null,
+  }
+}
+
 export async function checkCompatibilityContentBased(
   files: PackFileMap,
   targetVersions?: string[],
@@ -317,15 +357,21 @@ export async function checkCompatibilityContentBased(
   const pmContent = files['pack.mcmeta']
   if (pmContent) {
     try {
-      const { supported_formats } = readPackMcmetaFromString(pmContent)
+      const { supported_formats, min_format, max_format } = readPackMcmetaFromString(pmContent)
       if (supported_formats) {
-        const minVer = allVersions.find(v => v.data_pack_version === supported_formats.min)
-        const maxVer = allVersions.find(v => v.data_pack_version === supported_formats.max)
-        loadRange = {
-          min: supported_formats.min,
-          max: supported_formats.max,
-          min_name: minVer?.name ?? null,
-          max_name: maxVer?.name ?? null,
+        // Prefer the 25w31a+ min_format range when present; legacy fields
+        // remain the source of truth for older and dual-format packs without it.
+        if (min_format) {
+          loadRange = buildNewStyleLoadRange(allVersions, min_format, max_format, 'data_pack_version', 'data_pack_version_minor')
+        } else {
+          const minVer = allVersions.find(v => v.data_pack_version === supported_formats.min)
+          const maxVer = allVersions.find(v => v.data_pack_version === supported_formats.max)
+          loadRange = {
+            min: supported_formats.min,
+            max: supported_formats.max,
+            min_name: minVer?.name ?? null,
+            max_name: maxVer?.name ?? null,
+          }
         }
       }
     } catch (e) {
@@ -402,7 +448,7 @@ export async function checkCompatibilityContentBased(
   let done = 0
   const onCheckDone = (name: string) => {
     done++
-    onProgress?.(`Checked ${name} ΓÇö ${done}/${total} versions`)
+    onProgress?.(`Checked ${name} — ${done}/${total} versions`)
   }
 
   const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
@@ -522,7 +568,7 @@ export async function checkCompatibilityContentBased(
           file: hit.file ?? '(content)',
           line: hit.line ?? 0,
           command: hit.rule.id,
-          issue: `Uses ${hit.rule.description} ΓÇö needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
+          issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
           snippet: hit.snippet,
           // Legacy FeatureRule view: `fix` carries the guidance prose, and
           // rewrite/fix rules are excluded from FEATURE_RULES by design, so
@@ -777,7 +823,7 @@ export async function checkResourcePack(
           file: hit.file ?? '(content)',
           line: 0,
           command: hit.rule.id,
-          issue: `Uses ${hit.rule.description} ΓÇö needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
+          issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
           snippet: hit.snippet,
           // Legacy FeatureRule view: `fix` carries the guidance prose, and
           // rewrite/fix rules are excluded from FEATURE_RULES by design, so
@@ -865,6 +911,18 @@ function buildResourceLoadRange(
   if (!pmContent) return null
   try {
     const data = JSON.parse(pmContent)
+    // New-style packs omit pack_format by design (25w31a+), so the min_format
+    // check must come before the legacy pack_format guard.
+    const min_format = normalizeFormatTuple(data.pack?.min_format)
+    if (min_format) {
+      return buildNewStyleLoadRange(
+        allVersions,
+        min_format,
+        normalizeFormatTuple(data.pack?.max_format),
+        'resource_pack_version',
+        'resource_pack_version_minor',
+      )
+    }
     const pf = data.pack?.pack_format
     if (typeof pf !== 'number') return null
     const sf = data.pack?.supported_formats

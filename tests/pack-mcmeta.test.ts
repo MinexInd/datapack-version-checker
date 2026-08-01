@@ -52,6 +52,59 @@ describe('readPackMcmeta', () => {
       expect(result.supported_formats).toEqual({ min: 15, max: 15 })
     })
   })
+
+  it('normalizes bare int min_format/max_format', () => {
+    withMcmeta({ pack: { pack_format: 88, min_format: 88, max_format: 88 } }, dir => {
+      const result = readPackMcmeta(dir)
+      expect(result.min_format).toEqual([88, 0])
+      expect(result.max_format).toEqual([88, 0])
+    })
+  })
+
+  it('normalizes single-element array min_format/max_format', () => {
+    withMcmeta({ pack: { pack_format: 88, min_format: [88], max_format: [88] } }, dir => {
+      const result = readPackMcmeta(dir)
+      expect(result.min_format).toEqual([88, 0])
+      expect(result.max_format).toEqual([88, 0])
+    })
+  })
+
+  it('passes through [major, minor] min_format/max_format tuples', () => {
+    withMcmeta({
+      pack: { pack_format: 101, min_format: [61, 0], max_format: [101, 2147483647] },
+    }, dir => {
+      const result = readPackMcmeta(dir)
+      expect(result.min_format).toEqual([61, 0])
+      expect(result.max_format).toEqual([101, 2147483647])
+    })
+  })
+
+  it('legacy pack leaves min_format/max_format null', () => {
+    withMcmeta({ pack: { pack_format: 15, description: 'test' } }, dir => {
+      const result = readPackMcmeta(dir)
+      expect(result.min_format).toBeNull()
+      expect(result.max_format).toBeNull()
+      expect(result.pack_format).toBe(15)
+      expect(result.supported_formats).toEqual({ min: 15, max: 15 })
+    })
+  })
+
+  it('truncates integral float min_format/max_format', () => {
+    withMcmeta({ pack: { pack_format: 101, min_format: 101.1, max_format: 101.1 } }, dir => {
+      const result = readPackMcmeta(dir)
+      expect(result.min_format).toEqual([101, 0])
+      expect(result.max_format).toEqual([101, 0])
+    })
+  })
+
+  it('rejects unparseable min_format/max_format', () => {
+    withMcmeta({ pack: { pack_format: 88, min_format: 'banana', max_format: [88, 'x'] } }, dir => {
+      const result = readPackMcmeta(dir)
+      expect(result.min_format).toBeNull()
+      expect(result.max_format).toBeNull()
+      expect(result.pack_format).toBe(88)
+    })
+  })
 })
 
 describe('isPackFormatCompatible', () => {

@@ -15,6 +15,9 @@ export interface PackMcmeta {
   pack: {
     pack_format: number
     supported_formats?: number | number[] | { min_inclusive: number; max_inclusive: number }
+    // 25w31a+ (1.21.9) format range keys: bare int, [int], or [major, minor]
+    min_format?: number | number[]
+    max_format?: number | number[]
     description?: string
   }
 }

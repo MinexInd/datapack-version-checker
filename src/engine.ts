@@ -8,7 +8,7 @@ import { FEATURE_RULES, type FeatureRule } from './knowledge.js'
 import { RESOURCE_FEATURE_RULES } from './resource-knowledge.js'
 import { isVersionAtLeast, versionNameToDataVersion } from './version.js'
 import { getBreakingChanges } from './technical-changes.js'
-import { readPackMcmeta } from './pack-mcmeta.js'
+import { readPackMcmeta, normalizeFormatTuple, type FormatTuple } from './pack-mcmeta.js'
 import { getMcdocSymbols, checkMcdocFile, fileKindFromPath } from './mcdoc-check.js'
 import { checkJsonFormatFile } from './json-format-check.js'
 import { getLogger } from './logger.js'
@@ -228,7 +228,7 @@ function checkReferences(
           line: cmd.line,
           reference: ref,
           type: 'function',
-          issue: `References "${ref}" ΓÇö no matching .mcfunction found in the pack`,
+          issue: `References "${ref}" — no matching .mcfunction found in the pack`,
           code: cmd.text,
         })
       }
@@ -361,12 +361,57 @@ function applyResourcepackKnowledge(commands: CommandLine[], jsonFiles: string[]
   return hits
 }
 
+type PackVersionField = 'data_pack_version' | 'resource_pack_version'
+type PackVersionMinorField = 'data_pack_version_minor' | 'resource_pack_version_minor'
+
+function findVersionByFormat(
+  allVersions: McmetaVersion[],
+  tuple: FormatTuple,
+  field: PackVersionField,
+  minorField: PackVersionMinorField,
+): McmetaVersion | undefined {
+  const exact = allVersions.find(v => v[field] === tuple[0] && (v[minorField] ?? 0) === tuple[1])
+  // Packs legitimately declare "any minor" (e.g. max_format [101, 2147483647]);
+  // fall back to a major-only match when the tuple has no exact counterpart.
+  return exact ?? allVersions.find(v => v[field] === tuple[0])
+}
+
+// New-style (25w31a+) load range from min_format/max_format [major, minor]
+// tuples. A missing max_format means "any newer format"; resolve it against the
+// newest known version so the checker never silently shrinks the window.
+function buildNewStyleLoadRange(
+  allVersions: McmetaVersion[],
+  minFormat: FormatTuple,
+  maxFormat: FormatTuple | null,
+  field: PackVersionField,
+  minorField: PackVersionMinorField,
+): LoadRange {
+  const minVer = findVersionByFormat(allVersions, minFormat, field, minorField)
+  const maxMajor = maxFormat
+    ? maxFormat[0]
+    : allVersions.reduce((hi, v) => Math.max(hi, v[field] ?? 0), 0)
+  const maxVer = maxFormat
+    ? findVersionByFormat(allVersions, maxFormat, field, minorField)
+    : allVersions.find(v => v[field] === maxMajor)
+  return {
+    min: minFormat[0],
+    max: maxMajor,
+    min_name: minVer?.name ?? null,
+    max_name: maxVer?.name ?? null,
+  }
+}
+
 function buildDatapackLoadRange(packDir: string, allVersions: McmetaVersion[]): LoadRange | null {
   const pmPath = join(packDir, 'pack.mcmeta')
   if (!existsSync(pmPath)) return null
   try {
-    const { supported_formats } = readPackMcmeta(packDir)
+    const { supported_formats, min_format, max_format } = readPackMcmeta(packDir)
     if (!supported_formats) return null
+    // Prefer the 25w31a+ min_format range when present; legacy fields remain
+    // the source of truth for older and dual-format packs without it.
+    if (min_format) {
+      return buildNewStyleLoadRange(allVersions, min_format, max_format, 'data_pack_version', 'data_pack_version_minor')
+    }
     const minVer = allVersions.find(v => v.data_pack_version === supported_formats.min)
     const maxVer = allVersions.find(v => v.data_pack_version === supported_formats.max)
     return {
@@ -384,6 +429,18 @@ function buildResourcepackLoadRange(packDir: string, allVersions: McmetaVersion[
   try {
     const raw = readFileSync(pmPath, 'utf-8')
     const data = JSON.parse(raw)
+    // New-style packs omit pack_format by design (25w31a+), so the min_format
+    // check must come before the legacy pack_format guard.
+    const min_format = normalizeFormatTuple(data.pack?.min_format)
+    if (min_format) {
+      return buildNewStyleLoadRange(
+        allVersions,
+        min_format,
+        normalizeFormatTuple(data.pack?.max_format),
+        'resource_pack_version',
+        'resource_pack_version_minor',
+      )
+    }
     const pf = data.pack?.pack_format
     if (typeof pf !== 'number') return null
     const sf = data.pack?.supported_formats
@@ -660,7 +717,7 @@ async function checkPackCore(
           file: hit.file ?? '(content)',
           line: hit.line ?? 0,
           command: hit.rule.id,
-          issue: `Uses ${hit.rule.description} ΓÇö needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
+          issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
           snippet,
           // Legacy FeatureRule view: `fix` carries the guidance prose, and
           // rewrite/fix rules are excluded from FEATURE_RULES by design, so
