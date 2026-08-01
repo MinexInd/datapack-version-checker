@@ -358,20 +358,19 @@ export async function checkCompatibilityContentBased(
   if (pmContent) {
     try {
       const { supported_formats, min_format, max_format } = readPackMcmetaFromString(pmContent)
-      if (supported_formats) {
-        // Prefer the 25w31a+ min_format range when present; legacy fields
-        // remain the source of truth for older and dual-format packs without it.
-        if (min_format) {
-          loadRange = buildNewStyleLoadRange(allVersions, min_format, max_format, 'data_pack_version', 'data_pack_version_minor')
-        } else {
-          const minVer = allVersions.find(v => v.data_pack_version === supported_formats.min)
-          const maxVer = allVersions.find(v => v.data_pack_version === supported_formats.max)
-          loadRange = {
-            min: supported_formats.min,
-            max: supported_formats.max,
-            min_name: minVer?.name ?? null,
-            max_name: maxVer?.name ?? null,
-          }
+      // Prefer the 25w31a+ min_format range when present; new-style packs omit
+      // pack_format, so supported_formats is null for them. Legacy fields
+      // remain the source of truth for older and dual-format packs without it.
+      if (min_format) {
+        loadRange = buildNewStyleLoadRange(allVersions, min_format, max_format, 'data_pack_version', 'data_pack_version_minor')
+      } else if (supported_formats) {
+        const minVer = allVersions.find(v => v.data_pack_version === supported_formats.min)
+        const maxVer = allVersions.find(v => v.data_pack_version === supported_formats.max)
+        loadRange = {
+          min: supported_formats.min,
+          max: supported_formats.max,
+          min_name: minVer?.name ?? null,
+          max_name: maxVer?.name ?? null,
         }
       }
     } catch (e) {

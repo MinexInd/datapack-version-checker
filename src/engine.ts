@@ -406,12 +406,13 @@ function buildDatapackLoadRange(packDir: string, allVersions: McmetaVersion[]): 
   if (!existsSync(pmPath)) return null
   try {
     const { supported_formats, min_format, max_format } = readPackMcmeta(packDir)
-    if (!supported_formats) return null
-    // Prefer the 25w31a+ min_format range when present; legacy fields remain
+    // Prefer the 25w31a+ min_format range when present; new-style packs omit
+    // pack_format, so supported_formats is null for them. Legacy fields remain
     // the source of truth for older and dual-format packs without it.
     if (min_format) {
       return buildNewStyleLoadRange(allVersions, min_format, max_format, 'data_pack_version', 'data_pack_version_minor')
     }
+    if (!supported_formats) return null
     const minVer = allVersions.find(v => v.data_pack_version === supported_formats.min)
     const maxVer = allVersions.find(v => v.data_pack_version === supported_formats.max)
     return {

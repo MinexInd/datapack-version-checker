@@ -39,12 +39,14 @@ export function readPackMcmetaFromString(content: string): {
   const sf = data.pack.supported_formats
 
   if (sf === undefined || sf === null) {
-    supported_formats = { min: pack_format, max: pack_format }
+    // New-style packs (25w31a+) omit both pack_format and supported_formats;
+    // return null so callers fall back to min_format/max_format resolution.
+    supported_formats = Number.isFinite(pack_format) ? { min: pack_format, max: pack_format } : null
   } else if (typeof sf === 'number') {
     supported_formats = { min: sf, max: sf }
   } else if (Array.isArray(sf)) {
     if (sf.length === 0) {
-      supported_formats = { min: pack_format, max: pack_format }
+      supported_formats = Number.isFinite(pack_format) ? { min: pack_format, max: pack_format } : null
     } else {
       supported_formats = { min: Math.min(...sf), max: Math.max(...sf) }
     }

@@ -189,7 +189,8 @@ function tryRewriteSubCommands(
   relPath: string,
   lineNum: number,
 ): { line: string; patches: number; details: string[] } | null {
-  const tokenized = tokenizeCommand(trimmed.startsWith('/') ? trimmed : '/' + trimmed)
+  const hasSlash = trimmed.startsWith('/')
+  const tokenized = tokenizeCommand(hasSlash ? trimmed : '/' + trimmed)
 
   const subCmd = extractRunSubcommand(tokenized)
   if (subCmd) {
@@ -205,7 +206,9 @@ function tryRewriteSubCommands(
             details: [`${relPath}:${lineNum}: ${rw.description} (inside execute run)`],
           }
         }
-        const beforeRun = trimmed.slice(0, subCmd.start)
+        // subCmd.start is an offset into the possibly slash-prefixed string;
+        // back it off by one when we prepended '/' so it slices `trimmed` correctly.
+        const beforeRun = trimmed.slice(0, subCmd.start - (hasSlash ? 0 : 1))
         return {
           line: indent + beforeRun + result,
           patches: 1,
@@ -678,8 +681,16 @@ export async function fixDatapack(options: FixOptions): Promise<{
     try {
       const pmContent = files['pack.mcmeta']
       if (pmContent) {
-        const { supported_formats } = readPackMcmetaFromString(pmContent)
-        if (supported_formats) {
+        const { supported_formats, min_format, max_format } = readPackMcmetaFromString(pmContent)
+        if (min_format) {
+          // 25w31a+ tuples: source is the newest version matching max_format;
+          // a missing max_format means "any newer format".
+          const maxMajor = max_format ? max_format[0] : Math.max(...allVersions.map(v => v.data_pack_version ?? 0))
+          const maxMinor = max_format ? max_format[1] : 0
+          sourceVer = allVersions.find(v => v.data_pack_version === maxMajor && (v.data_pack_version_minor ?? 0) === maxMinor)
+            ?? allVersions.find(v => v.data_pack_version === maxMajor)
+            ?? null
+        } else if (supported_formats) {
           sourceVer = allVersions.find(v => v.data_pack_version === supported_formats.max) ?? null
         }
       }
@@ -822,7 +833,15 @@ export async function fixDatapack(options: FixOptions): Promise<{
     if (pmContent) {
       const parsed = JSON.parse(pmContent)
       const oldFormat = parsed.pack?.pack_format
-      if (oldFormat !== targetPackFormat) {
+      const isNewStyle = parsed.pack?.min_format !== undefined || parsed.pack?.max_format !== undefined
+      if (isNewStyle) {
+        // 25w31a+ tuple format: keep pack_format absent, rewrite the range tuples.
+        parsed.pack.min_format = [targetPackFormat, 0]
+        if (parsed.pack.max_format !== undefined) parsed.pack.max_format = [targetPackFormat, 0]
+        output['pack.mcmeta'] = JSON.stringify(parsed, null, 2) + '\n'
+        results.push({ file: 'pack.mcmeta', patches: 1, details: [`Updated format to ${targetPackFormat}`] })
+        totalPatches++
+      } else if (oldFormat !== targetPackFormat) {
         parsed.pack.pack_format = targetPackFormat
         if (parsed.pack.supported_formats) delete parsed.pack.supported_formats
         output['pack.mcmeta'] = JSON.stringify(parsed, null, 2) + '\n'
