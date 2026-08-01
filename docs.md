@@ -347,6 +347,7 @@ These are safe to use.
     data\aop1\functions\dr.mcfunction:1
       ✗ Uses The /item command (replace/modify) overhaul requires 1.20.5+
         — needs >= 1.20.5 but this is 1.20.4
+      → Use /replaceitem for pre-1.20.5.
 ```
 
 This tells you:
@@ -354,6 +355,11 @@ This tells you:
 - **Which file and line** (`dr.mcfunction:1`)
 - **Why** (uses `/item`, which needs 1.20.5+)
 - **What to change** (use `/replaceitem` for older versions)
+
+Every issue carries a **suggestion line** (`→ ...`) taken from the knowledge
+base. When the rule behind the issue has a structured auto-fix (a command
+rewrite or field rename), the line is tagged `[auto-fixable]` — `--fix` can
+apply it automatically. Otherwise it's a manual hint.
 
 ### Why this version range
 
@@ -553,7 +559,12 @@ force a fresh download.
 
 8. **Apply knowledge rules.** Version-gated features (e.g. item components need
    1.20.5+, `/dialog` needs 1.21.6+) override the lenient walker and are
-   reported as breaks on older versions.
+   reported as breaks on older versions. Every reported issue is matched
+   against the unified rule base and gets a `suggestion` — the rule's guidance
+   text, plus an auto-fix marker when the rule has a structured fix (command
+   rewrite, field rename, registry rename). The CLI prints these as `→ ...`
+   lines; the web GUI shows them as green (auto-fixable) / amber (manual)
+   hints.
 
 9. **Analyze dependency graph.** Build a resource index of all functions, JSON
    files, tags, and models; trace cross-file references (function calls, loot
