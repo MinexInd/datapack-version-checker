@@ -89,15 +89,16 @@ export default function App() {
     }
   }, [files, mode, all, strict, selectedVersions])
 
-  const handleFixPreview = useCallback(async () => {
+  const handleFixPreview = useCallback(async (targetOverride?: string) => {
     if (!files) { setError('Select a pack first'); return }
-    if (!fixTarget) { setError('Choose a target version to port to'); return }
+    const target = targetOverride ?? fixTarget
+    if (!target) { setError('Choose a target version to port to'); return }
     setLoading(true)
     setError('')
     setFixPreview(null)
     setProgress('Generating fix preview...')
     try {
-      const preview = await runFixPreview({ files, targetVersion: fixTarget, sourceVersion: fixSource || undefined })
+      const preview = await runFixPreview({ files, targetVersion: target, sourceVersion: fixSource || undefined })
       setFixPreview(preview)
       setProgress('')
     } catch (err: any) {
@@ -107,6 +108,15 @@ export default function App() {
       setProgress('')
     }
   }, [files, fixTarget, fixSource])
+
+  /** "Port to X" from a result row: switch to the Fix tab, preselect the target,
+   *  and run the same preview flow as the Fix tab's button (only when a pack is loaded). */
+  const handlePortTo = useCallback((versionName: string) => {
+    setTab('fix')
+    setFixTarget(versionName)
+    setFixPreview(null)
+    if (files) handleFixPreview(versionName)
+  }, [files, handleFixPreview])
 
   const handleFix = useCallback(async () => {
     if (!files) { setError('Select a pack first'); return }
@@ -258,7 +268,7 @@ export default function App() {
         </div>
       )}
 
-      {result && <Results result={result.result} mode={result.mode} duration={checkDuration} />}
+      {result && <Results result={result.result} mode={result.mode} duration={checkDuration} onPortTo={handlePortTo} />}
 
       <footer className="app-footer">
         <p>Runs entirely in your browser — nothing is uploaded.</p>

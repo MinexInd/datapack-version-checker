@@ -1477,6 +1477,165 @@
 
     .footer-links a:hover { color: var(--accent); text-decoration: none; }
 
+    /* --- Per-issue hint lines (suggestions) --- */
+    .issue-hint {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      margin-top: 6px;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 0.74rem;
+      line-height: 1.5;
+      color: var(--text-dim);
+      animation: issueSlideIn 0.2s ease both;
+    }
+
+    .issue-hint .issue-hint-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      margin-top: 5px;
+      flex-shrink: 0;
+    }
+
+    .issue-hint .issue-hint-tag {
+      flex-shrink: 0;
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 1px;
+      line-height: 1.7;
+    }
+
+    .issue-hint .issue-hint-text { min-width: 0; }
+
+    .issue-hint.auto { background: var(--green-bg); border: 1px solid var(--green-border); }
+    .issue-hint.auto .issue-hint-dot { background: var(--green); box-shadow: 0 0 5px var(--green); }
+    .issue-hint.auto .issue-hint-tag { color: var(--green); }
+
+    .issue-hint.manual { background: var(--amber-bg); border: 1px solid var(--amber-border); }
+    .issue-hint.manual .issue-hint-dot { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
+    .issue-hint.manual .issue-hint-tag { color: var(--amber); }
+
+    /* --- Per-version "make compatible" checklist card --- */
+    .checklist-card {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg-elev);
+      padding: 14px 16px 12px;
+      margin-bottom: 14px;
+      animation: fadeIn 0.25s ease both;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .checklist-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      border-radius: 10px 0 0 10px;
+      background: linear-gradient(180deg, var(--green), var(--amber));
+    }
+
+    .checklist-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .checklist-title {
+      font-size: 0.9rem;
+      font-weight: 650;
+      color: var(--text);
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .checklist-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .checklist-chip {
+      font-size: 0.68rem;
+      font-weight: 650;
+      padding: 3px 10px;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+
+    .checklist-chip.auto { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+    .checklist-chip.manual { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+
+    .checklist {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .checklist-item {
+      display: flex;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 7px;
+      background: var(--bg);
+      border: 1px solid var(--border-soft);
+      border-left: 3px solid var(--border);
+      animation: issueSlideIn 0.2s ease both;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .checklist-item:hover { background: var(--bg-hover); border-color: var(--border); }
+
+    .checklist-item.auto { border-left-color: var(--green); }
+    .checklist-item.manual { border-left-color: var(--amber); }
+
+    .checklist-main { flex: 1; min-width: 0; }
+
+    .checklist-loc {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--text-faint);
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .checklist-text { font-size: 0.82rem; line-height: 1.45; color: var(--text); }
+
+    .checklist-fix {
+      font-size: 0.74rem;
+      line-height: 1.5;
+      margin-top: 3px;
+      color: var(--text-dim);
+    }
+
+    .checklist-item.auto .checklist-fix { color: var(--green); }
+    .checklist-item.manual .checklist-fix { color: var(--amber); }
+
+    .checklist-more {
+      margin-top: 8px;
+      width: 100%;
+    }
+
+    .checklist-empty {
+      font-size: 0.8rem;
+      color: var(--text-faint);
+      padding: 4px 2px 2px;
+    }
+
+    /* --- "Port to X" CTA in version headers --- */
+    .cta-port { flex-shrink: 0; }
+
     /* --- Responsive --- */
     @media (max-width: 720px) {
       .diff-columns { flex-direction: column; }
@@ -1497,6 +1656,7 @@
       .plan-file-count { margin-left: 0; width: 100%; }
       .dropzone { padding: 36px 16px; }
       .stats { grid-template-columns: repeat(2, 1fr); }
+      .cta-port { flex: 1 1 100%; order: 10; }
     }
   </style>
 </head>

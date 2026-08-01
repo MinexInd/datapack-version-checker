@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useId } from 'react'
 import { highlightMcfunction } from '../engine/highlight'
 import type {
   CheckResult,
@@ -16,6 +16,7 @@ interface Props {
   result: CheckResult
   mode: string
   duration?: number
+  onPortTo: (versionName: string) => void
 }
 
 interface IssueCounts {
@@ -39,34 +40,60 @@ function issueCounts(v: VersionCompatibility): IssueCounts {
 }
 
 type FlatIssue =
-  | { kind: 'cmd'; file: string; line: number; command: string; issue: string; snippet?: string }
-  | { kind: 'reg'; file: string; registry: string; entry: string; issue: string }
-  | { kind: 'struct'; file: string; issue: string }
-  | { kind: 'ref'; file: string; line?: number; reference: string; issue: string; code?: string }
-  | { kind: 'dep'; file: string; registry: string; entry: string; issue: string }
-  | { kind: 'bc'; file: string; issue: string }
+  | { kind: 'cmd'; file: string; line: number; command: string; issue: string; snippet?: string; suggestion?: string; autoFixable?: boolean }
+  | { kind: 'reg'; file: string; registry: string; entry: string; issue: string; suggestion?: string; autoFixable?: boolean }
+  | { kind: 'struct'; file: string; issue: string; suggestion?: string; autoFixable?: boolean }
+  | { kind: 'ref'; file: string; line?: number; reference: string; issue: string; code?: string; suggestion?: string; autoFixable?: boolean }
+  | { kind: 'dep'; file: string; registry: string; entry: string; issue: string; suggestion?: string; autoFixable?: boolean }
+  | { kind: 'bc'; file: string; issue: string; suggestion?: string; autoFixable?: boolean }
 
 function flattenIssues(v: VersionCompatibility): FlatIssue[] {
   const issues: FlatIssue[] = []
   for (const i of v.mcfunction_issues ?? []) {
-    issues.push({ kind: 'cmd', file: i.file, line: i.line, command: i.command, issue: i.issue, snippet: i.snippet })
+    issues.push({ kind: 'cmd', file: i.file, line: i.line, command: i.command, issue: i.issue, snippet: i.snippet, suggestion: i.suggestion, autoFixable: i.autoFixable })
   }
   for (const i of v.registry_issues ?? []) {
-    issues.push({ kind: 'reg', file: i.file, registry: i.registry, entry: i.entry, issue: i.issue })
+    issues.push({ kind: 'reg', file: i.file, registry: i.registry, entry: i.entry, issue: i.issue, suggestion: i.suggestion, autoFixable: i.autoFixable })
   }
   for (const i of v.structural_issues ?? []) {
-    issues.push({ kind: 'struct', file: i.file, issue: i.issue })
+    issues.push({ kind: 'struct', file: i.file, issue: i.issue, suggestion: i.suggestion, autoFixable: i.autoFixable })
   }
   for (const i of v.reference_issues ?? []) {
     issues.push({ kind: 'ref', file: i.file, line: i.line, reference: i.reference, issue: i.issue, code: i.code })
   }
   for (const i of v.deprecation_issues ?? []) {
-    issues.push({ kind: 'dep', file: i.file, registry: i.registry, entry: i.entry, issue: i.issue })
+    issues.push({ kind: 'dep', file: i.file, registry: i.registry, entry: i.entry, issue: i.issue, suggestion: i.suggestion, autoFixable: i.autoFixable })
   }
   for (const bc of v.breaking_changes ?? []) {
     issues.push({ kind: 'bc', file: '', issue: bc })
   }
   return issues
+}
+
+/** Issues that carry a suggestion, collected across all issue arrays of one version. */
+interface ChecklistItem {
+  file: string
+  line?: number
+  issue: string
+  suggestion: string
+  autoFixable?: boolean
+}
+
+function checklistItems(v: VersionCompatibility): ChecklistItem[] {
+  const out: ChecklistItem[] = []
+  for (const i of v.mcfunction_issues ?? []) {
+    if (i.suggestion) out.push({ file: i.file, line: i.line, issue: i.issue, suggestion: i.suggestion, autoFixable: i.autoFixable })
+  }
+  for (const i of v.registry_issues ?? []) {
+    if (i.suggestion) out.push({ file: i.file, issue: i.issue, suggestion: i.suggestion, autoFixable: i.autoFixable })
+  }
+  for (const i of v.structural_issues ?? []) {
+    if (i.suggestion) out.push({ file: i.file, issue: i.issue, suggestion: i.suggestion, autoFixable: i.autoFixable })
+  }
+  for (const i of v.deprecation_issues ?? []) {
+    if (i.suggestion) out.push({ file: i.file, issue: i.issue, suggestion: i.suggestion, autoFixable: i.autoFixable })
+  }
+  return out
 }
 
 function groupByFile(issues: FlatIssue[]): Map<string, FlatIssue[]> {
@@ -91,6 +118,7 @@ const KIND_META: Record<string, { label: string; icon: string; cssClass: string 
 
 function IssueItem({ issue, idx }: { issue: FlatIssue; idx: number }) {
   const meta = KIND_META[issue.kind]
+  const autoFix = issue.autoFixable === true
   return (
     <div
       className={`issue-item ${meta.cssClass}`}
@@ -121,6 +149,13 @@ function IssueItem({ issue, idx }: { issue: FlatIssue; idx: number }) {
       {'code' in issue && issue.code && (
         <pre className="issue-code">{issue.code}</pre>
       )}
+      {issue.suggestion && (
+        <div className={`issue-hint ${autoFix ? 'auto' : 'manual'}`}>
+          <span className="issue-hint-dot" aria-hidden="true" />
+          <span className="issue-hint-tag">{autoFix ? 'auto-fix' : 'manual'}</span>
+          <span className="issue-hint-text">{issue.suggestion}</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -143,6 +178,60 @@ function FileGroup({ filePath, issues }: { filePath: string; issues: FlatIssue[]
           <IssueItem key={idx} issue={issue} idx={idx} />
         ))}
       </div>
+    </div>
+  )
+}
+
+function ChecklistCard({ versionName, items }: { versionName: string; items: ChecklistItem[] }) {
+  const [showAll, setShowAll] = useState(false)
+  const listId = useId()
+  const autoCount = items.filter(i => i.autoFixable).length
+  const manualCount = items.length - autoCount
+  const visible = showAll ? items : items.slice(0, 8)
+  const hidden = items.length - visible.length
+
+  return (
+    <div className="checklist-card">
+      <div className="checklist-head">
+        <div className="checklist-title">Make compatible with {versionName}</div>
+        {items.length > 0 && (
+          <div className="checklist-chips">
+            {autoCount > 0 && <span className="checklist-chip auto">{autoCount} auto-fixable</span>}
+            {manualCount > 0 && <span className="checklist-chip manual">{manualCount} manual</span>}
+          </div>
+        )}
+      </div>
+      {items.length === 0 ? (
+        <p className="checklist-empty">No known fixes for this version — check the breaking changes list below.</p>
+      ) : (
+        <>
+          <ul className="checklist" id={listId}>
+            {visible.map((it, i) => (
+              <li
+                key={i}
+                className={`checklist-item ${it.autoFixable ? 'auto' : 'manual'}`}
+                style={{ animationDelay: `${Math.min(i * 25, 200)}ms` }}
+              >
+                <div className="checklist-main">
+                  <div className="checklist-loc">{it.file}{it.line ? ':' + it.line : ''}</div>
+                  <div className="checklist-text">{it.issue}</div>
+                  <div className="checklist-fix">{it.suggestion}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {hidden > 0 && (
+            <button
+              className="btn btn-ghost btn-sm checklist-more"
+              aria-expanded={showAll}
+              aria-controls={listId}
+              onClick={() => setShowAll(s => !s)}
+            >
+              {showAll ? 'Show less' : `Show ${hidden} more`}
+            </button>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -171,23 +260,27 @@ function IssueCountsBar({ c, activeKind, onKind }: { c: IssueCounts; activeKind:
   )
 }
 
-function VersionRow({ v, defaultOpen, index, filterKind, onFilterKind }: {
+function VersionRow({ v, defaultOpen, index, filterKind, onFilterKind, onPortTo }: {
   v: VersionCompatibility
   defaultOpen?: boolean
   index: number
   filterKind: string | null
   onFilterKind: (k: string) => void
+  onPortTo: (versionName: string) => void
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false)
   useEffect(() => { setOpen(defaultOpen ?? false) }, [defaultOpen])
   const c = issueCounts(v)
   const tagClass = v.version.type === 'snapshot' ? 'snapshot' : 'release'
+  const isBroken = v.status !== 'compatible'
 
   const grouped = useMemo(() => {
     if (!open) return null
     const flat = flattenIssues(v).filter(i => !filterKind || i.kind === filterKind)
     return groupByFile(flat)
   }, [v, open, filterKind])
+
+  const suggestions = useMemo(() => (isBroken ? checklistItems(v) : []), [v, isBroken])
 
   const emptyMsg = filterKind
     ? `No ${(KIND_META[filterKind]?.label ?? 'matching').toLowerCase()} issues in this version`
@@ -217,16 +310,28 @@ function VersionRow({ v, defaultOpen, index, filterKind, onFilterKind }: {
         {v.status === 'compatible' ? (
           <span className="pill ok">compatible</span>
         ) : (
-          <IssueCountsBar
-            c={c}
-            activeKind={filterKind}
-            onKind={(k) => { onFilterKind(k); setOpen(true) }}
-          />
+          <>
+            <IssueCountsBar
+              c={c}
+              activeKind={filterKind}
+              onKind={(k) => { onFilterKind(k); setOpen(true) }}
+            />
+            <button
+              className="btn btn-primary btn-sm cta-port"
+              onClick={(e) => { e.stopPropagation(); onPortTo(v.version.name) }}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              Port to {v.version.name}
+            </button>
+          </>
         )}
         <span className="chev">▶</span>
       </div>
       <div className="vbody">
         <div className="vbody-inner">
+          {isBroken && (
+            <ChecklistCard versionName={v.version.name} items={suggestions} />
+          )}
           {grouped && grouped.size > 0 ? (
             <div className="issues-scroll">
               {[...grouped.entries()].map(([filePath, issues]) => (
@@ -523,7 +628,7 @@ function generateReportText(result: CheckResult): string {
   return lines.join('\n')
 }
 
-export default function Results({ result, mode, duration }: Props) {
+export default function Results({ result, mode, duration, onPortTo }: Props) {
   if (!result) return null
 
   const [allOpen, setAllOpen] = useState(false)
@@ -640,7 +745,7 @@ export default function Results({ result, mode, duration }: Props) {
         {compat.length > 0 ? (
           <div className="vlist">
             {compat.map((v, i) => (
-              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} filterKind={filterKind} onFilterKind={toggleFilter} />
+              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} filterKind={filterKind} onFilterKind={toggleFilter} onPortTo={onPortTo} />
             ))}
           </div>
         ) : (
@@ -674,7 +779,7 @@ export default function Results({ result, mode, duration }: Props) {
         {filteredBroken.length > 0 ? (
           <div className="vlist">
             {filteredBroken.map((v, i) => (
-              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} filterKind={filterKind} onFilterKind={toggleFilter} />
+              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} filterKind={filterKind} onFilterKind={toggleFilter} onPortTo={onPortTo} />
             ))}
           </div>
         ) : (
