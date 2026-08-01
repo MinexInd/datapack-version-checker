@@ -406,9 +406,11 @@ export async function checkCompatibilityContentBased(
   }
 
   const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
-    const inLoadRange = loadRange
-      ? ver.data_pack_version >= loadRange.min && ver.data_pack_version <= loadRange.max
+    const explicitSelection = targetVersions !== undefined || allVersionsFlag
+    const inDeclaredRange = loadRange
+      ? (ver.data_pack_version ?? 0) >= loadRange.min && (ver.data_pack_version ?? 0) <= loadRange.max
       : true
+    const inLoadRange = explicitSelection ? true : inDeclaredRange
 
     let mcfunctionIssues: McfunctionIssue[] = []
     let registryIssues: RegistryIssue[] = []
@@ -528,7 +530,7 @@ export async function checkCompatibilityContentBased(
 
     const result: VersionCompatibility = {
       version: ver,
-      pack_format_match: inLoadRange ? 'exact' : 'none',
+      pack_format_match: inDeclaredRange ? 'exact' : 'none',
       status: hasContentIssues ? 'content_issues' : (inLoadRange ? 'compatible' : 'outside_load_range'),
       in_load_range: inLoadRange,
       mcfunction_issues: [...mcfunctionIssues, ...knowledgeIssues],
@@ -673,9 +675,11 @@ export async function checkResourcePack(
   }
 
   const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
-    const inLoadRange = loadRange
-      ? ver.resource_pack_version >= loadRange.min && ver.resource_pack_version <= loadRange.max
+    const explicitSelection = targetVersions !== undefined || allVersionsFlag
+    const inDeclaredRange = loadRange
+      ? (ver.resource_pack_version ?? 0) >= loadRange.min && (ver.resource_pack_version ?? 0) <= loadRange.max
       : true
+    const inLoadRange = explicitSelection ? true : inDeclaredRange
 
     let mcfunctionIssues: McfunctionIssue[] = []
     let registryIssues: RegistryIssue[] = []
@@ -764,7 +768,7 @@ export async function checkResourcePack(
       structuralIssues.length > 0 || deprecationIssues.length > 0
     const result: VersionCompatibility = {
       version: ver,
-      pack_format_match: inLoadRange ? 'exact' : 'none',
+      pack_format_match: inDeclaredRange ? 'exact' : 'none',
       status: hasContentIssues ? 'content_issues' : (inLoadRange ? 'compatible' : 'outside_load_range'),
       in_load_range: inLoadRange,
       mcfunction_issues: mcfunctionIssues,

@@ -536,9 +536,11 @@ async function checkPackCore(
   let done = 0
 
   const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
-    const inLoadRange = loadRange
+    const explicitSelection = targetVersions !== undefined || allVersionsFlag
+    const inDeclaredRange = loadRange
       ? (ver[ctx.versionField] ?? 0) >= loadRange.min && (ver[ctx.versionField] ?? 0) <= loadRange.max
       : true
+    const inLoadRange = explicitSelection ? true : inDeclaredRange
 
     let mcfunctionIssues: McfunctionIssue[] = []
     let registryIssues: RegistryIssue[] = []
@@ -657,7 +659,7 @@ async function checkPackCore(
       deprecationIssues.length > 0
     const result: VersionCompatibility = {
       version: ver,
-      pack_format_match: inLoadRange ? 'exact' : 'none',
+      pack_format_match: inDeclaredRange ? 'exact' : 'none',
       status: hasContentIssues ? 'content_issues' : (inLoadRange ? 'compatible' : 'outside_load_range'),
       in_load_range: inLoadRange,
       mcfunction_issues: [...mcfunctionIssues, ...knowledgeIssues],

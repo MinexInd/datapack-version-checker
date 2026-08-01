@@ -15,6 +15,24 @@ function suggestionFromRule(rule: PortRule): Suggestion {
   return {}
 }
 
+// Lookup tables built once at module load. The per-version check loop calls
+// these suggestors for every issue, so scanning all of PORT_RULES per call
+// was O(issues x 150) with per-call string allocations. Precomputed tables
+// keep the hot path O(1).
+const COMMAND_SUGGESTIONS: Map<string, Suggestion> = new Map()
+for (const rule of PORT_RULES) {
+  if (rule.type !== 'command') continue
+  const root = String(rule.match)
+  const s = suggestionFromRule(rule)
+  const prev = COMMAND_SUGGESTIONS.get(root)
+  // First rule with a fix wins (auto-fixable preferred); otherwise the first
+  // rule in PORT_RULES order wins — same semantics as the old linear scan.
+  if (!prev || (!prev.autoFixable && rule.fix)) COMMAND_SUGGESTIONS.set(root, s)
+}
+
+const REGISTRY_RULES: PortRule[] = PORT_RULES.filter(r => r.type === 'registry')
+const JSON_FIELD_RULES: PortRule[] = PORT_RULES.filter(r => r.type === 'json_field')
+
 /**
  * Suggest a porting hint for a command. Strips a leading '/', takes the first
  * token, and looks up PORT_RULES rules of type 'command' whose match equals
@@ -24,13 +42,7 @@ function suggestionFromRule(rule: PortRule): Suggestion {
 export function suggestForCommand(command: string): Suggestion {
   const root = command.trim().replace(/^\//, '').split(/\s+/)[0] ?? ''
   if (!root) return {}
-  let firstMatch: PortRule | undefined
-  for (const rule of PORT_RULES) {
-    if (rule.type !== 'command' || String(rule.match) !== root) continue
-    if (rule.fix) return suggestionFromRule(rule)
-    if (!firstMatch) firstMatch = rule
-  }
-  return firstMatch ? suggestionFromRule(firstMatch) : {}
+  return COMMAND_SUGGESTIONS.get(root) ?? {}
 }
 
 /** Suggest a porting hint for a registry reference (type==='registry' rules). */
@@ -38,8 +50,7 @@ export function suggestForRegistry(registry: string, entry: string): Suggestion 
   const stripNs = (s: string) => s.replace(/^minecraft:/, '')
   const reg = stripNs(registry)
   const ent = stripNs(entry)
-  for (const rule of PORT_RULES) {
-    if (rule.type !== 'registry') continue
+  for (const rule of REGISTRY_RULES) {
     const match = String(rule.match)
     if (match === ent || match === reg) return suggestionFromRule(rule)
   }
@@ -82,8 +93,7 @@ export function suggestForDeprecation(
  * issue text (case-insensitive).
  */
 export function suggestForStructural(issueText: string): Suggestion {
-  for (const rule of PORT_RULES) {
-    if (rule.type !== 'json_field') continue
+  for (const rule of JSON_FIELD_RULES) {
     if (issueText.toLowerCase().includes(String(rule.match).toLowerCase())) {
       const autoFixable = rule.fix?.kind === 'rename_field'
       const suggestion = rule.guidance ?? (autoFixable ? `Can be auto-fixed: ${rule.description}` : undefined)
