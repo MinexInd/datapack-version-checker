@@ -87,6 +87,13 @@ describe('derived views', () => {
     for (const r of expected) expect(ids.has(r.id)).toBe(true)
   })
 
+  it('RESOURCE_FEATURE_RULES carries maxVersion for until-gated rules', () => {
+    const rule = RESOURCE_FEATURE_RULES.find(r => r.id === 'painting_inline_variant')
+    expect(rule).toBeDefined()
+    expect(rule!.minVersion).toBe('1.21')
+    expect(rule!.maxVersion).toBe('1.21.5')
+  })
+
   it('CMD_REWRITES is exactly the rewrite strategies', () => {
     const expected = PORT_RULES.filter(r => r.fix?.kind === 'rewrite')
     expect(CMD_REWRITES.length).toBe(expected.length)

@@ -215,7 +215,7 @@ function checkReferences(
           line: cmd.line,
           reference: ref,
           type: 'function',
-          issue: `References "${ref}" — no matching .mcfunction found in the pack`,
+          issue: `References "${ref}" ΓÇö no matching .mcfunction found in the pack`,
           code: cmd.text,
         })
       }
@@ -402,7 +402,7 @@ export async function checkCompatibilityContentBased(
   let done = 0
   const onCheckDone = (name: string) => {
     done++
-    onProgress?.(`Checked ${name} — ${done}/${total} versions`)
+    onProgress?.(`Checked ${name} ΓÇö ${done}/${total} versions`)
   }
 
   const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
@@ -501,13 +501,28 @@ export async function checkCompatibilityContentBased(
     const seenRules = new Set<string>()
     for (const hit of knowledgeHits) {
       const ruleMinDv = versionNameToDataVersion(hit.rule.minVersion, allVersions)
-      if (ruleMinDv !== null && ver.data_version < ruleMinDv && !seenRules.has(hit.rule.id)) {
+      const ruleMaxDv = hit.rule.maxVersion ? versionNameToDataVersion(hit.rule.maxVersion, allVersions) : null
+      if (ruleMaxDv !== null && ver.data_version > ruleMaxDv && !seenRules.has(hit.rule.id)) {
         seenRules.add(hit.rule.id)
         knowledgeIssues.push({
           file: hit.file ?? '(content)',
           line: hit.line ?? 0,
           command: hit.rule.id,
-          issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
+          issue: `Uses ${hit.rule.description} — removed in ${hit.rule.maxVersion} but this is ${ver.name}`,
+          snippet: hit.snippet,
+          // Legacy FeatureRule view: `fix` carries the guidance prose, and
+          // rewrite/fix rules are excluded from FEATURE_RULES by design, so
+          // knowledge issues are informational only (never auto-fixable).
+          suggestion: hit.rule.fix,
+          autoFixable: false,
+        })
+      } else if (ruleMinDv !== null && ver.data_version < ruleMinDv && !seenRules.has(hit.rule.id)) {
+        seenRules.add(hit.rule.id)
+        knowledgeIssues.push({
+          file: hit.file ?? '(content)',
+          line: hit.line ?? 0,
+          command: hit.rule.id,
+          issue: `Uses ${hit.rule.description} ΓÇö needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
           snippet: hit.snippet,
           // Legacy FeatureRule view: `fix` carries the guidance prose, and
           // rewrite/fix rules are excluded from FEATURE_RULES by design, so
@@ -741,13 +756,28 @@ export async function checkResourcePack(
     const seenRules = new Set<string>()
     for (const hit of knowledgeHits) {
       const ruleMinDv = versionNameToDataVersion(hit.rule.minVersion, allVersions)
-      if (ruleMinDv !== null && ver.data_version < ruleMinDv && !seenRules.has(hit.rule.id)) {
+      const ruleMaxDv = hit.rule.maxVersion ? versionNameToDataVersion(hit.rule.maxVersion, allVersions) : null
+      if (ruleMaxDv !== null && ver.data_version > ruleMaxDv && !seenRules.has(hit.rule.id)) {
         seenRules.add(hit.rule.id)
         knowledgeIssues.push({
           file: hit.file ?? '(content)',
           line: 0,
           command: hit.rule.id,
-          issue: `Uses ${hit.rule.description} — needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
+          issue: `Uses ${hit.rule.description} — removed in ${hit.rule.maxVersion} but this is ${ver.name}`,
+          snippet: hit.snippet,
+          // Legacy FeatureRule view: `fix` carries the guidance prose, and
+          // rewrite/fix rules are excluded from FEATURE_RULES by design, so
+          // knowledge issues are informational only (never auto-fixable).
+          suggestion: hit.rule.fix,
+          autoFixable: false,
+        })
+      } else if (ruleMinDv !== null && ver.data_version < ruleMinDv && !seenRules.has(hit.rule.id)) {
+        seenRules.add(hit.rule.id)
+        knowledgeIssues.push({
+          file: hit.file ?? '(content)',
+          line: 0,
+          command: hit.rule.id,
+          issue: `Uses ${hit.rule.description} ΓÇö needs >= ${hit.rule.minVersion} but this is ${ver.name}`,
           snippet: hit.snippet,
           // Legacy FeatureRule view: `fix` carries the guidance prose, and
           // rewrite/fix rules are excluded from FEATURE_RULES by design, so
@@ -820,7 +850,7 @@ function applyResourceKnowledge(files: PackFileMap, jsonFiles: string[]): Knowle
     if (!content) continue
     for (const rule of RESOURCE_FEATURE_RULES) {
       if (file.includes(rule.match) || content.includes(rule.match)) {
-        hits.push({ rule: { id: rule.id, description: rule.description, type: 'command', match: rule.match, minVersion: rule.minVersion, fix: rule.fix }, file })
+        hits.push({ rule: { id: rule.id, description: rule.description, type: 'command', match: rule.match, minVersion: rule.minVersion, maxVersion: rule.maxVersion, fix: rule.fix }, file })
       }
     }
   }
