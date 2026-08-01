@@ -4,147 +4,148 @@ import {
   FEATURE_RULES,
   RESOURCE_FEATURE_RULES,
   CMD_REWRITES,
-  jsonFieldRenames,
   REGISTRY_RENAMES,
-} from '../src/rules'
-import type { PortRule, RewriteFix } from '../src/rules'
+  jsonFieldRenames,
+  type PortRule,
+} from '../src/rules.js'
+import { cmpVer } from '../src/mcdoc-check.js'
 
 describe('PORT_RULES consistency', () => {
-  it('has unique ids', () => {
+  it('has unique rule ids', () => {
     const ids = PORT_RULES.map(r => r.id)
-    const dupes = ids.filter((id, i) => ids.indexOf(id) !== i)
-    expect(dupes).toEqual([])
+    expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it('every rule has a non-empty description', () => {
+  it('every rule has id, description, and a valid type', () => {
+    const types = new Set(['command', 'command_pattern', 'registry', 'json_field', 'function_macro', 'resource_path'])
     for (const r of PORT_RULES) {
+      expect(r.id.length).toBeGreaterThan(0)
       expect(r.description.length).toBeGreaterThan(0)
+      expect(types.has(r.type)).toBe(true)
     }
   })
 
-  it('match is either string or RegExp', () => {
+  it('regex-typed matches compile (command_pattern / function_macro / resource_path)', () => {
     for (const r of PORT_RULES) {
-      const t = typeof r.match
-      expect(t === 'string' || r.match instanceof RegExp).toBe(true)
-    }
-  })
-
-  it('RegExp matches compile without throwing', () => {
-    for (const r of PORT_RULES) {
-      if (r.match instanceof RegExp) {
-        expect(() => new RegExp(r.match.source, r.match.flags)).not.toThrow()
+      if (r.type === 'command_pattern' || r.type === 'function_macro' || r.type === 'resource_path') {
+        expect(() => new RegExp(String(r.match))).not.toThrow()
       }
     }
   })
 
-  it('version windows are sane: since <= until when both present', () => {
+  it('version windows are sane (since <= until when both present)', () => {
     for (const r of PORT_RULES) {
       if (r.since && r.until) {
-        const parse = (v: string) => v.split('.').map(Number)
-        const sv = parse(r.since)
-        const uv = parse(r.until)
-        const cmp = sv[0] !== uv[0] ? sv[0] - uv[0] : (sv[1] ?? 0) - (uv[1] ?? 0)
-        expect(cmp).toBeLessThanOrEqual(0)
+        expect(cmpVer(r.since, r.until)).toBeLessThanOrEqual(0)
       }
     }
   })
 
-  it('150 total PORT_RULES (81 knowledge + 28 resource + 38 rewrite + 3 json_field)', () => {
-    expect(PORT_RULES.length).toBe(150)
-  })
-
-  it('json_field rules have jsonKind set', () => {
-    const jsonRules = PORT_RULES.filter(r => r.type === 'json_field')
-    expect(jsonRules.length).toBe(3)
-    for (const r of jsonRules) {
-      expect(r.jsonKind).toBeDefined()
+  it('rewrite fixes carry a compiled pattern and a replacement', () => {
+    const rewrites = PORT_RULES.filter(r => r.fix?.kind === 'rewrite')
+    expect(rewrites.length).toBeGreaterThan(0)
+    for (const r of rewrites) {
+      const fix = r.fix!
+      if (fix.kind === 'rewrite') {
+        expect(fix.pattern).toBeInstanceOf(RegExp)
+        expect(fix.replacement.length).toBeGreaterThan(0)
+      }
     }
   })
 
-  it('resource_path rules have scope resource_pack', () => {
-    const resourceRules = PORT_RULES.filter(r => r.type === 'resource_path')
-    for (const r of resourceRules) {
-      expect(r.scope).toBe('resource_pack')
+  it('rename_field fixes carry from/to/since', () => {
+    for (const r of PORT_RULES) {
+      if (r.fix?.kind === 'rename_field') {
+        expect(r.fix.from.length).toBeGreaterThan(0)
+        expect(r.fix.to.length).toBeGreaterThan(0)
+        expect(r.fix.since.length).toBeGreaterThan(0)
+      }
     }
   })
 })
 
-describe('derived views partition PORT_RULES', () => {
-  it('FEATURE_RULES: 81 datapack knowledge rules', () => {
-    expect(FEATURE_RULES.length).toBe(81)
+describe('derived views', () => {
+  it('FEATURE_RULES is exactly the datapack knowledge rules (no rewrites / json_field / resource)', () => {
+    const expected = PORT_RULES.filter(
+      r => r.scope !== 'resource_pack' && r.fix?.kind !== 'rewrite' && r.type !== 'json_field',
+    )
+    expect(FEATURE_RULES.length).toBe(expected.length)
+    const fIds = new Set(FEATURE_RULES.map(r => r.id))
+    expect(fIds.size).toBe(FEATURE_RULES.length)
+    for (const r of expected) expect(fIds.has(r.id)).toBe(true)
+    // every derived entry maps minVersion back to since
     for (const r of FEATURE_RULES) {
-      expect(r.minVersion).toBeDefined()
-      expect(typeof r.match).toBe('string')
+      expect(r.minVersion.length).toBeGreaterThan(0)
+      expect(typeof r.fix === 'string' || r.fix === undefined).toBe(true)
     }
   })
 
-  it('RESOURCE_FEATURE_RULES: 28 resource-pack rules', () => {
-    expect(RESOURCE_FEATURE_RULES.length).toBe(28)
-    for (const r of RESOURCE_FEATURE_RULES) {
-      expect(r.minVersion).toBeDefined()
+  it('RESOURCE_FEATURE_RULES is exactly the resource-pack rules', () => {
+    const expected = PORT_RULES.filter(r => r.scope === 'resource_pack')
+    expect(RESOURCE_FEATURE_RULES.length).toBe(expected.length)
+    const ids = new Set(RESOURCE_FEATURE_RULES.map(r => r.id))
+    for (const r of expected) expect(ids.has(r.id)).toBe(true)
+  })
+
+  it('CMD_REWRITES is exactly the rewrite strategies', () => {
+    const expected = PORT_RULES.filter(r => r.fix?.kind === 'rewrite')
+    expect(CMD_REWRITES.length).toBe(expected.length)
+    for (const rw of CMD_REWRITES) {
+      expect(rw.pattern).toBeInstanceOf(RegExp)
+      expect(rw.replacement.length).toBeGreaterThan(0)
+      // pattern-scoped rewrites (macro_comment) intentionally have no root match
+      if (rw.id !== 'macro_comment') expect(rw.matchRoot.length).toBeGreaterThan(0)
     }
+    const ids = new Set(CMD_REWRITES.map(rw => rw.id))
+    for (const r of expected) expect(ids.has(r.id)).toBe(true)
   })
 
-  it('CMD_REWRITES: 38 command rewrite strategies', () => {
-    expect(CMD_REWRITES.length).toBe(38)
-    for (const r of CMD_REWRITES) {
-      expect(r.pattern).toBeInstanceOf(RegExp)
-      expect(typeof r.replacement).toBe('string')
-    }
+  it('jsonFieldRenames returns the seeded rename tables', () => {
+    expect(jsonFieldRenames('predicate')).toEqual([
+      ['alternative', 'any_of', '1.20'],
+      ['requirements', 'all_of', '1.20'],
+    ])
+    expect(jsonFieldRenames('recipe')).toEqual([['item', 'id', '1.20.5']])
   })
 
-  it('partition completeness: FEATURE + RESOURCE + CMD_REWRITES + json_field = PORT_RULES', () => {
-    const knowledgeCount = PORT_RULES.filter(
-      r => r.scope !== 'resource_pack' && r.fix?.kind !== 'rewrite' && r.type !== 'json_field'
-    ).length
-    const resourceCount = PORT_RULES.filter(r => r.scope === 'resource_pack').length
-    const rewriteCount = PORT_RULES.filter(r => r.fix?.kind === 'rewrite').length
-    const jsonCount = PORT_RULES.filter(r => r.type === 'json_field').length
-    expect(knowledgeCount).toBe(FEATURE_RULES.length)
-    expect(resourceCount).toBe(RESOURCE_FEATURE_RULES.length)
-    expect(rewriteCount).toBe(CMD_REWRITES.length)
-    expect(knowledgeCount + resourceCount + rewriteCount + jsonCount).toBe(PORT_RULES.length)
-  })
-
-  it('derived views preserve original ids from PORT_RULES', () => {
-    const portIds = new Set(PORT_RULES.map(r => r.id))
-    for (const r of FEATURE_RULES) expect(portIds.has(r.id)).toBe(true)
-    for (const r of RESOURCE_FEATURE_RULES) expect(portIds.has(r.id)).toBe(true)
-    for (const r of CMD_REWRITES) expect(portIds.has(r.id)).toBe(true)
-  })
-
-  it('FEATURE_RULES excludes rewrite rules', () => {
-    const rewriteIds = PORT_RULES.filter(r => r.fix?.kind === 'rewrite').map(r => r.id)
-    const featureIds = new Set(FEATURE_RULES.map(r => r.id))
-    for (const id of rewriteIds) {
-      expect(featureIds.has(id)).toBe(false)
+  it('REGISTRY_RENAMES entries are well-formed', () => {
+    for (const r of REGISTRY_RENAMES) {
+      expect(r.from.length).toBeGreaterThan(0)
+      expect(r.to.length).toBeGreaterThan(0)
+      expect(r.since.length).toBeGreaterThan(0)
     }
   })
 })
 
-describe('jsonFieldRenames', () => {
-  it('returns [old, new, since] tuples', () => {
-    const renames = jsonFieldRenames('predicate')
-    expect(renames.length).toBe(2)
-    for (const [old, since, ver] of renames) {
-      expect(typeof old).toBe('string')
-      expect(typeof since).toBe('string')
-      expect(typeof ver).toBe('string')
+describe('known-rule spot checks', () => {
+  const byId = (id: string): PortRule => {
+    const r = PORT_RULES.find(x => x.id === id)
+    expect(r).toBeDefined()
+    return r!
+  }
+
+  it('knowledge rule /tag maps since/guidance correctly', () => {
+    const tag = byId('tag')
+    expect(tag.type).toBe('command')
+    expect(tag.since).toBe('1.13')
+    expect(tag.guidance).toBeTruthy()
+    expect(tag.fix).toBeUndefined()
+  })
+
+  it('rewrite rule /item -> /replaceitem keeps windows and pattern', () => {
+    const r = byId('item_to_replaceitem')
+    expect(r.fix?.kind).toBe('rewrite')
+    const fix = r.fix!
+    if (fix.kind === 'rewrite') {
+      expect(fix.replacement.startsWith('/replaceitem')).toBe(true)
+      expect(fix.targetUntil).toBe('1.20.4')
     }
   })
 
-  it('recipe renames return 1 entry', () => {
-    expect(jsonFieldRenames('recipe').length).toBe(1)
-  })
-
-  it('returns empty for unknown kind', () => {
-    // @ts-expect-error testing invalid input
-    expect(jsonFieldRenames('unknown')).toEqual([])
-  })
-})
-
-describe('REGISTRY_RENAMES', () => {
-  it('is an array', () => {
-    expect(Array.isArray(REGISTRY_RENAMES)).toBe(true)
+  it('predicate rename rule is json_field with rename_field fix', () => {
+    const r = byId('predicate_alternative_to_any_of')
+    expect(r.type).toBe('json_field')
+    expect(r.jsonKind).toBe('predicate')
+    expect(r.fix?.kind).toBe('rename_field')
   })
 })

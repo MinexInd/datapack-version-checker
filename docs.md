@@ -610,8 +610,16 @@ force a fresh download.
 
 ## 10. The knowledge base (version-change rules)
 
-The knowledge base is a curated list in `src/knowledge.ts`. Each rule says:
-*"if the datapack uses feature X, it needs at least version Y."*
+The knowledge base is a curated list of **porting rules** in `src/rules.ts` (the web copy lives in `web/src/engine/rules.ts`, kept byte-identical).
+Each rule says: *"if the datapack uses feature X, it needs at least version Y."*
+
+Rules live in one unified `PortRule` schema, so the same rule drives three things:
+
+1. **Detection** - the `match` / `type` / `since` fields power the version-range knowledge checks (this section) and per-version issue detection.
+2. **Guidance** - the `guidance` field becomes the per-issue porting *suggestion* shown in the CLI (`-> suggestion [auto-fixable]` line) and in the web GUI (green = auto-fixable, amber = manual).
+3. **Auto-fix** - the structured `fix` action (`rewrite`, `rename_field`, `remove_field`, `comment_out`, `rename_registry_entry`) powers the `--fix` command rewrite engine and marks issues as auto-fixable.
+
+`CMD_REWRITES` (rewrite strategies) and the predicate/recipe rename tables used to live in separate files with separate schemas; they are now part of the same rule list, so a feature check and its fix can never drift apart. New rules can be added for any of the four rule types (see section 12).
 
 Examples of rules included:
 
@@ -761,16 +769,18 @@ npx vitest run tests/analyzer.test.ts  # run a specific test file
 
 ### Adding a knowledge rule
 
-Open `src/knowledge.ts` and add an entry to `FEATURE_RULES`:
+Open `src/rules.ts` and add an entry to `PORT_RULES` (then copy the same entry into `web/src/engine/rules.ts` — the two files must stay byte-identical):
 
 ```ts
 {
   id: 'my_feature',
   description: 'The /mycommand command was added.',
-  type: 'command',          // 'command' | 'command_pattern' | 'registry' | 'json_field' | 'function_macro'
+  type: 'command',          // 'command' | 'command_pattern' | 'registry' | 'json_field' | 'function_macro' | 'resource_path'
   match: 'mycommand',        // root command, regex, registry name, or json field
-  minVersion: '1.22',        // minimum Minecraft version
-  fix: 'How to port it to older versions.',
+  since: '1.22',            // minimum Minecraft version (feature exists from)
+  until: undefined,          // optional: feature removed/changed at this version
+  guidance: 'How to port it to older versions.',  // shown as the per-issue suggestion
+  fix: undefined,            // optional structured fix: { kind: 'rewrite', ... } | { kind: 'rename_field', ... } | { kind: 'comment_out' } | ...
   note: 'Added in <snapshot>',
 },
 ```
@@ -781,6 +791,9 @@ Open `src/knowledge.ts` and add an entry to `FEATURE_RULES`:
 - `type: 'registry'` — matches a datapack path or content reference (e.g.
   `enchantment/foo.json`).
 - `type: 'function_macro'` — matches a regex (e.g. `$(var)` macros).
+- `type: 'resource_path'` — resource-pack rule (gets `scope: 'resource_pack'`).
+
+Rules with a structured `fix` action are auto-fixable: issues matched by them get a green "auto-fix" marker in the CLI and web GUI, and `--fix` can apply the rewrite automatically.
 
 Then rebuild (`npm run build`) and test against a real datapack.
 

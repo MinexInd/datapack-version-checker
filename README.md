@@ -34,7 +34,7 @@ This tool answers that question by:
 - ✅ Community knowledge rules for version-gated features (datapack **and** resource pack)
 - ✅ **Registry deprecation detection** — detects registry entries (items, entities, biomes, etc.) that existed in the pack's source version but were REMOVED in the target version
 - ✅ Detects when `pack.mcmeta` is **wrong** (e.g. declares 1.19.3 but uses 1.20.5 features)
-- ✅ Lists the exact file + line of every break, with a suggested fix
+- ✅ Lists the exact file + line of every break, with a **per-issue porting suggestion** (marked auto-fixable vs manual), a per-version "make compatible" checklist, and a one-click **Port to X** action in the web GUI
 - ✅ Shows **community-curated breaking changes** per version (from [misode/technical-changes](https://github.com/misode/technical-changes)) — so you know what changes when updating to each version
 - ✅ **Dependency graph analysis** — builds a full resource index of all functions, loot tables, advancements, predicates, recipes, tags, and worldgen files; traces cross-file references (function calls, loot table refs, advancement rewards, predicate refs, tag members, model parents, texture refs); detects **orphaned resources** (dead code), **broken references** (typos/missing files), and **circular dependencies** (A→B→A loops)
 - ✅ **Pack metrics** — total functions/JSON files/commands, avg commands per function, max execute depth, largest function, namespace distribution
