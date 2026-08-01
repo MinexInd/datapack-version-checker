@@ -123,6 +123,14 @@ describe('REGISTRY_RENAMES seed', () => {
     expect(byFrom.get('minecraft:grass')).toMatchObject({ to: 'minecraft:short_grass', since: '1.20.3' })
     expect(byFrom.get('minecraft:sweeping')).toMatchObject({ to: 'minecraft:sweeping_edge', since: '1.20.5' })
   })
+
+  test('contains the verified game-rule renames', () => {
+    const byFrom = new Map(REGISTRY_RENAMES.map(r => [r.from, r]))
+    expect(REGISTRY_RENAMES.filter(r => r.registry === 'game_rule')).toHaveLength(9)
+    expect(byFrom.get('doDaylightCycle')).toMatchObject({ to: 'minecraft:advance_time', since: '1.21.11', registry: 'game_rule' })
+    expect(byFrom.get('disableElytraMovementCheck')).toMatchObject({ to: 'minecraft:elytra_movement_check', since: '1.21.11' })
+    expect(byFrom.get('useLocatorBar')).toMatchObject({ to: 'locatorBar', since: '1.21.6' })
+  })
 })
 
 describe('known-rule spot checks', () => {

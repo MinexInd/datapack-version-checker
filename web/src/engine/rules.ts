@@ -233,7 +233,16 @@ export const REGISTRY_RENAMES: RegistryRename[] = [
   // Curated renames — verified against Minecraft release notes.
   { from: 'minecraft:grass', to: 'minecraft:short_grass', since: '1.20.3', registry: 'block' },
   { from: 'minecraft:sweeping', to: 'minecraft:sweeping_edge', since: '1.20.5', registry: 'enchantment' },
-  // Pending verification: 1.21.11 game-rule renames (25 rules) — exact old/new pairs not yet confirmed.
+  // Game-rule renames, verified from Minecraft release notes (snapshot 25w44a shipped 1.21.11).
+  { from: 'useLocatorBar', to: 'locatorBar', since: '1.21.6', registry: 'game_rule' },
+  { from: 'enableCommandBlocks', to: 'commandBlocksEnabled', since: '1.21.9', registry: 'game_rule' },
+  { from: 'doDaylightCycle', to: 'minecraft:advance_time', since: '1.21.11', registry: 'game_rule' },
+  { from: 'doMobSpawning', to: 'minecraft:spawn_mobs', since: '1.21.11', registry: 'game_rule' },
+  { from: 'mobGriefing', to: 'minecraft:mob_griefing', since: '1.21.11', registry: 'game_rule' },
+  { from: 'spawnMonsters', to: 'minecraft:spawn_monsters', since: '1.21.11', registry: 'game_rule' },
+  { from: 'commandBlocksEnabled', to: 'minecraft:command_blocks_work', since: '1.21.11', registry: 'game_rule' },
+  { from: 'spawnerBlocksEnabled', to: 'minecraft:spawner_blocks_work', since: '1.21.11', registry: 'game_rule' },
+  { from: 'disableElytraMovementCheck', to: 'minecraft:elytra_movement_check', since: '1.21.11', registry: 'game_rule' },
 ]
 
 // =============================================================================
