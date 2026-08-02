@@ -89,6 +89,16 @@ describe('readPackMcmeta', () => {
     })
   })
 
+  it('new-style pack (25w31a+ tuples, no pack_format) leaves supported_formats null', () => {
+    withMcmeta({ pack: { description: 'test', min_format: [61, 0], max_format: [101, 2147483647] } }, dir => {
+      const result = readPackMcmeta(dir)
+      expect(result.supported_formats).toBeNull()
+      expect(result.min_format).toEqual([61, 0])
+      expect(result.max_format).toEqual([101, 2147483647])
+      expect(result.pack_format).toBeUndefined()
+    })
+  })
+
   it('truncates integral float min_format/max_format', () => {
     withMcmeta({ pack: { pack_format: 101, min_format: 101.1, max_format: 101.1 } }, dir => {
       const result = readPackMcmeta(dir)
