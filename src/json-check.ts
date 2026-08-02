@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import type { RegistryIssue, RegistryDeprecation } from './types.js'
+import { cmpVer } from './mcdoc-check.js'
 
 /** Maps common JSON field names to Spyglass registry keys.
  *
@@ -52,6 +53,15 @@ const FIELD_TO_REGISTRY: Record<string, string> = {
   villager_type: 'villager_type',
   profession: 'villager_profession',
   poi: 'point_of_interest_type',
+  // Registries verified against https://api.spyglassmc.com/mcje/versions/<id>/registries.
+  // ('trade' is deliberately absent: no such registry exists in any version.)
+  particle_type: 'particle_type',
+  stat_type: 'stat_type',
+  block_entity_type: 'block_entity_type',
+  chat_type: 'chat_type',
+  dialog: 'dialog',
+  'worldgen/material_rule': 'worldgen/material_rule',
+  'worldgen/material_condition': 'worldgen/material_condition',
 }
 
 function stripNs(value: string): string {
@@ -114,19 +124,30 @@ function walkJson(
   file: string,
   path: string,
   packNs: string | null = null,
+  version?: string,
+  parentKey?: string,
 ): void {
   if (obj === null || obj === undefined) return
 
   if (Array.isArray(obj)) {
-    obj.forEach((item, i) => walkJson(item, registries, issues, file, `${path}[${i}]`, packNs))
+    obj.forEach((item, i) => walkJson(item, registries, issues, file, `${path}[${i}]`, packNs, version, parentKey))
     return
   }
 
   if (typeof obj === 'object') {
     for (const [key, value] of Object.entries(obj)) {
+      const childPath = `${path}.${key}`
+      // 1.20.5+ recipes put the item id at result.id (renamed from result.item,
+      // see the recipe json_field rule in rules.ts). Only check it when the
+      // target version is known to use the new format, and only under a
+      // result/output object so generic "id" keys elsewhere stay unchecked.
+      if (key === 'id' && (parentKey === 'result' || parentKey === 'output') && version && cmpVer(version, '1.20.5') >= 0) {
+        if (typeof value === 'string') {
+          checkRegistryValue(value, 'item', registries, issues, file, childPath, packNs)
+        }
+      }
       const regKey = FIELD_TO_REGISTRY[key]
       if (regKey) {
-        const childPath = `${path}.${key}`
         if (typeof value === 'string') {
           checkRegistryValue(value, regKey, registries, issues, file, childPath, packNs)
         } else if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
@@ -136,7 +157,7 @@ function walkJson(
           )
         }
       }
-      walkJson(value, registries, issues, file, `${path}.${key}`, packNs)
+      walkJson(value, registries, issues, file, childPath, packNs, version, key)
     }
     return
   }
@@ -145,13 +166,14 @@ function walkJson(
 export function checkJsonFile(
   file: string,
   registries: Record<string, string[]>,
+  version?: string,
 ): RegistryIssue[] {
   const issues: RegistryIssue[] = []
   try {
     const content = readFileSync(file, 'utf-8')
     const data = JSON.parse(content)
-    walkJson(data, registries, issues, file, '$', packNamespace(file))
-    checkTagData(data, file, issues)
+    walkJson(data, registries, issues, file, '$', packNamespace(file), version)
+    checkTagData(data, file, issues, registries, packNamespace(file))
   } catch {
     // ignore parse errors (Spyglass handles those)
   }
@@ -223,7 +245,105 @@ function isTagPath(file: string): boolean {
  *  used by block tags. */
 const TAG_ENTRY_RE = /^(\*|#?[a-z0-9_.-]+(:[a-z0-9_./-]+)?)$/
 
-function checkTagData(data: unknown, file: string, issues: RegistryIssue[]): void {
+/**
+ * Maps the tag directory kind (segment after tags/) to the Spyglass registry
+ * key whose entries a tag's values must resolve against. Both the modern
+ * singular names (1.21+) and the legacy plural names (1.13-1.20.x) are
+ * covered; keys were verified against
+ * https://api.spyglassmc.com/mcje/versions/<id>/registries. Kinds with no
+ * registry — e.g. `function`, `trade` — are deliberately absent: their tags
+ * are not registry-backed and must not be checked (nor invented).
+ */
+const TAG_KIND_TO_REGISTRY: Record<string, string> = {
+  // modern singular names (1.21+)
+  block: 'block',
+  item: 'item',
+  entity_type: 'entity_type',
+  fluid: 'fluid',
+  game_event: 'game_event',
+  damage_type: 'damage_type',
+  enchantment: 'enchantment',
+  painting_variant: 'painting_variant',
+  wolf_variant: 'wolf_variant',
+  instrument: 'instrument',
+  jukebox_song: 'jukebox_song',
+  trim_pattern: 'trim_pattern',
+  trim_material: 'trim_material',
+  banner_pattern: 'banner_pattern',
+  cat_variant: 'cat_variant',
+  frog_variant: 'frog_variant',
+  pig_variant: 'pig_variant',
+  cow_variant: 'cow_variant',
+  chicken_variant: 'chicken_variant',
+  decorated_pot_pattern: 'decorated_pot_pattern',
+  particle_type: 'particle_type',
+  attribute: 'attribute',
+  chat_type: 'chat_type',
+  dialog: 'dialog',
+  point_of_interest_type: 'point_of_interest_type',
+  potion: 'potion',
+  villager_trade: 'villager_trade',
+  timeline: 'timeline',
+  biome: 'worldgen/biome',
+  // legacy plural names (1.13-1.20.x)
+  blocks: 'block',
+  items: 'item',
+  entity_types: 'entity_type',
+  fluids: 'fluid',
+  game_events: 'game_event',
+  damage_types: 'damage_type',
+  enchantments: 'enchantment',
+  painting_variants: 'painting_variant',
+  wolf_variants: 'wolf_variant',
+  instruments: 'instrument',
+  jukebox_songs: 'jukebox_song',
+  trim_patterns: 'trim_pattern',
+  trim_materials: 'trim_material',
+  banner_patterns: 'banner_pattern',
+  cat_variants: 'cat_variant',
+  frog_variants: 'frog_variant',
+  pig_variants: 'pig_variant',
+  cow_variants: 'cow_variant',
+  chicken_variants: 'chicken_variant',
+  decorated_pot_patterns: 'decorated_pot_pattern',
+  particle_types: 'particle_type',
+  attributes: 'attribute',
+  chat_types: 'chat_type',
+  point_of_interest_types: 'point_of_interest_type',
+  potions: 'potion',
+  villager_trades: 'villager_trade',
+  biomes: 'worldgen/biome',
+  // two-level worldgen kinds (tags/worldgen/<sub>/...)
+  'worldgen/biome': 'worldgen/biome',
+  'worldgen/structure': 'worldgen/structure',
+  'worldgen/structure_set': 'worldgen/structure_set',
+  'worldgen/placed_feature': 'worldgen/placed_feature',
+  'worldgen/configured_feature': 'worldgen/configured_feature',
+  'worldgen/template_pool': 'worldgen/template_pool',
+  'worldgen/noise_settings': 'worldgen/noise_settings',
+  'worldgen/density_function': 'worldgen/density_function',
+  'worldgen/world_preset': 'worldgen/world_preset',
+  'worldgen/flat_level_generator_preset': 'worldgen/flat_level_generator_preset',
+}
+
+/** Tag kind of a tag file path: the segment after tags/ (two segments when it
+ *  starts with worldgen/). Returns null for non-tag paths. */
+function tagKindFromPath(file: string): string | null {
+  const segs = file.replace(/\\/g, '/').split('/')
+  const idx = segs.indexOf('tags')
+  if (idx < 0 || idx + 1 >= segs.length) return null
+  const kind = segs[idx + 1]
+  if (kind === 'worldgen' && idx + 2 < segs.length) return `worldgen/${segs[idx + 2]}`
+  return kind
+}
+
+function checkTagData(
+  data: unknown,
+  file: string,
+  issues: RegistryIssue[],
+  registries: Record<string, string[]>,
+  packNs: string | null,
+): void {
   if (!isTagPath(file)) return
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     issues.push({
@@ -261,6 +381,10 @@ function checkTagData(data: unknown, file: string, issues: RegistryIssue[]): voi
     })
     return
   }
+  // The registry this tag kind's values must resolve against; unknown kinds
+  // (functions, trade, ...) are silently skipped.
+  const kind = tagKindFromPath(file)
+  const regKey = kind ? TAG_KIND_TO_REGISTRY[kind] : undefined
   obj.values.forEach((entry, i) => {
     const path = `$.values[${i}]`
     if (typeof entry !== 'string') {
@@ -277,6 +401,10 @@ function checkTagData(data: unknown, file: string, issues: RegistryIssue[]): voi
         entry,
         issue: `Invalid tag entry at ${path}: '${entry}' is not a valid resource location`,
       })
+    } else if (regKey && entry !== '*' && !entry.startsWith('#') && !entry.includes('/') && !isNonMinecraftRef(entry, packNs)) {
+      // minecraft:thing and bare thing entries must exist in the registry;
+      // path-like ids (chests/simple) are only structurally validated.
+      checkRegistryValue(entry, regKey, registries, issues, file, path, packNs)
     }
   })
 }

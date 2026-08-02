@@ -1,4 +1,5 @@
 import { getCache, setCache } from './cache'
+import { getLogger } from './logger'
 
 function parseVer(v: string): number[] | null {
   const m = v.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/)
@@ -634,6 +635,10 @@ function dispatchTagKnownInvalid(
 
 interface Collected {
   fields: Map<string, FieldSpec>
+  /** Every schema field regardless of version gating — lets the checker say
+   *  "requires >= X" / "was removed in X" instead of "unknown field" when the
+   *  target version predates/postdates the field. */
+  allFields: Map<string, FieldSpec>
   allowUnknown: boolean
   dispatchSpreads: { dispatch: string; key: string }[]
 }
@@ -645,11 +650,13 @@ function collectFields(
   seen: Set<StructDef>,
 ): Collected {
   const fields = new Map<string, FieldSpec>()
+  const allFields = new Map<string, FieldSpec>()
   let allowUnknown = def.allowUnknown
   const dispatchSpreads = [...def.dispatchSpreads]
-  if (seen.has(def)) return { fields, allowUnknown, dispatchSpreads }
+  if (seen.has(def)) return { fields, allFields, allowUnknown, dispatchSpreads }
   seen.add(def)
   for (const f of def.fields) {
+    allFields.set(f.name, f)
     if (inRange(version, f.since, f.until)) fields.set(f.name, f)
   }
   for (const sp of def.spreads) {
@@ -657,13 +664,14 @@ function collectFields(
     if (sdef) {
       const sub = collectFields(sdef, version, table, seen)
       for (const [k, v] of sub.fields) fields.set(k, v)
+      for (const [k, v] of sub.allFields) allFields.set(k, v)
       allowUnknown = allowUnknown || sub.allowUnknown
       for (const d of sub.dispatchSpreads) dispatchSpreads.push(d)
     } else {
       allowUnknown = true
     }
   }
-  return { fields, allowUnknown, dispatchSpreads }
+  return { fields, allFields, allowUnknown, dispatchSpreads }
 }
 
 /** Loose shape check used to pick a union branch: prefer the branch the value
@@ -787,7 +795,7 @@ function validateObject(
   depth: number,
 ): void {
   if (depth > 10) return
-  const { fields, allowUnknown, dispatchSpreads } = collectFields(def, version, table, new Set())
+  const { fields, allFields, allowUnknown, dispatchSpreads } = collectFields(def, version, table, new Set())
 
   const resolvedStructs: StructDef[] = []
   for (const ds of dispatchSpreads) {
@@ -810,21 +818,38 @@ function validateObject(
     }
   }
   const merged = new Map(fields)
+  const mergedAll = new Map(allFields)
   for (const rs of resolvedStructs) {
     const sub = collectFields(rs, version, table, new Set())
     for (const [k, v] of sub.fields) merged.set(k, v)
+    for (const [k, v] of sub.allFields) mergedAll.set(k, v)
   }
-  const allFields = merged
+  const knownFields = merged
 
   for (const key of Object.keys(obj)) {
     if (dispatchSpreads.some(d => d.key === key)) continue
-    const spec = allFields.get(key)
+    const spec = knownFields.get(key)
     if (!spec) {
       if (allowUnknown) continue
-      issues.push({
-        file: '',
-        issue: `At ${path}: unknown field "${key}" (not valid in ${version})`,
-      })
+      // A field that exists in the schema but is version-gated out for this
+      // target deserves a precise message, not a vague "unknown field".
+      const full = mergedAll.get(key)
+      if (full?.since && cmpVer(version, full.since) < 0) {
+        issues.push({
+          file: '',
+          issue: `At ${path}: field "${key}" requires >= ${full.since} (this is ${version})`,
+        })
+      } else if (full?.until && cmpVer(version, full.until) >= 0) {
+        issues.push({
+          file: '',
+          issue: `At ${path}: field "${key}" was removed in ${full.until} (this is ${version})`,
+        })
+      } else {
+        issues.push({
+          file: '',
+          issue: `At ${path}: unknown field "${key}" (not valid in ${version})`,
+        })
+      }
     } else {
       if (spec.since && cmpVer(version, spec.since) < 0) {
         issues.push({
@@ -915,6 +940,10 @@ const KIND_TO_RESOURCE: Record<string, string> = {
   'worldgen/configured_carver': '"worldgen/configured_carver"',
   'worldgen/carver': '"worldgen/carver"',
   'worldgen/biome': '"worldgen/biome"',
+  // No mcdoc dispatch variant exists for noise_router upstream (neither quoted
+  // nor unquoted); the kind is recognized here so fileKindFromPath detects it
+  // and checkMcdocData routes it to the hand-rolled checkNoiseRouterFile.
+  'worldgen/noise_router': '"worldgen/noise_router"',
   models: 'model',
   blockstates: 'block_definition',
   atlases: 'atlas',
@@ -957,6 +986,97 @@ export function fileKindFromPath(relPath: string): string | null {
   return null
 }
 
+// ---------------------------------------------------------------------------
+// worldgen/noise_router — hand-rolled structural check
+//
+// Upstream mcdoc has NO resource dispatch variant for this kind (verified in
+// the fetched symbol table: no quoted or unquoted tag), and the vanilla
+// datapack ships no noise_router files, so there is no schema to lean on.
+// The field set and version gating below mirror the `NoiseRouter` struct that
+// the mcdoc DOES define inside worldgen/noise_settings.mcdoc:
+//   - temperature, vegetation, continents, erosion, depth, ridges,
+//     final_density: all versions
+//   - barrier, fluid_level_floodedness, fluid_level_spread, lava, vein_toggle,
+//     vein_ridged, vein_gap: removed in 26.3
+//   - initial_density_without_jaggedness: removed in 1.21.9
+//   - preliminary_surface_level: added in 1.21.9
+// Values follow DensityFunctionRef: a float, a string id, or an object with a
+// string "type" (density function). The standalone resource exists since
+// 1.18.2 (verified in the 1.18.2 vanilla-data tarball).
+// ---------------------------------------------------------------------------
+
+const NOISE_ROUTER_FIELDS: { name: string; since?: string; until?: string }[] = [
+  { name: 'temperature' },
+  { name: 'vegetation' },
+  { name: 'continents' },
+  { name: 'erosion' },
+  { name: 'depth' },
+  { name: 'ridges' },
+  { name: 'final_density' },
+  { name: 'barrier', until: '26.3' },
+  { name: 'fluid_level_floodedness', until: '26.3' },
+  { name: 'fluid_level_spread', until: '26.3' },
+  { name: 'lava', until: '26.3' },
+  { name: 'vein_toggle', until: '26.3' },
+  { name: 'vein_ridged', until: '26.3' },
+  { name: 'vein_gap', until: '26.3' },
+  { name: 'initial_density_without_jaggedness', until: '1.21.9' },
+  { name: 'preliminary_surface_level', since: '1.21.9' },
+]
+
+const NOISE_ROUTER_FIELD_INDEX = new Map(NOISE_ROUTER_FIELDS.map(f => [f.name, f]))
+
+function checkNoiseRouterFile(
+  data: unknown,
+  version: string,
+  path: string,
+  issues: StructuralIssue[],
+): void {
+  // The standalone noise_router resource does not exist before 1.18.2.
+  if (cmpVer(version, '1.18.2') < 0) return
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    issues.push({ file: '', issue: `At ${path}: noise router file must be an object (this is ${version})` })
+    return
+  }
+  for (const [key, val] of Object.entries(data as Record<string, unknown>)) {
+    const spec = NOISE_ROUTER_FIELD_INDEX.get(key)
+    if (!spec) {
+      issues.push({ file: '', issue: `At ${path}: unknown field "${key}" (not valid in ${version})` })
+      continue
+    }
+    if (spec.since && cmpVer(version, spec.since) < 0) {
+      issues.push({ file: '', issue: `At ${path}: field "${key}" requires >= ${spec.since} (this is ${version})` })
+      continue
+    }
+    if (spec.until && cmpVer(version, spec.until) >= 0) {
+      issues.push({ file: '', issue: `At ${path}: field "${key}" was removed in ${spec.until} (this is ${version})` })
+      continue
+    }
+    // DensityFunctionRef: float | string | { type: string, ... }
+    const ok =
+      (typeof val === 'number' && Number.isFinite(val)) ||
+      typeof val === 'string' ||
+      (val !== null && typeof val === 'object' && !Array.isArray(val) && typeof (val as Record<string, unknown>).type === 'string')
+    if (!ok) {
+      issues.push({
+        file: '',
+        issue: `At ${path}.${key}: noise router value must be a number, string, or density function object with a "type" (this is ${version})`,
+      })
+    }
+  }
+}
+
+/** Kinds mapped in KIND_TO_RESOURCE that have no mcdoc dispatch variant at
+ *  all. Noted once per run (not per file) so unknown kinds degrade to a
+ *  silent skip without spamming the results. */
+const notedKindsWithoutSchema = new Set<string>()
+
+function noteKindWithoutSchema(kind: string): void {
+  if (notedKindsWithoutSchema.has(kind)) return
+  notedKindsWithoutSchema.add(kind)
+  getLogger().warn(`No mcdoc schema for resource kind "${kind}" — skipping structural validation for it`)
+}
+
 export function checkMcdocData(
   data: unknown,
   relPath: string,
@@ -968,6 +1088,12 @@ export function checkMcdocData(
   if (cmpVer(version, '1.16') < 0) return issues
   const kind = fileKindFromPath(relPath)
   if (!kind) return issues
+  // noise_router has no mcdoc dispatch variant — use the hand-rolled check.
+  if (kind === 'worldgen/noise_router') {
+    checkNoiseRouterFile(data, version, '$', issues)
+    for (const iss of issues) { iss.file = relPath; iss.source = 'mcdoc' }
+    return issues
+  }
   if (!data || typeof data !== 'object') return issues
 
   const dd = table.dispatches.get('minecraft:resource')
@@ -975,7 +1101,10 @@ export function checkMcdocData(
   // some are not; try both forms so no kind silently skips validation.
   const tag = KIND_TO_RESOURCE[kind]
   const variant = tag ? dd?.variants.get(tag) ?? dd?.variants.get(`"${tag}"`) : undefined
-  if (!variant) return issues
+  if (!variant) {
+    noteKindWithoutSchema(kind)
+    return issues
+  }
 
   let rootStruct: StructDef | null = null
   for (const opt of variant.opts) {

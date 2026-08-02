@@ -53,9 +53,11 @@ describe('mcdoc loot table validation', () => {
       expect(entryIssuesV).toHaveLength(0)
     }
 
-    // Actual release 26.3 and later should flag them (schema says removed in 26.3)
+    // Actual release 26.3 and later should flag them (schema says removed in 26.3).
+    // Version-gated fields now get the precise "was removed in" message instead
+    // of the generic "unknown field" wording.
     const issues26_3 = checkMcdocFile(file, 'data/minecraft/loot_table/test.json', '26.3', table!)
-    const entryIssues26_3 = issues26_3.filter(i => i.issue.includes('unknown field') && (i.issue.includes('conditions') || i.issue.includes('functions')))
+    const entryIssues26_3 = issues26_3.filter(i => (i.issue.includes('unknown field') || i.issue.includes('was removed in')) && (i.issue.includes('conditions') || i.issue.includes('functions')))
     console.log('Issues for 26.3 (release):', JSON.stringify(issues26_3, null, 2))
     expect(entryIssues26_3.length).toBeGreaterThan(0)
   })
