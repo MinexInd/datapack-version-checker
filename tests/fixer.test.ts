@@ -28,7 +28,7 @@ vi.mock('../src/mcdoc-check.js', async importOriginal => {
   return { ...actual, getMcdocSymbols: vi.fn(async () => null) }
 })
 
-import { fixDatapack } from '../src/fixer.js'
+import { fixDatapack, fixResourcePack } from '../src/fixer.js'
 
 interface Fixture {
   dir: string
@@ -122,6 +122,36 @@ describe('new-style pack (min_format/max_format) support in fixer (regression)',
       await fixDatapack({ datapackDir: f.dir, outputDir: f.out, targetVersion: '1.21.4' })
       const out = JSON.parse(readFileSync(join(f.out, 'pack.mcmeta'), 'utf-8'))
       expect(out.pack.pack_format).toBe(71)
+      expect('supported_formats' in out.pack).toBe(false)
+      expect('min_format' in out.pack).toBe(false)
+      expect('max_format' in out.pack).toBe(false)
+    } finally {
+      cleanup(f)
+    }
+  })
+})
+
+describe('resource pack fixer: new-style pack (min_format/max_format) support (regression)', () => {
+  it('updates min_format/max_format tuples without injecting pack_format', async () => {
+    const f = makePack({ pack: { description: '25w31a+', min_format: [40, 0], max_format: [70, 2147483647] } })
+    try {
+      await fixResourcePack({ packDir: f.dir, outputDir: f.out, targetVersion: '1.21.4' })
+      const out = JSON.parse(readFileSync(join(f.out, 'pack.mcmeta'), 'utf-8'))
+      expect(out.pack.min_format).toEqual([47, 0])
+      expect(out.pack.max_format).toEqual([47, 0])
+      expect('pack_format' in out.pack).toBe(false)
+      expect('supported_formats' in out.pack).toBe(false)
+    } finally {
+      cleanup(f)
+    }
+  })
+
+  it('legacy resource packs still get pack_format rewritten and supported_formats removed', async () => {
+    const f = makePack({ pack: { pack_format: 34, supported_formats: [34, 40], description: 'legacy' } })
+    try {
+      await fixResourcePack({ packDir: f.dir, outputDir: f.out, targetVersion: '1.21.4' })
+      const out = JSON.parse(readFileSync(join(f.out, 'pack.mcmeta'), 'utf-8'))
+      expect(out.pack.pack_format).toBe(47)
       expect('supported_formats' in out.pack).toBe(false)
       expect('min_format' in out.pack).toBe(false)
       expect('max_format' in out.pack).toBe(false)

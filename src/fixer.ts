@@ -1195,7 +1195,18 @@ export async function fixResourcePack(options: ResourcePackFixOptions): Promise<
       const raw = readFileSync(pmPath, 'utf-8')
       const parsed = JSON.parse(raw)
       const oldFormat = parsed.pack?.pack_format
-      if (oldFormat !== targetPackFormat) {
+      const isNewStyle = parsed.pack?.min_format !== undefined || parsed.pack?.max_format !== undefined
+      if (isNewStyle) {
+        // 25w31a+ tuple format: keep pack_format absent, rewrite the range tuples.
+        parsed.pack.min_format = [targetPackFormat, 0]
+        if (parsed.pack.max_format !== undefined) parsed.pack.max_format = [targetPackFormat, 0]
+        const outPath = join(outputDir, 'pack.mcmeta')
+        const outDir = dirname(outPath)
+        if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
+        writeFileSync(outPath, JSON.stringify(parsed, null, 2) + '\n', 'utf-8')
+        results.push({ file: 'pack.mcmeta', patches: 1, details: [`Updated format to ${targetPackFormat}`] })
+        totalPatches++
+      } else if (oldFormat !== targetPackFormat) {
         parsed.pack.pack_format = targetPackFormat
         if (parsed.pack.supported_formats) delete parsed.pack.supported_formats
         const outPath = join(outputDir, 'pack.mcmeta')

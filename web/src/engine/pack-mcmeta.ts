@@ -22,7 +22,7 @@ export function normalizeFormatTuple(value: unknown): FormatTuple | null {
 }
 
 export function readPackMcmetaFromString(content: string): {
-  pack_format: number
+  pack_format: number | undefined
   supported_formats: McmetaFormatRange | null
   min_format: FormatTuple | null
   max_format: FormatTuple | null
@@ -30,7 +30,9 @@ export function readPackMcmetaFromString(content: string): {
   const data: PackMcmeta = JSON.parse(content)
 
   if (!data.pack) {
-    return { pack_format: 1, supported_formats: { min: 1, max: 1 }, min_format: null, max_format: null }
+    // No pack key at all: return the same null-safe shape as new-style packs
+    // instead of fabricating legacy pack_format values.
+    return { pack_format: undefined, supported_formats: null, min_format: null, max_format: null }
   }
 
   const pack_format = data.pack.pack_format

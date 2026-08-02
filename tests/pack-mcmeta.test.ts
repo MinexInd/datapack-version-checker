@@ -99,6 +99,26 @@ describe('readPackMcmeta', () => {
     })
   })
 
+  it('pack with no pack key returns the null-safe shape, no fabricated values', () => {
+    withMcmeta({ description: 'minimal' }, dir => {
+      const result = readPackMcmeta(dir)
+      expect(result.supported_formats).toBeNull()
+      expect(result.min_format).toBeNull()
+      expect(result.max_format).toBeNull()
+      expect(result.pack_format).toBeUndefined()
+    })
+  })
+
+  it('legacy pack still returns correct legacy values', () => {
+    withMcmeta({ pack: { pack_format: 15, description: 'test' } }, dir => {
+      const result = readPackMcmeta(dir)
+      expect(result.pack_format).toBe(15)
+      expect(result.supported_formats).toEqual({ min: 15, max: 15 })
+      expect(result.min_format).toBeNull()
+      expect(result.max_format).toBeNull()
+    })
+  })
+
   it('truncates integral float min_format/max_format', () => {
     withMcmeta({ pack: { pack_format: 101, min_format: 101.1, max_format: 101.1 } }, dir => {
       const result = readPackMcmeta(dir)
