@@ -185,3 +185,148 @@ describe('known-rule spot checks', () => {
     expect(r.fix?.kind).toBe('remove_field')
   })
 })
+
+describe('new rule behavior spot checks (1.21.11/26.1 era)', () => {
+  // Mirrors the engine's matching logic in src/engine.ts applyKnowledgeRules:
+  //   - type 'command'          -> first token (no leading slash) === match
+  //   - type 'command_pattern'  -> new RegExp(match).test(line)
+  // Version gating mirrors checkPackCore: a hit is reportable only when the
+  // checked version is within [since, until).
+  const byId = (id: string): PortRule => {
+    const r = PORT_RULES.find(x => x.id === id)
+    expect(r).toBeDefined()
+    return r!
+  }
+  const hitRules = (line: string): PortRule[] => {
+    return PORT_RULES.filter(r => {
+      if (r.type === 'command') {
+        const root = line.trim().replace(/^\//, '').split(/\s+/)[0]
+        return root === r.match
+      }
+      if (r.type === 'command_pattern') return new RegExp(String(r.match)).test(line)
+      return false
+    })
+  }
+  const inWindow = (ver: string, r: PortRule): boolean => {
+    if (r.since && cmpVer(ver, r.since) < 0) return false
+    if (r.until && cmpVer(ver, r.until) >= 0) return false
+    return true
+  }
+
+  it('stopwatch_cmd matches /stopwatch and is gated to 1.21.11+', () => {
+    const hits = hitRules('stopwatch my_clock')
+    expect(hits.some(r => r.id === 'stopwatch_cmd')).toBe(true)
+    const rule = byId('stopwatch_cmd')
+    expect(inWindow('1.21.10', rule)).toBe(false)
+    expect(inWindow('1.21.11', rule)).toBe(true)
+  })
+
+  it('execute_if_stopwatch matches execute if/unless stopwatch', () => {
+    const hits = hitRules('/execute if stopwatch my_clock 0..10')
+    expect(hits.some(r => r.id === 'execute_if_stopwatch')).toBe(true)
+    const hitsUnless = hitRules('execute unless stopwatch other 5..10')
+    expect(hitsUnless.some(r => r.id === 'execute_if_stopwatch')).toBe(true)
+    // plain /execute if with another condition must not match
+    expect(hitRules('/execute if entity @e').some(r => r.id === 'execute_if_stopwatch')).toBe(false)
+  })
+
+  it('time_preset_removed matches /time set|query presets and dies in 26.1', () => {
+    const hits = hitRules('/time set day')
+    expect(hits.some(r => r.id === 'time_preset_removed')).toBe(true)
+    expect(hitRules('/time set 1000').some(r => r.id === 'time_preset_removed')).toBe(false)
+    expect(hitRules('/time query day').some(r => r.id === 'time_preset_removed')).toBe(true)
+    const rule = byId('time_preset_removed')
+    expect(inWindow('1.20', rule)).toBe(true)
+    expect(inWindow('26.1', rule)).toBe(false)
+    expect(inWindow('26.3 Snapshot 1', rule)).toBe(false) // pre-release of 26.3 is still past 26.1
+  })
+
+  it('time_world_clock matches the 26.1+ world-clock forms only', () => {
+    expect(hitRules('/time of my_clock').some(r => r.id === 'time_world_clock')).toBe(true)
+    expect(hitRules('/time query time').some(r => r.id === 'time_world_clock')).toBe(true)
+    expect(hitRules('/time pause').some(r => r.id === 'time_world_clock')).toBe(true)
+    expect(hitRules('/time set day').some(r => r.id === 'time_world_clock')).toBe(false)
+    const rule = byId('time_world_clock')
+    expect(inWindow('1.21', rule)).toBe(false)
+    expect(inWindow('26.1', rule)).toBe(true)
+  })
+
+  it('gamerule camelCase vs snake_case rules are mutually exclusive by version', () => {
+    const camel = byId('gamerule_camelcase_removed')
+    const snake = byId('gamerule_snakecase')
+    expect(hitRules('/gamerule doDaylightCycle true').some(r => r.id === 'gamerule_camelcase_removed')).toBe(true)
+    expect(hitRules('/gamerule doDaylightCycle true').some(r => r.id === 'gamerule_snakecase')).toBe(false)
+    expect(hitRules('/gamerule advance_time true').some(r => r.id === 'gamerule_snakecase')).toBe(true)
+    expect(hitRules('/gamerule advance_time true').some(r => r.id === 'gamerule_camelcase_removed')).toBe(false)
+    expect(inWindow('1.21.10', camel)).toBe(true)
+    expect(inWindow('1.21.11', camel)).toBe(false)
+    expect(inWindow('1.21.10', snake)).toBe(false)
+    expect(inWindow('1.21.11', snake)).toBe(true)
+  })
+
+  it('locate_subcommands and locate_lowercase match modern /locate forms', () => {
+    expect(hitRules('/locate structure minecraft:village').some(r => r.id === 'locate_subcommands')).toBe(true)
+    expect(hitRules('/locate biome minecraft:plains').some(r => r.id === 'locate_subcommands')).toBe(true)
+    expect(hitRules('/locate minecraft:village').some(r => r.id === 'locate_lowercase')).toBe(true)
+    expect(hitRules('/locate Village').some(r => r.id === 'locate_lowercase')).toBe(false)
+    const sub = byId('locate_subcommands')
+    expect(inWindow('1.18.2', sub)).toBe(false)
+    expect(inWindow('1.19', sub)).toBe(true)
+  })
+
+  it('function_with_macro matches /function <id> with block|entity|storage', () => {
+    expect(hitRules('/function demo:macros with entity @e').some(r => r.id === 'function_with_macro')).toBe(true)
+    expect(hitRules('/function demo:macros with storage demo:data path').some(r => r.id === 'function_with_macro')).toBe(true)
+    expect(hitRules('/function demo:plain').some(r => r.id === 'function_with_macro')).toBe(false)
+  })
+
+  it('effect_infinite matches the infinite duration form only', () => {
+    expect(hitRules('/effect give @p minecraft:speed infinite 1').some(r => r.id === 'effect_infinite')).toBe(true)
+    expect(hitRules('/effect give @p minecraft:speed 30 1').some(r => r.id === 'effect_infinite')).toBe(false)
+  })
+
+  it('block_command_strict matches strict on fill/clone/setblock', () => {
+    expect(hitRules('/fill 0 0 0 10 10 10 minecraft:stone strict').some(r => r.id === 'block_command_strict')).toBe(true)
+    expect(hitRules('/setblock 0 0 0 minecraft:stone strict').some(r => r.id === 'block_command_strict')).toBe(true)
+    expect(hitRules('/fill 0 0 0 10 10 10 minecraft:stone').some(r => r.id === 'block_command_strict')).toBe(false)
+    expect(inWindow('1.21.4', byId('block_command_strict'))).toBe(false)
+    expect(inWindow('1.21.5', byId('block_command_strict'))).toBe(true)
+  })
+
+  it('clone_from_to matches cross-dimension from/to only', () => {
+    expect(hitRules('/clone from minecraft:overworld 0 0 0 1 1 1 to minecraft:the_nether 0 0 0').some(r => r.id === 'clone_from_to')).toBe(true)
+    expect(hitRules('/clone 0 0 0 1 1 1 5 5 5').some(r => r.id === 'clone_from_to')).toBe(false)
+  })
+
+  it('datapack_create matches only the create subcommand', () => {
+    expect(hitRules('/datapack create my_pack').some(r => r.id === 'datapack_create')).toBe(true)
+    expect(hitRules('/datapack enable my_pack').some(r => r.id === 'datapack_create')).toBe(false)
+    expect(inWindow('1.21.5', byId('datapack_create'))).toBe(false)
+    expect(inWindow('1.21.6', byId('datapack_create'))).toBe(true)
+  })
+
+  it('debug_function and debug_report are mutually exclusive by version', () => {
+    expect(hitRules('/debug function demo:f').some(r => r.id === 'debug_function')).toBe(true)
+    expect(hitRules('/debug report').some(r => r.id === 'debug_report')).toBe(true)
+    const rep = byId('debug_report')
+    expect(inWindow('1.16', rep)).toBe(true)
+    expect(inWindow('1.17', rep)).toBe(false)
+    expect(inWindow('1.16', byId('debug_function'))).toBe(false)
+    expect(inWindow('1.17', byId('debug_function'))).toBe(true)
+  })
+
+  it('playsound_ui matches the ui sound source only', () => {
+    expect(hitRules('/playsound minecraft:block.note_block.pling ui @p').some(r => r.id === 'playsound_ui')).toBe(true)
+    expect(hitRules('/stopsound @p ui').some(r => r.id === 'playsound_ui')).toBe(true)
+    expect(hitRules('/playsound minecraft:block.note_block.pling master @p').some(r => r.id === 'playsound_ui')).toBe(false)
+    expect(inWindow('1.21.5', byId('playsound_ui'))).toBe(false)
+    expect(inWindow('1.21.6', byId('playsound_ui'))).toBe(true)
+  })
+
+  it('spreadplayers_under matches the under option', () => {
+    expect(hitRules('/spreadplayers 0 0 10 100 false under 320').some(r => r.id === 'spreadplayers_under')).toBe(true)
+    expect(hitRules('/spreadplayers 0 0 10 100 false').some(r => r.id === 'spreadplayers_under')).toBe(false)
+    expect(inWindow('1.15', byId('spreadplayers_under'))).toBe(false)
+    expect(inWindow('1.16', byId('spreadplayers_under'))).toBe(true)
+  })
+})
