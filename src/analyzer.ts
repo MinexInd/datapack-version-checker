@@ -499,6 +499,29 @@ function parseJsonRefs(
 
 
 
+function resolveRef(ref: string, resources: ResourceEntry[]): string | null {
+  // Already has ns:path format
+  if (ref.includes(':')) {
+    const [ns, ...rest] = ref.split(':')
+    const name = rest.join(':')
+    // Try to find by type + ns + name
+    for (const r of resources) {
+      if (r.namespace === ns && r.name === name) return r.file
+      if (r.namespace === ns && name.startsWith(r.name + '/')) return r.file
+    }
+    // Try tag resolution
+    if (ref.startsWith('#')) {
+      const tagRef = ref.slice(1)
+      const [tagNs, ...tagRest] = tagRef.split(':')
+      const tagPath = tagRest.join(':')
+      for (const r of resources) {
+        if (r.type.startsWith('tag/') && r.namespace === tagNs && r.name === tagPath) return r.file
+      }
+    }
+  }
+  return null
+}
+
 export function buildDependencyGraph(
   resources: ResourceEntry[],
   references: CrossRef[],
@@ -512,32 +535,9 @@ export function buildDependencyGraph(
   const resByFile = new Map<string, ResourceEntry>()
   for (const r of resources) resByFile.set(r.file, r)
 
-  const resolveRef = (ref: string): string | null => {
-    // Already has ns:path format
-    if (ref.includes(':')) {
-      const [ns, ...rest] = ref.split(':')
-      const name = rest.join(':')
-      // Try to find by type + ns + name
-      for (const r of resources) {
-        if (r.namespace === ns && r.name === name) return r.file
-        if (r.namespace === ns && name.startsWith(r.name + '/')) return r.file
-      }
-      // Try tag resolution
-      if (ref.startsWith('#')) {
-        const tagRef = ref.slice(1)
-        const [tagNs, ...tagRest] = tagRef.split(':')
-        const tagPath = tagRest.join(':')
-        for (const r of resources) {
-          if (r.type.startsWith('tag/') && r.namespace === tagNs && r.name === tagPath) return r.file
-        }
-      }
-    }
-    return null
-  }
-
   for (const ref of references) {
     const fromRes = resByFile.get(ref.from)
-    const toFile = resolveRef(ref.to)
+    const toFile = resolveRef(ref.to, resources)
     if (!toFile || toFile === ref.from) continue
 
     if (!dependsOn.has(ref.from)) dependsOn.set(ref.from, new Set())
@@ -580,9 +580,10 @@ export function findOrphans(
     if (!inbound || inbound.size === 0) {
       // Exception: functions under tick/ or load/ tags are entry points
       if (res.type === 'function') {
-        // Check if this function is referenced in any tag
+        // Functions referenced from a tick or load tag are entry points:
+        // both conditions required (type is tag AND file name contains tick/load)
         const isEntryPoint = resources.some(r =>
-          r.type.startsWith('tag/') && r.file.includes('tick') || r.file.includes('load')
+          r.type.startsWith('tag/') && (r.file.includes('tick') || r.file.includes('load'))
         )
         if (isEntryPoint) continue
       }
@@ -706,10 +707,7 @@ export async function analyzePack(packDir: string): Promise<AnalysisResult> {
   const graph = buildDependencyGraph(resources, allRefs)
   const orphans = findOrphans(resources, graph.dependedBy, packDir)
   const circularDeps = findCircularDeps(graph.dependsOn)
-  const brokenRefs = allRefs.filter(ref => {
-    const resolved = [...resources].some(r => r.file === ref.to || r.fullPath === ref.to)
-    return !resolved
-  })
+  const brokenRefs = allRefs.filter(ref => resolveRef(ref.to, resources) === null)
   const metrics = computeMetrics(packDir, resources)
 
   return {

@@ -4,7 +4,7 @@ import { checkJsonData, checkDeprecatedRegistryEntries } from './json-check'
 import { tokenizeCommand } from './tokenizer'
 import { FEATURE_RULES, type FeatureRule } from './knowledge'
 import { RESOURCE_FEATURE_RULES } from './resource-knowledge'
-import { isVersionAtLeast, versionNameToDataVersion } from './version'
+import { versionNameToDataVersion } from './version'
 import { getBreakingChanges } from './technical-changes'
 import { readPackMcmetaFromString, normalizeFormatTuple, type FormatTuple } from './pack-mcmeta'
 import { getMcdocSymbols, checkMcdocData, fileKindFromPath } from './mcdoc-check'
@@ -894,7 +894,8 @@ function applyResourceKnowledge(files: PackFileMap, jsonFiles: string[]): Knowle
     const content = files[file]
     if (!content) continue
     for (const rule of RESOURCE_FEATURE_RULES) {
-      if (file.includes(rule.match) || content.includes(rule.match)) {
+      const re = new RegExp(rule.match)
+      if (re.test(file) || re.test(content)) {
         hits.push({ rule: { id: rule.id, description: rule.description, type: 'command', match: rule.match, minVersion: rule.minVersion, maxVersion: rule.maxVersion, fix: rule.fix }, file })
       }
     }

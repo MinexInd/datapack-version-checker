@@ -178,6 +178,65 @@ describe('findOrphans', () => {
   })
 })
 
+describe('findOrphans — tick/load entry-point exemption (regression)', () => {
+  // The old condition `r.type.startsWith('tag/') && r.file.includes('tick') ||
+  // r.file.includes('load')` exempted every orphan whenever ANY resource path
+  // contained "load" (e.g. a function named load.mcfunction itself). Both
+  // conditions must hold: a tag resource AND a tick/load file name.
+
+  it('does not exempt an orphan function just because its own path contains "load"', () => {
+    const resources = [
+      { file: 'data/mc/functions/load.mcfunction', fullPath: 'mc:load', namespace: 'mc', name: 'load', type: 'function', size: 0 },
+    ]
+    const orphans = findOrphans(resources, new Map(), tmpDir)
+    expect(orphans.map(r => r.name)).toContain('load')
+  })
+
+  it('does not exempt an orphan function just because its own path contains "tick"', () => {
+    const resources = [
+      { file: 'data/mc/functions/tick.mcfunction', fullPath: 'mc:tick', namespace: 'mc', name: 'tick', type: 'function', size: 0 },
+    ]
+    const orphans = findOrphans(resources, new Map(), tmpDir)
+    expect(orphans.map(r => r.name)).toContain('tick')
+  })
+
+  it('does not exempt orphans for non-tag resources whose path contains "load"', () => {
+    const resources = [
+      { file: 'data/mc/functions/helper.mcfunction', fullPath: 'mc:helper', namespace: 'mc', name: 'helper', type: 'function', size: 0 },
+      { file: 'data/mc/loot_tables/load_chest.json', fullPath: 'mc:load_chest', namespace: 'mc', name: 'load_chest', type: 'loot_table', size: 0 },
+    ]
+    const orphans = findOrphans(resources, new Map(), tmpDir)
+    expect(orphans.map(r => r.name)).toContain('helper')
+  })
+
+  it('exempts orphans when a tick function tag exists in the pack', () => {
+    const resources = [
+      { file: 'data/mc/functions/on_tick.mcfunction', fullPath: 'mc:on_tick', namespace: 'mc', name: 'on_tick', type: 'function', size: 0 },
+      { file: 'data/mc/tags/functions/tick.json', fullPath: 'mc:tick', namespace: 'mc', name: 'tick', type: 'tag/function', size: 0 },
+    ]
+    const orphans = findOrphans(resources, new Map(), tmpDir)
+    expect(orphans.map(r => r.name)).not.toContain('on_tick')
+  })
+
+  it('exempts orphans when a load function tag exists in the pack', () => {
+    const resources = [
+      { file: 'data/mc/functions/init.mcfunction', fullPath: 'mc:init', namespace: 'mc', name: 'init', type: 'function', size: 0 },
+      { file: 'data/mc/tags/functions/load.json', fullPath: 'mc:load', namespace: 'mc', name: 'load', type: 'tag/function', size: 0 },
+    ]
+    const orphans = findOrphans(resources, new Map(), tmpDir)
+    expect(orphans.map(r => r.name)).not.toContain('init')
+  })
+
+  it('exempts orphans when any tag file path contains tick or load (documented behavior)', () => {
+    const resources = [
+      { file: 'data/mc/functions/uncalled.mcfunction', fullPath: 'mc:uncalled', namespace: 'mc', name: 'uncalled', type: 'function', size: 0 },
+      { file: 'data/mc/tags/blocks/tick_blocks.json', fullPath: 'mc:tick_blocks', namespace: 'mc', name: 'tick_blocks', type: 'tag/block', size: 0 },
+    ]
+    const orphans = findOrphans(resources, new Map(), tmpDir)
+    expect(orphans.map(r => r.name)).not.toContain('uncalled')
+  })
+})
+
 describe('computeMetrics', () => {
   it('counts functions, commands, and namespaces', () => {
     writePack({
@@ -247,6 +306,36 @@ describe('analyzePack — full pipeline', () => {
     const result = await analyzePack(tmpDir)
     expect(result.brokenRefs.length).toBeGreaterThanOrEqual(1)
     expect(result.brokenRefs[0].to).toBe('mc:nonexistent')
+  })
+
+  it('does not report valid cross-file references as broken', async () => {
+    writePack({
+      'data/mc/functions/a.mcfunction': 'function mc:b\n',
+      'data/mc/functions/b.mcfunction': 'say hi\n',
+    })
+    const result = await analyzePack(tmpDir)
+    expect(result.brokenRefs).toHaveLength(0)
+  })
+
+  it('resolves prefix references (ns:path matching a shorter resource name)', async () => {
+    // ref 'minecraft:story/root' resolves to the resource named 'story' via
+    // the name.startsWith(r.name + '/') rule; previously this ref would have
+    // been reported broken (fullPath equality only).
+    writePack({
+      'data/mc/functions/a.mcfunction': 'function minecraft:story/root\n',
+      'data/minecraft/functions/story.mcfunction': 'say hi\n',
+    })
+    const result = await analyzePack(tmpDir)
+    expect(result.brokenRefs).toHaveLength(0)
+  })
+
+  it('resolves path-style references (ns:path matching a nested resource name)', async () => {
+    writePack({
+      'data/mc/functions/a.mcfunction': 'function minecraft:chests/simple\n',
+      'data/minecraft/loot_tables/chests/simple.json': '{"pools":[]}',
+    })
+    const result = await analyzePack(tmpDir)
+    expect(result.brokenRefs).toHaveLength(0)
   })
 
   it('detects circular dependencies across functions', async () => {

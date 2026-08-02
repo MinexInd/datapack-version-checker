@@ -177,6 +177,11 @@ function stripComments(s: string): string {
     .replace(/\/\/[^\n]*/g, ' ')
 }
 
+/** id attributes (`#[id]`, `#[id="x"]`, `#[id(...)]`) carry registry info only —
+ *  the structural checker doesn't need them, but they must be stripped so
+ *  trailing names parse as plain refs/prims. */
+const ID_ATTR_RE = /#\[id(?:=(?:"[^"]*"|\([^)]*\)))?\]|#\[id\([^)]*\)\]/g
+
 function stripAttrs(s: string): { attrs: { since?: string; until?: string }; rest: string } {
   const attrs: { since?: string; until?: string } = {}
   let rest = s
@@ -185,19 +190,21 @@ function stripAttrs(s: string): { attrs: { since?: string; until?: string }; res
   while ((m = re.exec(s)) !== null) {
     attrs[m[1] as 'since' | 'until'] = m[2]
   }
-  rest = rest.replace(re, '').trim()
+  rest = rest.replace(re, '').replace(ID_ATTR_RE, '').trim()
   return { attrs, rest }
 }
 
-/** Like stripAttrs, but only consumes `#[since/until]` at the very START of the
+/** Like stripAttrs, but only consumes `#[...]` at the very START of the
  *  string. Used for fields, where `#[...]` inside the type (e.g. union branches)
  *  must NOT be applied to the field itself. */
 function stripLeadingAttrs(s: string): { attrs: { since?: string; until?: string }; rest: string } {
   const attrs: { since?: string; until?: string } = {}
   let rest = s
   let m: RegExpMatchArray | null
-  while ((m = rest.match(/^#\[(since|until)="([^"]+)"\]\s*/)) !== null) {
-    attrs[m[1] as 'since' | 'until'] = m[2]
+  while ((m = rest.match(/^(?:#\[(?:since|until)="[^"]+"\]|#\[id(?:=(?:"[^"]*"|\([^)]*\)))?\]|#\[id\([^)]*\)\])\s*/)) !== null) {
+    const attrText = m[0]
+    const am = /#\[(since|until)="([^"]+)"\]/.exec(attrText)
+    if (am) attrs[am[1] as 'since' | 'until'] = am[2]
     rest = rest.slice(m[0].length)
   }
   return { attrs, rest }
@@ -235,6 +242,27 @@ function isBalanced(s: string): boolean {
   return depth === 0
 }
 
+/** Build a prim node. The concrete primitive name is stashed as a
+ *  NON-enumerable property: tests assert `toEqual({ t: 'prim' })`, and
+ *  non-enumerable props survive both toEqual and JSON.stringify (the latter
+ *  deliberately drops them, so cached symbol tables just lose prim-kind and
+ *  fall back to tolerant validation). */
+function primNode(kind: string): TypeExpr {
+  const node: TypeExpr = { t: 'prim' }
+  Object.defineProperty(node, 'kind', {
+    value: kind,
+    enumerable: false,
+    writable: false,
+    configurable: true,
+  })
+  return node
+}
+
+/** Primitive kind of a type node, or undefined for non-prims / cached tables. */
+function primKindOf(t: TypeExpr): string | undefined {
+  return (t as { kind?: string }).kind
+}
+
 export function parseType(str: string): TypeExpr {
   const s = stripLeadingAttrs(stripComments(str)).rest.trim()
   if (s === '') return { t: 'prim' }
@@ -243,13 +271,13 @@ export function parseType(str: string): TypeExpr {
   }
   if (s.startsWith('(') && s.endsWith(')')) {
     const inner = s.slice(1, -1)
-    const branches = splitTop(inner, '|')
-    const opts = branches
-      .map(b => {
-        const { attrs, rest } = stripAttrs(b)
-        return { since: attrs.since, until: attrs.until, of: parseType(rest) }
-      })
-      .filter(o => o.of.t !== 'prim' || true)
+    // Skip empty branches: upstream mcdoc files sometimes end unions with a
+    // trailing `|` (e.g. instrument's use_duration), which would otherwise
+    // produce a catch-all branch that swallows type validation.
+    const opts = splitTop(inner, '|')
+      .map(b => stripAttrs(b))
+      .filter(({ rest }) => rest.trim() !== '')
+      .map(({ attrs, rest }) => ({ since: attrs.since, until: attrs.until, of: parseType(rest) }))
     return { t: 'union', opts }
   }
   // string literal type
@@ -257,10 +285,12 @@ export function parseType(str: string): TypeExpr {
     return { t: 'literal' }
   }
   const primRe = /^(string|int|float|double|long|short|byte|bool|boolean|any|json|uint|literal)\b/
-  if (primRe.test(s)) return { t: 'prim' }
+  const primMatch = primRe.exec(s)
+  if (primMatch) return primNode(primMatch[1])
   // strip trailing generic args like Vector3<float>
   const name = s.replace(/<[^>]*>$/, '').trim()
-  if (primRe.test(name)) return { t: 'prim' }
+  const primMatch2 = primRe.exec(name)
+  if (primMatch2) return primNode(primMatch2[1])
   return { t: 'ref', name }
 }
 
@@ -350,6 +380,7 @@ function parseDispatchRest(rest: string, tagSince?: string, tagUntil?: string): 
     const branches = splitTop(inner, '|')
     for (const br of branches) {
       const { attrs, rest: brRest } = stripAttrs(br)
+      if (brRest.trim() === '') continue
       variant.opts.push({ since: attrs.since, until: attrs.until, ...parseOptBody(brRest) })
     }
     return variant
@@ -477,16 +508,68 @@ function buildSymbolTable(files: Map<string, string>): SymbolTable {
 
 let cachedTable: SymbolTable | null = null
 
-/** Maps don't survive JSON.stringify, so convert to plain objects for caching. */
-function tableToPlain(t: SymbolTable): any {
-  return {
-    structs: Object.fromEntries(t.structs),
-    enums: Object.fromEntries(t.enums),
-    typeAliases: Object.fromEntries(t.typeAliases),
-    dispatches: Object.fromEntries(
-      [...t.dispatches].map(([id, d]) => [id, { id, variants: Object.fromEntries(d.variants) }]),
-    ),
+/** Maps don't survive JSON.stringify, so convert to plain objects for caching.
+ *  Prim nodes carry their concrete kind as a non-enumerable prop, which
+ *  JSON.stringify drops — so primitives are re-serialized explicitly here and
+ *  restored as non-enumerable again in plainToTable. */
+function typeToPlain(t: TypeExpr): any {
+  if (t.t === 'prim') {
+    const kind = primKindOf(t)
+    return kind ? { t: 'prim', kind } : { t: 'prim' }
   }
+  if (t.t === 'list') return { t: 'list', of: typeToPlain(t.of) }
+  if (t.t === 'union') return { t: 'union', opts: t.opts.map(o => ({ since: o.since, until: o.until, of: typeToPlain(o.of) })) }
+  return t
+}
+
+function typeFromPlain(x: any): TypeExpr {
+  if (x?.t === 'prim') return typeof x.kind === 'string' ? primNode(x.kind) : { t: 'prim' }
+  if (x?.t === 'list') return { t: 'list', of: typeFromPlain(x.of) }
+  if (x?.t === 'union') return { t: 'union', opts: x.opts.map((o: any) => ({ since: o.since, until: o.until, of: typeFromPlain(o.of) })) }
+  return x as TypeExpr
+}
+
+function structToPlain(s: StructDef): any {
+  return {
+    fields: s.fields.map(f => ({ ...f, type: typeToPlain(f.type) })),
+    spreads: s.spreads,
+    dispatchSpreads: s.dispatchSpreads,
+    allowUnknown: s.allowUnknown,
+  }
+}
+
+function structFromPlain(s: any): StructDef {
+  return {
+    fields: (s.fields as any[]).map((f: any) => ({ ...f, type: typeFromPlain(f.type) })),
+    spreads: s.spreads,
+    dispatchSpreads: s.dispatchSpreads,
+    allowUnknown: s.allowUnknown,
+  }
+}
+
+function tableToPlain(t: SymbolTable): any {
+  const structs: Record<string, any> = {}
+  for (const [k, v] of t.structs) structs[k] = structToPlain(v)
+  const aliases: Record<string, any> = {}
+  for (const [k, v] of t.typeAliases) aliases[k] = typeToPlain(v)
+  const dispatches: Record<string, any> = {}
+  for (const [id, d] of t.dispatches) {
+    const variants: Record<string, any> = {}
+    for (const [tag, v] of d.variants) {
+      variants[tag] = {
+        since: v.since,
+        until: v.until,
+        opts: v.opts.map(o => ({
+          since: o.since,
+          until: o.until,
+          struct: o.struct ? structToPlain(o.struct) : undefined,
+          ref: o.ref,
+        })),
+      }
+    }
+    dispatches[id] = { id, variants }
+  }
+  return { structs, enums: Object.fromEntries(t.enums), typeAliases: aliases, dispatches }
 }
 
 function plainToTable(p: any): SymbolTable {
@@ -496,11 +579,23 @@ function plainToTable(p: any): SymbolTable {
     typeAliases: new Map(),
     dispatches: new Map(),
   }
-  for (const [k, v] of Object.entries(p.structs)) t.structs.set(k, v as StructDef)
+  for (const [k, v] of Object.entries(p.structs)) t.structs.set(k, structFromPlain(v) as StructDef)
   for (const [k, v] of Object.entries(p.enums)) t.enums.set(k, v as EnumDef)
-  for (const [k, v] of Object.entries(p.typeAliases)) t.typeAliases.set(k, v as TypeExpr)
+  for (const [k, v] of Object.entries(p.typeAliases)) t.typeAliases.set(k, typeFromPlain(v))
   for (const [id, d] of Object.entries(p.dispatches)) {
-    const variants = new Map(Object.entries((d as any).variants)) as Map<string, Variant>
+    const variants = new Map<string, Variant>()
+    for (const [tag, v] of Object.entries((d as any).variants as Record<string, any>)) {
+      variants.set(tag, {
+        since: v.since,
+        until: v.until,
+        opts: (v.opts as any[]).map((o: any) => ({
+          since: o.since,
+          until: o.until,
+          struct: o.struct ? structFromPlain(o.struct) : undefined,
+          ref: o.ref,
+        })),
+      })
+    }
     t.dispatches.set(id, { id, variants })
   }
   return t
@@ -626,6 +721,50 @@ function collectFields(
   return { fields, allowUnknown, dispatchSpreads }
 }
 
+/** Loose shape check used to pick a union branch: prefer the branch the value
+ *  actually looks like, so unions like `(int | [int, int])` or `(ItemStack |
+ *  string)` validate against the right alternative instead of blindly the first. */
+function shapeFits(val: unknown, t: TypeExpr): boolean {
+  if (t.t === 'list') return Array.isArray(val)
+  if (t.t === 'union') return t.opts.some(o => shapeFits(val, o.of))
+  if (t.t === 'prim') {
+    if (val === null || val === undefined) return true
+    const kind = primKindOf(t)
+    if (!kind || kind === 'any' || kind === 'json' || kind === 'literal') return typeof val !== 'object'
+    if (kind === 'string') return typeof val === 'string'
+    if (kind === 'bool' || kind === 'boolean') return typeof val === 'boolean'
+    if (kind === 'int' || kind === 'uint' || kind === 'long' || kind === 'short' || kind === 'byte' || kind === 'float' || kind === 'double') {
+      return typeof val === 'number'
+    }
+    return false
+  }
+  if (t.t === 'literal') return typeof val === 'string'
+  // ref: only claim object values (structs); prim-like values go to prim branches
+  return val !== null && val !== undefined && typeof val === 'object' && !Array.isArray(val)
+}
+
+function checkEnumValue(
+  val: string,
+  name: string,
+  edef: EnumDef,
+  version: string,
+  path: string,
+  issues: StructuralIssue[],
+): void {
+  // tag refs / selectors are game-defined
+  if (val.startsWith('#') || val.startsWith('@')) return
+  const stripped = val.startsWith('minecraft:') ? val.slice('minecraft:'.length) : val
+  if (stripped.includes(':')) return // foreign namespace
+  const lc = stripped.toLowerCase()
+  if (edef.values.some(v => inRange(version, v.since, v.until) && v.literal.toLowerCase() === lc)) return
+  const valid = edef.values.filter(v => inRange(version, v.since, v.until)).map(v => v.literal)
+  const shown = valid.slice(0, 10).join(', ') + (valid.length > 10 ? ', ...' : '')
+  issues.push({
+    file: '',
+    issue: `At ${path}: unknown value "${val}" for enum ${name} (valid in ${version}: ${shown})`,
+  })
+}
+
 function validateValue(
   val: unknown,
   type: TypeExpr,
@@ -645,13 +784,10 @@ function validateValue(
     return
   }
   if (type.t === 'union') {
-    for (const o of type.opts) {
-      if (inRange(version, o.since, o.until)) {
-        validateValue(val, o.of, version, path, issues, table, depth + 1)
-        return
-      }
-    }
-    // no matching branch -> tolerate
+    const cands = type.opts.filter(o => inRange(version, o.since, o.until))
+    if (cands.length === 0) return
+    const pick = cands.find(o => shapeFits(val, o.of)) ?? cands[0]
+    validateValue(val, pick.of, version, path, issues, table, depth + 1)
     return
   }
   if (type.t === 'ref') {
@@ -660,13 +796,39 @@ function validateValue(
       validateValue(val, alias, version, path, issues, table, depth + 1)
       return
     }
+    if (typeof val === 'string') {
+      const edef = table.enums.get(type.name)
+      if (edef) {
+        checkEnumValue(val, type.name, edef, version, path, issues)
+        return
+      }
+    }
     const sdef = table.structs.get(type.name)
     if (sdef && val && typeof val === 'object' && !Array.isArray(val)) {
       validateObject(val as Record<string, unknown>, sdef, version, path, issues, table, depth)
     }
     return
   }
-  // prim / literal -> tolerate
+  if (type.t === 'prim') {
+    const kind = primKindOf(type)
+    if (kind && kind !== 'any' && kind !== 'json' && kind !== 'literal' && val !== null && val !== undefined) {
+      const got = Array.isArray(val) ? 'array' : typeof val
+      const ok =
+        kind === 'string' ? typeof val === 'string'
+        : kind === 'bool' || kind === 'boolean' ? typeof val === 'boolean'
+        : kind === 'int' || kind === 'uint' || kind === 'long' || kind === 'short' || kind === 'byte' || kind === 'float' || kind === 'double'
+          ? typeof val === 'number'
+          : true
+      if (!ok) {
+        issues.push({
+          file: '',
+          issue: `At ${path}: expected ${kind}, got ${got} (this is ${version})`,
+        })
+      }
+    }
+    return
+  }
+  // literal -> tolerate
   return
 }
 
@@ -794,6 +956,16 @@ const KIND_TO_RESOURCE: Record<string, string> = {
   number_provider: 'number_provider',
   slot_source: 'slot_source',
 
+  // === Sound variants (1.21.5+) ===
+  cat_sound_variant: 'cat_sound_variant',
+  cow_sound_variant: 'cow_sound_variant',
+  chicken_sound_variant: 'chicken_sound_variant',
+  pig_sound_variant: 'pig_sound_variant',
+  wolf_sound_variant: 'wolf_sound_variant',
+
+  // === Texture metadata (.png.mcmeta) ===
+  texture_meta: 'texture_meta',
+
   // === Worldgen types (two-level paths, quoted tags in mcdoc) ===
   'worldgen/world_preset': '"worldgen/world_preset"',
   'worldgen/template_pool': '"worldgen/template_pool"',
@@ -815,7 +987,6 @@ const KIND_TO_RESOURCE: Record<string, string> = {
   'worldgen/configured_carver': '"worldgen/configured_carver"',
   'worldgen/carver': '"worldgen/carver"',
   'worldgen/biome': '"worldgen/biome"',
-  'worldgen/biome_source': '"worldgen/biome_source"',
 
   // === Resource pack types ===
   models: 'model',
@@ -877,6 +1048,8 @@ export function checkMcdocFile(
   table: SymbolTable,
 ): StructuralIssue[] {
   const issues: StructuralIssue[] = []
+  // The mcdoc schema only covers 1.16+; older packs would just produce noise.
+  if (cmpVer(version, '1.16') < 0) return issues
   const kind = fileKindFromPath(relPath)
   if (!kind) return issues
   let data: unknown
@@ -888,7 +1061,10 @@ export function checkMcdocFile(
   if (!data || typeof data !== 'object') return issues
 
   const dd = table.dispatches.get('minecraft:resource')
-  const variant = dd?.variants.get(KIND_TO_RESOURCE[kind])
+  // Some mcdoc tags are quoted ("instrument", "shader", worldgen kinds) and
+  // some are not; try both forms so no kind silently skips validation.
+  const tag = KIND_TO_RESOURCE[kind]
+  const variant = tag ? dd?.variants.get(tag) ?? dd?.variants.get(`"${tag}"`) : undefined
   if (!variant) return issues
 
   // Resolve the root variant (single struct or ref/alias)

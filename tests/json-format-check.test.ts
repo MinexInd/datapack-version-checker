@@ -368,3 +368,39 @@ describe('checkJsonFormatSemantics — advancement triggers', () => {
     expect(issues.some(i => i.issue.includes('placed_block'))).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Item modifier files get the loot-function checks (regression)
+// ---------------------------------------------------------------------------
+
+describe('checkJsonFormatSemantics — item_modifier files', () => {
+  it('flags set_damage without type in an item_modifiers file when checking 1.17+', () => {
+    const data = [{ function: 'minecraft:set_damage', damage: 0.5 }]
+    const issues = checkJsonFormatSemantics(data, 'data/mc/item_modifiers/set_damage.json', '1.17')
+    expect(issues.some(i => i.issue.includes("'set_damage' requires a 'type' field"))).toBe(true)
+  })
+
+  it('does NOT flag set_damage with type present in an item_modifiers file', () => {
+    const data = [{ function: 'minecraft:set_damage', type: 'minecraft:vanishing_curse', damage: 0.5 }]
+    const issues = checkJsonFormatSemantics(data, 'data/mc/item_modifiers/set_damage.json', '1.17')
+    expect(issues.some(i => i.issue.includes('set_damage'))).toBe(false)
+  })
+
+  it('does NOT flag set_damage without type in an item_modifiers file when checking pre-1.17', () => {
+    const data = [{ function: 'minecraft:set_damage', damage: 0.5 }]
+    const issues = checkJsonFormatSemantics(data, 'data/mc/item_modifiers/set_damage.json', '1.16.5')
+    expect(issues.some(i => i.issue.includes('set_damage'))).toBe(false)
+  })
+
+  it('matches the singular item_modifier directory too', () => {
+    const data = [{ function: 'minecraft:set_contents', name: 'minecraft:chest' }]
+    const issues = checkJsonFormatSemantics(data, 'data/mc/item_modifier/set_contents.json', '1.18')
+    expect(issues.some(i => i.issue.includes("'set_contents' requires a 'type' field"))).toBe(true)
+  })
+
+  it('does NOT run the loot-function checks on non-loot, non-item-modifier files', () => {
+    const data = [{ function: 'minecraft:set_damage', damage: 0.5 }]
+    const issues = checkJsonFormatSemantics(data, 'data/mc/recipes/smelt.json', '1.17')
+    expect(issues.some(i => i.issue.includes('set_damage'))).toBe(false)
+  })
+})

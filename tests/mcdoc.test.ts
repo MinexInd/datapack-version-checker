@@ -180,3 +180,35 @@ describe('parseType', () => {
     expect(result).toEqual({ t: 'prim' })
   })
 })
+
+describe('parseType — empty union branches', () => {
+  // Upstream mcdoc files sometimes end unions with a trailing `|`
+  // (e.g. instrument's use_duration: (float | float | )). The empty branch
+  // used to parse as a catch-all prim that swallowed type validation.
+  it('skips an empty trailing branch', () => {
+    const result = parseType('(float | float | )')
+    expect(result.t).toBe('union')
+    if (result.t === 'union') expect(result.opts).toHaveLength(2)
+  })
+
+  it('skips an empty branch between non-empty ones', () => {
+    const result = parseType('(string | | int)')
+    expect(result.t).toBe('union')
+    if (result.t === 'union') expect(result.opts).toHaveLength(2)
+  })
+
+  it('keeps a single real branch when the union is mostly empty', () => {
+    const result = parseType('(float | )')
+    expect(result.t).toBe('union')
+    if (result.t === 'union') expect(result.opts).toHaveLength(1)
+  })
+
+  it('preserves branch attrs while dropping empty branches', () => {
+    const result = parseType('(string | #[since="1.21"] float | )')
+    expect(result.t).toBe('union')
+    if (result.t === 'union') {
+      expect(result.opts).toHaveLength(2)
+      expect(result.opts[1].since).toBe('1.21')
+    }
+  })
+})

@@ -47,3 +47,34 @@ export function setCache<T>(key: string, value: T): void {
     // Caching is best-effort; never break the tool if it fails.
   }
 }
+
+// ---------------------------------------------------------------------------
+// ETag sidecar: lets callers revalidate cached payloads with If-None-Match
+// instead of blindly re-downloading. Stored in a separate file so the main
+// getCache/setCache data format (used by technical-changes.ts) never changes.
+// ---------------------------------------------------------------------------
+
+export function getCachedEtag(key: string): string | null {
+  try {
+    const file = join(CACHE_DIR, safeKey(key) + '.etag')
+    if (!existsSync(file)) return null
+    const etag = readFileSync(file, 'utf-8').trim()
+    return etag || null
+  } catch {
+    return null
+  }
+}
+
+export function setCachedEtag(key: string, etag: string | null): void {
+  try {
+    const file = join(CACHE_DIR, safeKey(key) + '.etag')
+    if (!etag) {
+      if (existsSync(file)) rmSync(file, { force: true })
+      return
+    }
+    if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true })
+    writeFileSync(file, etag, 'utf-8')
+  } catch {
+    // best-effort, same as setCache
+  }
+}

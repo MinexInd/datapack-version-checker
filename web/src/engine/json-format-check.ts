@@ -34,6 +34,10 @@ function isLootTableFile(rel: string): boolean {
   return /(?:^|\/)loot_tables?\//.test(rel)
 }
 
+function isItemModifierFile(rel: string): boolean {
+  return /(?:^|\/)item_modifiers?\//.test(rel)
+}
+
 function isRecipeFile(rel: string): boolean {
   return /(?:^|\/)recipes?\//.test(rel)
 }
@@ -258,7 +262,7 @@ export function checkJsonFormatSemantics(
   if (isBiomeFile(rel)) {
     for (const iss of checkBiomePrecipitation(data, rel, versionName)) out.push(iss)
   }
-  if (isLootTableFile(rel)) {
+  if (isLootTableFile(rel) || isItemModifierFile(rel)) {
     for (const iss of checkLootFunctions(data, rel, versionName)) out.push(iss)
   }
   if (isRecipeFile(rel)) {
