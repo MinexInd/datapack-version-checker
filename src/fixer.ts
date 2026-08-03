@@ -6,7 +6,7 @@ import { getMcdocSymbols, checkMcdocFile, cmpVer, fixMcdocFileData } from './mcd
 import { FEATURE_RULES, type FeatureRule } from './knowledge.js'
 import { tokenizeCommand } from './tokenizer.js'
 import { versionNameToDataVersion } from './version.js'
-import { CMD_REWRITES, type CmdRewrite } from './rules.js'
+import { CMD_REWRITES, PORT_RULES, type CmdRewrite } from './rules.js'
 import type { McmetaVersion } from './types.js'
 
 export interface FixOptions {
@@ -50,6 +50,12 @@ export interface FixCascadeEntry {
   description: string
 }
 
+export interface FixSkippedEntry {
+  file: string
+  registry: string
+  reason: string
+}
+
 export interface FixPlan {
   sourceVersion: string
   targetVersion: string
@@ -58,11 +64,13 @@ export interface FixPlan {
   jsonFixes: FixJsonFixEntry[]
   manualAttention: FixManualEntry[]
   cascadeEffects: FixCascadeEntry[]
+  skippedFiles: FixSkippedEntry[]
   summary: {
     totalFilesToPatch: number
     commandRewrites: number
     jsonFixes: number
     manualAttention: number
+    skippedFiles: number
     mcdocRemovals: number
     packMcmetaUpdate: boolean
   }
@@ -76,6 +84,74 @@ export interface FixPlan {
 // ---------------------------------------------------------------------------
 
 export { CMD_REWRITES, type CmdRewrite }
+
+// ---------------------------------------------------------------------------
+// Registry-aware file path detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive the set of known datapack registry path segments from PORT_RULES.
+ * Each entry maps a directory segment (e.g. "dialog", "worldgen/biome") to
+ * the version from which it exists.
+ */
+const KNOWN_REGISTRY_SEGMENTS: Array<{ segment: string; since: string }> = PORT_RULES
+  .filter(r => r.type === 'registry' && r.scope === 'datapack')
+  .map(r => ({ segment: String(r.match).replace(/\/$/, ''), since: r.since! }))
+
+/**
+ * Given a relative path like "data/entries/dialog/day_main.json", extract
+ * the registry directory segment after "data/<namespace>/".
+ *
+ * Returns the segment (e.g. "dialog") or null if the path does not match
+ * a known registry pattern.
+ */
+export function getRegistryForPath(rel: string): string | null {
+  const m = rel.match(/^data\/([^/]+)\/(.+)$/)
+  if (!m) return null
+  const rest = m[2] // e.g. "dialog/day_main.json" or "worldgen/biome/foo.json"
+
+  // Sort by segment length descending so "worldgen/biome" beats "worldgen" etc.
+  let best: string | null = null
+  let bestLen = 0
+  for (const { segment } of KNOWN_REGISTRY_SEGMENTS) {
+    if (segment.length <= bestLen) continue
+    // Match "segment/file.json" or "segment.json" (segment is the full dir)
+    if (rest === segment + '.json' || rest.startsWith(segment + '/')) {
+      best = segment
+      bestLen = segment.length
+    }
+  }
+  return best
+}
+
+/**
+ * Determine whether a JSON file should be skipped (not written to output)
+ * because its registry does not exist in the target version.
+ *
+ * @returns The skip reason string, or null if the file should not be skipped.
+ */
+export function getRegistrySkipReason(
+  rel: string,
+  targetName: string,
+): { registry: string; reason: string } | null {
+  const registry = getRegistryForPath(rel)
+  if (!registry) return null
+
+  for (const rule of PORT_RULES) {
+    if (rule.type !== 'registry' || rule.scope === 'resource_pack') continue
+    const ruleSeg = String(rule.match).replace(/\/$/, '')
+    if (ruleSeg !== registry) continue
+    if (!rule.since) continue
+
+    if (cmpVer(targetName, rule.since) < 0) {
+      return {
+        registry,
+        reason: `${rule.description} (requires ${rule.since}+)`,
+      }
+    }
+  }
+  return null
+}
 
 // ---------------------------------------------------------------------------
 // Knowledge-rule-driven fix summaries (added as comments to mcfunction files)
@@ -732,6 +808,19 @@ function generateFixPlan(
     }
   }
 
+  // Predict files that will be skipped because their registry doesn't exist in target
+  const skippedFiles: FixSkippedEntry[] = []
+  const skipSet = new Set<string>()
+  for (const file of jsonFiles) {
+    const rel = relative(baseDir, file).replace(/\\/g, '/')
+    if (skipSet.has(rel)) continue
+    const skipInfo = getRegistrySkipReason(rel, targetName)
+    if (skipInfo) {
+      skipSet.add(rel)
+      skippedFiles.push({ file: rel, ...skipInfo })
+    }
+  }
+
   const rewritesList = Array.from(rewriteMap.values()).sort((a, b) => b.count - a.count)
   const rewritesCount = rewritesList.reduce((s, r) => s + r.count, 0)
   const jsonFixesTotal = jsonFixes.reduce((s, f) => s + f.files.length, 0)
@@ -776,11 +865,13 @@ function generateFixPlan(
     jsonFixes,
     manualAttention,
     cascadeEffects,
+    skippedFiles,
     summary: {
       totalFilesToPatch: filesAffected.size,
       commandRewrites: rewritesCount,
       jsonFixes: jsonFixesTotal,
       manualAttention: manualAttention.length,
+      skippedFiles: skippedFiles.length,
       mcdocRemovals: 0,
       packMcmetaUpdate: true,
     },
@@ -798,8 +889,8 @@ export async function fixDatapack(options: FixOptions): Promise<{
   if (!targetVer) {
     const plan: FixPlan = {
       sourceVersion: '', targetVersion, direction: 'forward',
-      rewrites: [], jsonFixes: [], manualAttention: [], cascadeEffects: [],
-      summary: { totalFilesToPatch: 0, commandRewrites: 0, jsonFixes: 0, manualAttention: 0, mcdocRemovals: 0, packMcmetaUpdate: false },
+      rewrites: [], jsonFixes: [], manualAttention: [], cascadeEffects: [], skippedFiles: [],
+      summary: { totalFilesToPatch: 0, commandRewrites: 0, jsonFixes: 0, manualAttention: 0, skippedFiles: 0, mcdocRemovals: 0, packMcmetaUpdate: false },
     }
     return { results: [], plan, summary: { filesFixed: 0, totalPatches: 0, errors: [`Target version '${targetVersion}' not found`] } }
   }
@@ -829,8 +920,8 @@ export async function fixDatapack(options: FixOptions): Promise<{
   if (!sourceVer) {
     const plan: FixPlan = {
       sourceVersion: '', targetVersion, direction: 'forward',
-      rewrites: [], jsonFixes: [], manualAttention: [], cascadeEffects: [],
-      summary: { totalFilesToPatch: 0, commandRewrites: 0, jsonFixes: 0, manualAttention: 0, mcdocRemovals: 0, packMcmetaUpdate: false },
+      rewrites: [], jsonFixes: [], manualAttention: [], cascadeEffects: [], skippedFiles: [],
+      summary: { totalFilesToPatch: 0, commandRewrites: 0, jsonFixes: 0, manualAttention: 0, skippedFiles: 0, mcdocRemovals: 0, packMcmetaUpdate: false },
     }
     return { results: [], plan, summary: { filesFixed: 0, totalPatches: 0, errors: ['Could not determine source version. Use --from-version <ver>'] } }
   }
@@ -894,11 +985,26 @@ export async function fixDatapack(options: FixOptions): Promise<{
 
   options.onProgress?.('Processing JSON files...')
 
+  // Phase: detect JSON files whose registry doesn't exist in target version
+  const registrySkipped = new Set<string>()
+  for (const file of json) {
+    const rel = relative(baseDir, file).replace(/\\/g, '/')
+    const skipInfo = getRegistrySkipReason(rel, targetName)
+    if (skipInfo) {
+      registrySkipped.add(rel)
+      options.onProgress?.(`Skipping ${rel} (${skipInfo.registry} not in ${targetName})`)
+    }
+  }
+
   // Process JSON files (structural + advancement icon + registry fixes)
   for (const file of json) {
     processed++
     options.onProgress?.(`Fixing ${relative(baseDir, file)}`, processed, totalFiles)
     const rel = relative(baseDir, file).replace(/\\/g, '/')
+
+    // Skip files whose registry doesn't exist in the target version
+    if (registrySkipped.has(rel)) continue
+
     let content: string
     try {
       content = readFileSync(file, 'utf-8')
@@ -1074,8 +1180,8 @@ export async function fixResourcePack(options: ResourcePackFixOptions): Promise<
   if (!targetVer) {
     const plan: FixPlan = {
       sourceVersion: '', targetVersion, direction: 'forward',
-      rewrites: [], jsonFixes: [], manualAttention: [], cascadeEffects: [],
-      summary: { totalFilesToPatch: 0, commandRewrites: 0, jsonFixes: 0, manualAttention: 0, mcdocRemovals: 0, packMcmetaUpdate: false },
+      rewrites: [], jsonFixes: [], manualAttention: [], cascadeEffects: [], skippedFiles: [],
+      summary: { totalFilesToPatch: 0, commandRewrites: 0, jsonFixes: 0, manualAttention: 0, skippedFiles: 0, mcdocRemovals: 0, packMcmetaUpdate: false },
     }
     return { results: [], plan, summary: { filesFixed: 0, totalPatches: 0, errors: [`Target version '${targetVersion}' not found`] } }
   }
@@ -1264,11 +1370,13 @@ export async function fixResourcePack(options: ResourcePackFixOptions): Promise<
     jsonFixes: jsonFixesList,
     manualAttention: [],
     cascadeEffects: [],
+    skippedFiles: [],
     summary: {
       totalFilesToPatch: results.length,
       commandRewrites: 0,
       jsonFixes: results.length,
       manualAttention: 0,
+      skippedFiles: 0,
       mcdocRemovals,
       packMcmetaUpdate: true,
     },

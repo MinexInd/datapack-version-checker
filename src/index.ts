@@ -87,6 +87,7 @@ interface CliOptions {
   versions?: string[]
   serve?: boolean
   diff?: boolean
+  summary?: boolean
 }
 
 function printHelp() {
@@ -113,6 +114,7 @@ function printHelp() {
     dpcheck --mode auto                  Auto-detect pack type
     dpcheck --verbose                    Show detailed progress and timing
     dpcheck --diff                       Show before/after code diff for each fix
+    dpcheck --summary                    Separate content issues from outside-load-range
     dpcheck --debug                      Show all debug messages (very verbose)
     dpcheck serve                        Start GUI web server on localhost:3001
 
@@ -194,6 +196,7 @@ function parseArgs(): CliOptions {
     else if (arg === '--verbose') result.verbose = true
     else if (arg === '--debug') result.debug = true
     else if (arg === '--diff') result.diff = true
+    else if (arg === '--summary') result.summary = true
     else if (!arg.startsWith('-') && !dirSet) result.dir = resolve(arg)
   }
   return result
@@ -496,12 +499,22 @@ async function main() {
           }
         }
       }
+      if (plan.skippedFiles && plan.skippedFiles.length > 0) {
+        console.log()
+        console.log(`  ${C.bd}${C.y}Skipped files (registry not in target):${C.R} ${plan.skippedFiles.length}`)
+        for (const sf of plan.skippedFiles) {
+          console.log(`    ${C.d}${sf.file}${C.R} — ${sf.registry} (${sf.reason})`)
+        }
+      }
       console.log()
       console.log(`  ${C.d}${'─'.repeat(40)}${C.R}`)
       console.log(`  ${C.d}Files to patch:${C.R} ${C.bd}${plan.summary.totalFilesToPatch}${C.R}`)
       console.log(`  ${C.d}Command rewrites:${C.R} ${plan.summary.commandRewrites}`)
       console.log(`  ${C.d}JSON fixes:${C.R} ${plan.summary.jsonFixes}`)
       console.log(`  ${C.d}Manual attention:${C.R} ${plan.summary.manualAttention}`)
+      if (plan.summary.skippedFiles > 0) {
+        console.log(`  ${C.d}Skipped (no registry):${C.R} ${C.y}${plan.summary.skippedFiles}${C.R}`)
+      }
       if (plan.cascadeEffects.length > 0) {
         console.log(`  ${C.d}Cascade effects:${C.R} ${plan.cascadeEffects.length}`)
       }
@@ -610,9 +623,15 @@ async function main() {
   }
   console.log(`  ${C.d}🔍 Versions checked:${C.R} ${C.bd}${result.versions_checked}${C.R}`)
   const compatCount = result.compatible.length
-  const incompatCount = result.incompatible.length
+  const outsideRangeCount = result.incompatible.filter(v => v.status === 'outside_load_range').length
+  const incompatCount = opts.summary
+    ? result.incompatible.length - outsideRangeCount
+    : result.incompatible.length
   console.log(`  ${compatCount > 0 ? C.g + '✅' : C.d + '  '} Fully compatible:${C.R} ${compatCount}`)
   console.log(`  ${incompatCount > 0 ? C.r + '❌' : C.d + '  '} Breaks / incompatible:${C.R} ${incompatCount}`)
+  if (opts.summary && outsideRangeCount > 0) {
+    console.log(`  ${C.d + '  '} Outside declared load range:${C.R} ${outsideRangeCount}`)
+  }
 
   if (result.compatible.length > 0) {
     console.log(`\n  ${C.g}✅${C.R} Compatible versions: ${result.compatible.map(v => `${C.g}${v.version.name}${C.R}`).join(', ')}`)
