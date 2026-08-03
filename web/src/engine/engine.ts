@@ -288,16 +288,67 @@ export type ProgressCallback = (msg: string) => void
 type PackVersionField = 'data_pack_version' | 'resource_pack_version'
 type PackVersionMinorField = 'data_pack_version_minor' | 'resource_pack_version_minor'
 
-function findVersionByFormat(
+// Find the chronologically earliest (lowest data_version) version matching a
+// format tuple.  The old findVersionByFormat() used .find() which returned
+// whichever version appeared first in the array -- not necessarily the one that
+// introduced the format.  That caused min_name to show the last-known version
+// per format instead of the first compatible one.
+function findEarliestVersionByFormat(
   allVersions: McmetaVersion[],
   tuple: FormatTuple,
   field: PackVersionField,
   minorField: PackVersionMinorField,
 ): McmetaVersion | undefined {
-  const exact = allVersions.find(v => v[field] === tuple[0] && (v[minorField] ?? 0) === tuple[1])
-  // Packs legitimately declare "any minor" (e.g. max_format [101, 2147483647]);
-  // fall back to a major-only match when the tuple has no exact counterpart.
-  return exact ?? allVersions.find(v => v[field] === tuple[0])
+  const exact = allVersions.filter(v => v[field] === tuple[0] && (v[minorField] ?? 0) === tuple[1])
+  const majorOnly = allVersions.filter(v => v[field] === tuple[0])
+  const candidates = exact.length > 0 ? exact : majorOnly
+  if (candidates.length === 0) return undefined
+  return candidates.reduce((min, v) =>
+    (v.data_version ?? 0) < (min.data_version ?? 0) ? v : min
+  )
+}
+
+// Find the chronologically latest (highest data_version) version matching a
+// format tuple.  Used for max_name so the range end shows the newest version
+// that still carries the declared format.
+function findLatestVersionByFormat(
+  allVersions: McmetaVersion[],
+  tuple: FormatTuple,
+  field: PackVersionField,
+  minorField: PackVersionMinorField,
+): McmetaVersion | undefined {
+  const exact = allVersions.filter(v => v[field] === tuple[0] && (v[minorField] ?? 0) === tuple[1])
+  const majorOnly = allVersions.filter(v => v[field] === tuple[0])
+  const candidates = exact.length > 0 ? exact : majorOnly
+  if (candidates.length === 0) return undefined
+  return candidates.reduce((max, v) =>
+    (v.data_version ?? 0) > (max.data_version ?? 0) ? v : max
+  )
+}
+
+// Single-number format helpers for legacy pack.mcmeta paths.
+function findEarliestVersionByField(
+  allVersions: McmetaVersion[],
+  format: number,
+  field: PackVersionField,
+): McmetaVersion | undefined {
+  const matches = allVersions.filter(v => v[field] === format)
+  if (matches.length === 0) return undefined
+  return matches.reduce((min, v) =>
+    (v.data_version ?? 0) < (min.data_version ?? 0) ? v : min
+  )
+}
+
+function findLatestVersionByField(
+  allVersions: McmetaVersion[],
+  format: number,
+  field: PackVersionField,
+): McmetaVersion | undefined {
+  const matches = allVersions.filter(v => v[field] === format)
+  if (matches.length === 0) return undefined
+  return matches.reduce((max, v) =>
+    (v.data_version ?? 0) > (max.data_version ?? 0) ? v : max
+  )
 }
 
 // New-style (25w31a+) load range from min_format/max_format [major, minor]
@@ -310,13 +361,13 @@ function buildNewStyleLoadRange(
   field: PackVersionField,
   minorField: PackVersionMinorField,
 ): { min: number; max: number; min_name: string | null; max_name: string | null } {
-  const minVer = findVersionByFormat(allVersions, minFormat, field, minorField)
+  const minVer = findEarliestVersionByFormat(allVersions, minFormat, field, minorField)
   const maxMajor = maxFormat
     ? maxFormat[0]
     : allVersions.reduce((hi, v) => Math.max(hi, v[field] ?? 0), 0)
   const maxVer = maxFormat
-    ? findVersionByFormat(allVersions, maxFormat, field, minorField)
-    : allVersions.find(v => v[field] === maxMajor)
+    ? findLatestVersionByFormat(allVersions, maxFormat, field, minorField)
+    : findLatestVersionByField(allVersions, maxMajor, field)
   return {
     min: minFormat[0],
     max: maxMajor,
@@ -364,8 +415,8 @@ export async function checkCompatibilityContentBased(
       if (min_format) {
         loadRange = buildNewStyleLoadRange(allVersions, min_format, max_format, 'data_pack_version', 'data_pack_version_minor')
       } else if (supported_formats) {
-        const minVer = allVersions.find(v => v.data_pack_version === supported_formats.min)
-        const maxVer = allVersions.find(v => v.data_pack_version === supported_formats.max)
+        const minVer = findEarliestVersionByField(allVersions, supported_formats.min, 'data_pack_version')
+        const maxVer = findLatestVersionByField(allVersions, supported_formats.max, 'data_pack_version')
         loadRange = {
           min: supported_formats.min,
           max: supported_formats.max,
@@ -622,13 +673,30 @@ export async function checkCompatibilityContentBased(
     log.debug('Analysis failed:', e)
   }
 
+  // BUG 2 FIX: min_version should be the earliest version that has actual
+  // content issues, NOT the earliest version checked or the knowledge-based
+  // minimum.  If no content issues exist, leave it null.
+  let contentIssueMinVersion: string | null = null
+  const allChecked = [...compatible, ...incompatible]
+    .sort((a, b) => (a.version.data_version ?? 0) - (b.version.data_version ?? 0))
+  for (const ver of allChecked) {
+    const hasIssues =
+      ver.mcfunction_issues.length > 0 ||
+      ver.registry_issues.length > 0 ||
+      (ver.structural_issues?.length ?? 0) > 0
+    if (hasIssues) {
+      contentIssueMinVersion = ver.version.name
+      break
+    }
+  }
+
   return {
     target_version_id: loadRange ? `${loadRange.min}-${loadRange.max}` : 'content-based',
     pack_format: loadRange?.min ?? 0,
     versions_checked: relevantVersions.length,
     compatible,
     incompatible,
-    min_version: minVersionName,
+    min_version: contentIssueMinVersion,
     knowledge_hits: knowledgeHits,
     load_range: loadRange,
     analysis,
@@ -875,13 +943,30 @@ export async function checkResourcePack(
     log.debug('Analysis failed:', e)
   }
 
+  // BUG 2 FIX: min_version should be the earliest version that has actual
+  // content issues, NOT the earliest version checked or the knowledge-based
+  // minimum.  If no content issues exist, leave it null.
+  let contentIssueMinVersion: string | null = null
+  const allChecked = [...compatible, ...incompatible]
+    .sort((a, b) => (a.version.data_version ?? 0) - (b.version.data_version ?? 0))
+  for (const ver of allChecked) {
+    const hasIssues =
+      ver.mcfunction_issues.length > 0 ||
+      ver.registry_issues.length > 0 ||
+      (ver.structural_issues?.length ?? 0) > 0
+    if (hasIssues) {
+      contentIssueMinVersion = ver.version.name
+      break
+    }
+  }
+
   return {
     target_version_id: loadRange ? `${loadRange.min}-${loadRange.max}` : 'content-based',
     pack_format: loadRange?.min ?? 0,
     versions_checked: relevantVersions.length,
     compatible,
     incompatible,
-    min_version: minVersionName,
+    min_version: contentIssueMinVersion,
     knowledge_hits: knowledgeHits,
     load_range: loadRange,
     analysis,
@@ -935,8 +1020,8 @@ function buildResourceLoadRange(
         if ('max_inclusive' in sf) rmax = sf.max_inclusive
       }
     }
-    const minVer = allVersions.find(v => v.resource_pack_version === rmin)
-    const maxVer = allVersions.find(v => v.resource_pack_version === rmax)
+    const minVer = findEarliestVersionByField(allVersions, rmin, 'resource_pack_version')
+    const maxVer = findLatestVersionByField(allVersions, rmax, 'resource_pack_version')
     return {
       min: rmin,
       max: rmax,

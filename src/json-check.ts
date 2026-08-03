@@ -102,10 +102,37 @@ function checkRegistryValue(
   path: string,
   packNs: string | null,
 ): void {
-  if (!registries[regKey]) return
   // Skip selector / predicate keywords (e.g. advancement `entity: "this"`)
   if (value === 'this') return
   if (isNonMinecraftRef(value, packNs)) return
+
+  const colon = value.indexOf(':')
+  if (colon > 0) {
+    const ns = value.slice(0, colon)
+    if (ns !== 'minecraft') {
+      // Non-minecraft namespace (must be packNs at this point).
+      // Try the namespaced registry key first (e.g. "entries:dialog").
+      const namespacedKey = `${ns}:${regKey}`
+      if (registries[namespacedKey]) {
+        const bare = value.slice(colon + 1)
+        if (!registries[namespacedKey].includes(bare)) {
+          issues.push({
+            file,
+            registry: namespacedKey,
+            entry: value,
+            issue: `Value '${value}' not found in registry ${namespacedKey} (path: ${path})`,
+          })
+        }
+        return
+      }
+      // No namespaced registry data available — can't validate
+      // datapack-defined entries, so skip silently.
+      return
+    }
+  }
+
+  // minecraft namespace or bare name — check against minecraft:{regKey}
+  if (!registries[regKey]) return
   const stripped = stripNs(value)
   if (!registries[regKey].includes(stripped)) {
     issues.push({

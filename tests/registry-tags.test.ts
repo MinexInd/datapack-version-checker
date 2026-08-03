@@ -129,11 +129,13 @@ describe('registry value checks', () => {
     expect(issues).toHaveLength(0)
   })
 
-  it('does not exempt pack-namespace values from registry checks (bare-name lookup flags them)', () => {
-    // isNonMinecraftRef lets the pack's own namespace through, so "mc:stone"
-    // is compared against bare registry ids and reported as not found.
+  it('skips pack-namespace values when no namespaced registry data is available', () => {
+    // Pack-namespace values (e.g. mc:stone in namespace mc) are now resolved
+    // against the pack's own registry (mc:item) first. If that registry data
+    // doesn't exist (vanilla only), validation is skipped — the checker can't
+    // verify pack-defined entries.
     const issues = check({ item: 'mc:stone' }, 'data/mc/recipes/x.json')
-    expect(issues.some(i => i.issue.includes("Value 'mc:stone' not found in registry minecraft:item"))).toBe(true)
+    expect(issues).toHaveLength(0)
   })
 
   it('does not flag #tag references in registry fields', () => {
