@@ -1,304 +1,120 @@
-# Datapack / Resource Pack Version Checker (`dpcheck`)
+# datapack-version-checker
 
-> Check whether a Minecraft **Java Edition datapack or resource pack** works on a given game version — and find out *exactly what breaks* so you can port it faster.
+CLI tool to check & auto-fix Minecraft datapack compatibility across versions. Content-based validation using actual datapack content (commands, JSON) and community knowledge of version changes — NOT from `pack.mcmeta` (which is often wrong).
 
-`dpcheck` looks at the **real content** of your pack (the actual commands, JSON files, models, sounds, textures) and validates it against the real command tree, registries, mcdoc schemas, and **version-aware JSON format rules** of each Minecraft version. It also uses a curated list of community-known version changes (the "what people say" layer) — because `pack.mcmeta` is **often wrong** about which versions a pack really supports.
+## What it does
 
----
-
-## Why this exists
-
-Datapack authors usually only test on one version. When someone asks *"does this work on 1.21.4?"* the honest answer is *"I don't know."* `pack.mcmeta`'s `supported_formats` field is frequently inaccurate or just missing.
-
-This tool answers that question by:
-
-1. Reading your `.mcfunction` files and checking every command against the **real Brigadier command tree** of each version (from the [Spyglass](https://github.com/SpyglassMC/Spyglass) API).
-2. Reading your `.json` files and checking values against each version's **real registries** (entity types, items, biomes, etc.).
-3. **Structurally validating** datapack/resource pack JSON (67+ types including `recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`, `damage_type`, `enchantment`, all `worldgen/*`, `model`, `block_definition`, `font`, `shader`, and more) against the real [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema, with full `#[since]`/`#[until]` version gating — so it catches things like a `crafting_dye` recipe (added in 26.1), a `random_sequence` loot-table field (added in 1.20), or an advancement `icon` using the post-1.20.5 `ItemStackTemplate` format.
-4. **Version-aware JSON semantic checks** (integrated into mcdoc structural validation) — catching format changes like predicate field renames (`alternative`→`any_of` in 1.20), damage boolean flag removal (1.19.4), biome precipitation field changes (1.19.4), loot function `type` requirements (1.17/1.18), and recipe result key renames (`item`→`id` in 1.20.5).
-5. Cross-referencing a **knowledge base** of version changes (e.g. item components need 1.20.5+, `/random` needs 1.20.2, `/dialog` needs 1.21.6).
-6. Reporting which versions **fully work**, which **break**, and **what to change** for each break.
-
----
-
-## Features
-
-- ✅ **Datapack mode** — scans `data/` for `.mcfunction` commands + `.json` registries
-- ✅ **Resource pack mode** — scans `assets/` for models, blockstates, sounds, atlases, particles, fonts, lang, shaders, and textures
-- ✅ Auto-detection of pack type (`--mode auto`)
-- ✅ Content-based checking (does **not** trust `pack.mcmeta` alone)
-- ✅ Real per-version command-tree validation (via Spyglass API)
-- ✅ Real per-version registry validation for JSON
-- ✅ Real **structural** JSON validation via [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) — field names, dispatch `type` values, and `#[since]`/`#[until]` version gating for 67+ datapack/resource pack types (`recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`, `damage_type`, `enchantment`, `jukebox_song`, `chat_type`, `trim_pattern`, `trim_material`, all entity variants, all `worldgen/*`, `model`, `block_definition`, `sounds`, `atlas`, `particle`, `font`, `shader`, `lang`, `texture_meta`, `equipment`, `item_definition`, `waypoint_style`, `post_effect`, and more)
-- ✅ **Semantic format checks** (integrated into mcdoc structural validation) — version-aware detection of format changes: predicate field renames (`alternative`/`any_of`, `requirements`/`all_of`), damage boolean flag removal (1.19.4), biome precipitation field changes (1.19.4), loot function `type` requirements (1.17/1.18), recipe result key renames (`item`/`id`, 1.20.5)
-- ✅ Community knowledge rules for version-gated features (datapack **and** resource pack)
-- ✅ **Registry deprecation detection** — detects registry entries (items, entities, biomes, etc.) that existed in the pack's source version but were REMOVED in the target version
-- ✅ Detects when `pack.mcmeta` is **wrong** (e.g. declares 1.19.3 but uses 1.20.5 features)
-- ✅ Lists the exact file + line of every break, with a **per-issue porting suggestion** (marked auto-fixable vs manual), a per-version "make compatible" checklist, and a one-click **Port to X** action in the web GUI
-- ✅ Shows **community-curated breaking changes** per version (from [misode/technical-changes](https://github.com/misode/technical-changes)) — so you know what changes when updating to each version
-- ✅ **Dependency graph analysis** — builds a full resource index of all functions, loot tables, advancements, predicates, recipes, tags, and worldgen files; traces cross-file references (function calls, loot table refs, advancement rewards, predicate refs, tag members, model parents, texture refs); detects **orphaned resources** (dead code), **broken references** (typos/missing files), and **circular dependencies** (A→B→A loops)
-- ✅ **Pack metrics** — total functions/JSON files/commands, avg commands per function, max execute depth, largest function, namespace distribution
-- ✅ **Porting plan** — `--fix <target>` generates a detailed plan showing every command rewrite needed, cascade effects (rewriting X will affect Y files), and manual-attention items for features with no auto-fix; then rewrites commands (including inside `/execute run` and `$()` macros), removes invalid JSON fields via mcdoc schemas, converts advancement icons, and updates `pack.mcmeta` to port your datapack **or resource pack** to any target version
-- ✅ Works on releases **and** snapshots
-- ✅ **Local caching** of all version data (fast re-runs, works offline) with `--refresh` to force re-download
-- ✅ JSON output (`--json`) for scripting/CI
-
----
-
-## Quick start
-
-### 1. Prerequisites
-
-- **Node.js** 18 or newer — download from <https://nodejs.org>
-- **Internet access** (the tool downloads version data from the Spyglass API)
-- A terminal (PowerShell, Command Prompt, or bash)
-
-Check your Node version:
-
-```bash
-node --version
-```
-
-### 2. Install / build
-
-```bash
-# clone or download this folder, then:
-cd datapack-version-checker
-npm install      # install TypeScript + Node types
-npm run build    # compile TypeScript -> dist/
-```
-
-> The compiled program lives in `dist/`. You run it with `node dist/index.js ...`.
-
-### 3. Check a datapack
-
-Point it at a datapack folder (the folder that contains `pack.mcmeta`):
-
-```bash
-node dist/index.js --dir "C:\Path\To\Your\Datapack"
-```
-
-That's it. The tool prints a report showing compatibility, issues, and pack analysis.
-
----
+1. **Command validation** — Scans all `.mcfunction` files and validates every command against each version's real command tree (from Spyglass API)
+2. **Registry validation** — Validates all JSON files against each version's registries (items, blocks, entities, etc.)
+3. **Structural validation** — Checks JSON structure against vanilla-mcdoc (field names, dispatch type values, and since/until version gating) for recipe, loot_table, advancement, predicate, and item_modifier files
+4. **Breaking changes** — Shows community-curated breaking changes per version (misode/technical-changes)
+5. **Auto-fix** — Port datapack to a target version by rewriting commands, fixing JSON structure, updating advancement icons, and updating pack.mcmeta
+6. **Resource pack mode** — Scan `assets/` for models, textures, sounds, blockstates, particles, fonts, shaders, atlases, and language files
 
 ## Usage
 
+```bash
+# Check current directory
+dpcheck
+
+# Check a specific datapack
+dpcheck --dir ./my-datapack
+
+# Check specific versions
+dpcheck --versions "1.20.4,1.21,1.21.1"
+
+# Auto-fix to target version
+dpcheck --dir ./my-datapack --fix 1.21
+
+# Resource pack mode
+dpcheck --dir ./my-resource-pack --mode resourcepack
+
+# JSON output for scripting
+dpcheck --dir ./my-datapack --json > report.json
+
+# Start web GUI
+dpcheck serve
 ```
-node dist/index.js [options]
+
+## Architecture
+
+```
+src/
+├── index.ts              # CLI entry point, argument parsing, output formatting
+├── engine.ts             # Core compatibility checking engine
+├── rules.ts              # Single source of truth for all porting knowledge
+├── json-check.ts         # Registry validation (FIELD_TO_REGISTRY, TAG_KIND_TO_REGISTRY)
+├── mcdoc-check.ts        # Structural validation against vanilla-mcdoc schemas
+├── fixer.ts              # Auto-fix/porting engine
+├── api.ts                # Spyglass API client with ETag caching
+├── cache.ts              # Version data caching
+├── knowledge.ts          # Historical feature rules (now in rules.ts)
+├── resource-knowledge.ts # Historical resource rules (now in rules.ts)
+├── technical-changes.ts  # Misode technical changes data
+├── tokenizer.ts          # Command tokenizer
+├── walker.ts             # JSON walker
+├── suggest.ts            # Fix suggestions
+├── server.ts             # Web server (Express)
+├── logger.ts             # Logging
+├── types.ts              # TypeScript types
+└── version.ts            # Version utilities
+
+web/
+├── src/
+│   ├── engine/           # Web port (mirrors src/ logic)
+│   ├── components/       # React components
+│   ├── App.tsx           # Main app
+│   └── main.tsx          # Entry point
+├── index.html
+├── vite.config.ts
+└── package.json
 ```
 
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--dir <path>` | `-d` | Path to the pack folder (the one containing `pack.mcmeta`). Default: current directory. |
-| `--mode <type>` | | Pack type: `datapack`, `resourcepack`, or `auto` (detect from folder contents). Default: `auto`. |
-| `--versions <v1> [v2 ...]` | `-v` | Check **specific** versions, e.g. `-v 1.20.4 1.21 1.21.1`. |
-| `--all` | | Check **every** version (releases + snapshots). Slower. |
-| `--json` | | Print raw JSON instead of a human report (good for scripts). |
-| `--strict` | | Use strict command validation (root **and** every sub-command must exist in the tree). More thorough but reports more false positives on some vanilla quirks. Datapack mode only. |
-| `--refresh` | | Re-download all cached version data, including the vanilla-mcdoc schema (otherwise data is reused for 24h). |
-| `--fix <version>` | | **Auto-fix mode:** port the datapack or resource pack to the target version. Detects source version from `pack.mcmeta` (override with `--from`). Rewrites commands (including nested inside `/execute run` and `$()` macros), removes invalid JSON fields via mcdoc schemas, converts advancement icons, updates `pack.mcmeta`. Outputs to `{dir}_fixed_{version}/` (override with `--output`). |
-| `--from-version <ver>` | `--from` | Explicit source version for fix mode (default: auto-detected from `pack.mcmeta`). |
-| `--output <path>` | `-o` | Output directory for fix mode (default: `{dir}_fixed_{version}`). |
-| `serve` | | Start the **web GUI server** on port 3001. Open `http://localhost:3001/` in a browser. |
-| `--help` | `-h` | Show help. |
+### Key concepts
 
-## Web GUI (two ways to use)
+- **`rules.ts`** is the single source of truth for all porting knowledge (commands, registries, resource paths, JSON field renames). Both `src/rules.ts` and `web/src/engine/rules.ts` must stay byte-identical.
+- **`json-check.ts`** handles registry validation with `FIELD_TO_REGISTRY` (maps JSON field names to Spyglass registry keys) and `TAG_KIND_TO_REGISTRY` (maps tag kinds to registries).
+- **`mcdoc-check.ts`** validates JSON structure against vanilla-mcdoc schemas with since/until version gating.
+- **`engine.ts`** orchestrates all checks and computes compatibility results.
 
-dpcheck includes a **professional web GUI** that exposes every CLI feature through a polished dark-mode interface. You can use it **locally** (needs Node.js) or as a **fully browser-based version** on GitHub Pages (zero setup).
+### Validation layers
 
-### Option A: GitHub Pages (no install — just visit)
+1. **Command rules** — Pattern-based rules matching command syntax (e.g., `/execute rotated` requires 1.19.4+)
+2. **Registry checks** — Validate field values against Spyglass registry data
+3. **Tag registry checks** — Validate tag members against registries per tag kind
+4. **mcdoc structural checks** — Validate JSON structure against vanilla-mcdoc schemas
+5. **noise_router structural checks** — Hand-rolled validation for noise_router files (no upstream mcdoc variant)
 
-The browser-only version runs **entirely in your browser** — no server, no Node.js, no installation. Just open the URL and drag in your datapack.
+### Version gating
 
-**Deploy your own:**
-1. Fork the repo
-2. Enable GitHub Pages in repo Settings → Pages → deploy from `master` + `/web`
-3. Or use the pre-built workflow: push changes to `master` and the [deploy action](.github/workflows/deploy.yml) builds + deploys automatically
+- `since` — Feature exists from this version (inclusive)
+- `until` — Feature removed/changed at this version (exclusive)
+- Fields tracked via `allFields` → precise "requires >= X" / "was removed in X" messages
+- One-time per-run note for schema-less kinds (no mcdoc definition available)
 
-### Option B: Local server
+## Testing
 
 ```bash
-npm run serve
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Type check
+npx tsc --noEmit
+
+# Build
+npm run build
 ```
 
-Open **http://localhost:3001/** in your browser.
+## Data sources
 
-### Features
-
-| Tab | What it does |
-|-----|-------------|
-| **Check** | Upload a datapack/resource pack (drag-and-drop folder or `.zip`), select target versions via a searchable scrollable list, choose mode (auto/datapack/resourcepack), run the check, and see all results with expandable version rows showing every issue type. |
-| **Fix** | Upload a pack, pick a source + target version, and download a ported `.zip` with rewritten commands, fixed JSON, and updated `pack.mcmeta`. |
-
-The Check results show:
-- **Summary cards** — compatible, broken, and total-issue counts
-- **Version rows** — expand each version to see **command issues**, **registry issues**, **structural (mcdoc) issues**, **registry deprecations**, and **breaking changes**
-- **Analysis section** — dependency graph snapshot showing resource counts by type, namespace pills, cross-file references, orphaned resources, broken references, and circular dependencies
-- **Knowledge hits** — community rules that set the minimum version
-- All lists are **scrollable** (showing 5 items) with custom dark scrollbars
-
-### Examples
-
-```bash
-# Check the current folder
-node dist/index.js
-
-# Check a specific datapack against a few versions
-node dist/index.js --dir "../real-tests/wither" -v 1.21.9 1.21.10 1.21.11
-
-# Check every version (wide scan)
-node dist/index.js --dir "./my-datapack" --all
-
-# Get machine-readable output for a script
-node dist/index.js --dir "./my-datapack" --json > report.json
-
-# Auto-fix: port a datapack to 1.21 (auto-detects source from pack.mcmeta)
-node dist/index.js --dir "./my-datapack" --fix 1.21
-
-# Auto-fix: port from a specific source version with custom output
-node dist/index.js --dir "./my-datapack" --fix 1.20.4 --from-version 1.21 --output ./ported
-
-# Auto-fix: port a resource pack to 1.21.4
-node dist/index.js --dir "./my-resource-pack" --mode resourcepack --fix 1.21.4
-
-# Check a resource pack
-node dist/index.js --dir "./my-resource-pack" --mode resourcepack
-
-# Check a resource pack against specific versions
-node dist/index.js --dir "./my-resource-pack" --mode resourcepack -v 1.21.4 1.21.5 26.1
-
-# Auto-detect pack type (uses data/ for datapack, assets/ for resource pack)
-node dist/index.js --dir "./my-pack" --mode auto
-```
-
----
-
-## How to read the report
-
-### Check mode output
-
-```
-⚡ dpcheck v0.7.0 (content + load-range + structural + semantic format + registry deprecation + auto-fix + analysis)
-══════════════════════════════════════════════════════════
-
---- Pack Analysis ---
-Resources: 12 indexed
-  7 Functions, 5 JSON files
-  9 Commands, 1 Avg cmds/fn
-  Max exec depth: 0
-  Largest function: data/demo/functions/helper.mcfunction (5 lines)
-  Namespaces: demo (12)
-  12 cross-file references found
-  4 Orphans, 1 Broken ref, 1 Circular dep
-
-📦 Declared load range (pack.mcmeta): 1.19.3 – 1.19.3
-📋 Minimum version from content: 1.20.5
-🔍 Versions checked: 26
-✅ Fully compatible: 0
-❌ Breaks / incompatible: 26
-```
-
-**Pack Analysis** — dependency graph snapshot at the top. Shows resource counts by type, pack metrics, cross-file references found, number of orphans (resources with no inbound refs — possible dead code), broken refs (function calls to files that don't exist — typos), and circular dependencies (A calls B calls A — infinite loops). Tags and vanilla references are excluded from orphan/broken detection.
-
-**Declared load range** — what `pack.mcmeta` says Minecraft will load.
-
-**Minimum version from content** — the *actual* oldest version the content can run on based on the features it uses. If this is **newer** than the declared range, your `pack.mcmeta` is wrong.
-
-**Fully compatible** — versions where the pack both *loads* and has *no detected content breaks*.
-
-**Content breaks** — versions where the pack loads but specific commands or JSON would fail. Each break shows the file, line number, and what needs to change:
-
-```
-▶ 1.20.4
-────────────────────────────────────────────────────────────
-    data\aop1\functions\dr.mcfunction:1
-      ✗ Uses The /item command (replace/modify) overhaul requires 1.20.5+ — needs >= 1.20.5 but this is 1.20.4
-```
-
-At the bottom, **"WHY THIS VERSION RANGE"** lists which community-known features set the minimum version, and **"KNOWN BREAKING CHANGES BY VERSION"** shows curated changes per version.
-
-### Fix mode output (porting plan)
-
-When running `--fix <target>`, the tool first prints a porting plan showing what it will change, then creates the ported pack:
-
-```
-⚡ Porting Plan: 1.20.4 → 1.21
-══════════════════════════════════════════════════════════════
-Source: 1.20.4 | Target: 1.21 | Direction: forward
-
-Actions: 5 (4 auto-fixable, 1 manual)
-Files affected: 3
-Cascade effects: 2
-
-Rewrites:
-  data/demo/functions/commands.mcfunction:12
-    replaceitem → item (auto-fix)
-  data/demo/functions/commands.mcfunction:45
-    execute if predicate → execute if predicate (needs manual review)
-
-Manual attention:
-  data/demo/functions/commands.mcfunction:60
-    Command "tick" not available in 1.21 — no auto-rewrite exists
-
-Cascade effects:
-  Rewriting commands.mcfunction may affect 2 dependent files:
-    data/demo/functions/start.mcfunction
-    data/demo/advancements/root.json
-```
-
----
-
- ## How it works (short version)
-
- **Datapack mode** (`data/`):
- 1. **Scan** all `data/**/*.mcfunction` and `data/**/*.json` files.
- 2. **Tokenize** each command line and walk it against the target version's Brigadier command tree (following redirects like `tp` → `teleport`).
- 3. **Validate** JSON string values against the target version's registries (entity types, items, etc.), with guards against common false positives.
- 4. **Structurally validate** datapack JSON (`recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`) against the target version's [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema.
- 5. **Semantic format checks** — version-aware validation of JSON field names and structures that changed between versions: predicate field renames, damage flags, biome precipitation, loot function type requirements, and recipe result key formats.
- 6. **Analyze dependency graph** — build a resource index, trace cross-file references, detect orphans, broken refs, and circular dependencies.
- 7. **Apply knowledge rules** — a feature added in a later version overrides the lenient walker and is reported as a break on older versions.
-
- **Resource pack mode** (`assets/`):
- 1. **Scan** all `assets/**/*.json`, `*.png`, and `*.mcmeta` files.
- 2. **Validate** JSON string values against the target version's registries.
- 3. **Structurally validate** resource pack JSON (`model`, `block_definition`, `sounds`, `atlas`, `particle`, `font`, `shader`, `lang`, `texture_meta`, `equipment`, `item_definition`, `waypoint_style`, `post_effect`, and more) against the target version's mcdoc schema.
- 4. **Apply resource knowledge rules** — model features, atlas sources, font provider fields, etc.
-
- **Both modes:**
-  8. **Pull breaking changes** per version from [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated, auto-updating) and show them as informational notes.
-  9. **Combine** with `pack.mcmeta`'s load range to decide: loads? or breaks.
-
-All downloaded data is **cached locally** (24h) so re-runs are fast and work offline; use `--refresh` to force an update.
-
-See [`docs.md`](./docs.md) for the full technical details.
-
----
-
-## Data source & credits
-
-- Command trees and registries: [Spyglass API](https://api.spyglassmc.com/mcje/) (`api.spyglassmc.com/mcje/versions`).
-- Structural JSON schema: [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) (fetched live as a tarball via the Spyglass dependency loader).
-- Breaking-change notes: [misode/technical-changes](https://github.com/misode/technical-changes) (community-curated technical changelogs).
-- Version-change knowledge: community datapack-porting experience and the [Minecraft Wiki command history](https://minecraft.wiki/w/Commands).
-
----
-
-## Limitations
-
-- Command argument-level validation is **lenient by default** (the root command must exist; gaps in sub-commands are tolerated because the Spyglass tree has some holes). Use `--strict` for stricter checks.
-- Structural JSON validation covers datapack files: `recipe`, `loot_table`, `advancement`, `predicate`, `item_modifier`, `damage_type`, `enchantment`, `jukebox_song`, `chat_type`, `trim_pattern`, `trim_material`, `banner_pattern`, `wolf_variant`, `pig_variant`, `cat_variant`, `frog_variant`, `painting_variant`, `instrument`, `dimension_type`, `dimension`, `trial_spawner`, `trade_set`, `villager_trade`, `dialog`, `enchantment_provider`, `decorated_pot_pattern`, `cow_variant`, `chicken_variant`, `zombie_nautilus_variant`, `sulfur_cube_archetype`, `timeline`, `world_clock`, `test_instance`, `test_environment`, `number_provider`, `slot_source`, `equipment`, `waypoint_style`, and **all worldgen types** (`worldgen/biome`, `worldgen/configured_feature`, `worldgen/placed_feature`, `worldgen/structure`, `worldgen/template_pool`, `worldgen/density_function`, `worldgen/noise`, `worldgen/noise_settings`, etc.). Tag files (`tags/`) are automatically excluded from structural validation (they have a simpler format). It tolerates mcdoc constructs it can't parse yet (treating them as "allowed"), so it aims to report **real** breaks without false positives rather than exhaustively proving correctness.
-- **Semantic format checks** (integrated into mcdoc structural validation) cover predicate field renames (1.20), damage boolean flags (1.19.4), biome precipitation (1.19.4), loot function type requirements (1.17/1.18), and recipe result keys (1.20.5). These checks apply to both data packs and resource packs where relevant.
-- NBT *structure* is not deeply validated yet (only JSON structure via vanilla-mcdoc and semantic format checks).
-- Registry deprecation detection only fires when checking versions NEWER than the datapack's declared `pack.mcmeta` range. When the source version is unknown (no `pack.mcmeta` range), deprecation detection is skipped.
-- The knowledge base covers the most common breaking changes; it is not an exhaustive list of every MC change. Contributions welcome.
-- **Auto-fix mode** (`--fix`) rewrites commands and JSON based on known patterns, including commands nested inside `/execute run` and `$()` macros. It is conservative — commands that can't be rewritten are commented out (with `## FIXED(...): original command`) rather than deleted. JSON structural fixes remove fields invalid for the target version using the mcdoc schema. Works for both datapacks and resource packs.
-- **`--fix` is a partial port, not a complete one.** It handles command syntax changes, JSON field renames/removals, icon format changes, and pack format updates. It cannot fix game mechanic changes (mob behavior, redstone, world generation), deep NBT structure changes, or entirely new features with no old equivalent. Always test the ported pack in-game.
-- **Dependency graph analysis** is file-system based (server) or `PackFileMap` based (web). It detects references within your pack but cannot resolve vanilla Minecraft references (e.g., `minecraft:iron_ingot` will show as a broken ref if not declared in the pack). Tags (`tags/`) are excluded from orphan detection since they're loaded by the game engine by registry path.
-
----
+- **Spyglass API** — `api.spyglassmc.com/mcje/versions|/commands|/registries` (ETag-cached)
+- **vanilla-mcdoc** — Structural schemas for recipe, loot_table, advancement, predicate, item_modifier
+- **misode/technical-changes** — Community-curated breaking changes per version
+- **Community knowledge** — Porting rules, command rewrites, registry renames
 
 ## License
 
-MIT — see [LICENSE.md](./LICENSE.md) for details.
+ISC
