@@ -43,6 +43,9 @@ MyDatapack/
 `dpcheck` reads the files **inside `data/`** (the `.mcfunction` command files
 and the `.json` data files) to figure out compatibility.
 
+A **resource pack** is similar but lives in `assets/` and controls textures,
+sounds, models, and other visual elements. `dpcheck` supports both.
+
 ---
 
 ## 2. What problem does dpcheck solve?
@@ -229,6 +232,25 @@ by small gaps in the command data.
 is more thorough but may report some false positives for vanilla quirks, so use
 it when you want to dig deeper.
 
+### `--summary` — separate content vs load-range issues
+
+```bash
+node dist/index.js --dir "./mydp" --summary
+```
+
+By default, the "Breaks / incompatible" count includes versions that fail
+*either* because the content uses features they don't support *or* because
+they're outside the declared `pack.mcmeta` load range. With `--summary`, the
+tool separates these two categories:
+
+```
+✅ Fully compatible: 26
+❌ Breaks / incompatible: 5
+  Outside declared load range: 15
+```
+
+This makes it easier to see which versions actually have content problems
+vs. which are simply outside the declared range.
 ### `--fix <target-version>` — auto-fix / porting mode
 
 ```bash
@@ -244,6 +266,7 @@ Ports a datapack or resource pack to the target version:
 - Removes JSON fields invalid for the target version via mcdoc schema validation
 - Fixes advancement icons from post-1.20.5 `ItemStackTemplate` format → pre-1.20.5 `{item,nbt}` format
 - Updates `pack.mcmeta`'s `pack_format` to match the target version
+- Skips files whose registry doesn't exist in the target version (e.g., `dialog` files when targeting pre-1.21.6)
 
 **Resource pack mode:**
 - Removes JSON fields invalid for the target version (e.g. `render_type` in models)
@@ -273,13 +296,19 @@ generation), deep NBT structure changes not covered by mcdoc schemas, or entirel
 new features with no old equivalent. Always test the ported pack in-game and
 review the `## FIXED(...)` comments for manual attention items.
 
+Use `--diff` to see a before/after diff of every file change:
+
+```bash
+node dist/index.js --dir "./mydp" --fix 1.21 --diff
+```
+
 ### `serve` — launch the web GUI
 
 ```bash
 node dist/index.js serve
 ```
 
-Opens a local web server (default port **3001**) with a professional dark-themed GUI. Open `http://localhost:3001/` in your browser for a visual interface with:
+Opens a local web server (default port **3001**) with a dark-themed GUI. Open `http://localhost:3001/` in your browser for a visual interface with:
 
 - **Drag-and-drop** pack upload (folder or `.zip`)
 - **Searchable, scrollable version selector** — filter versions by name, ID, or type
@@ -307,13 +336,24 @@ locally for 24 hours** so re-runs are fast and work offline. Use `--refresh`
 to discard the cache and fetch everything fresh (e.g. right after a new
 Minecraft version releases).
 
+### `--verbose` / `--debug` — progress and timing
+
+```bash
+node dist/index.js --dir "./mydp" --verbose
+```
+
+Shows detailed progress and timing for each check phase. `--debug` is even
+more verbose and shows all internal messages.
+
+---
+
 ## 6. Reading the report
 
 Here is a typical report, annotated:
 
 ```
-⚡ dpcheck v0.7.0 (content + load-range + structural + semantic format + registry deprecation + auto-fix + analysis)
-══════════════════════════════════════════════════════════
+⚡ Datapack Version Checker v0.5.0 (content + load-range + structural + breaking changes)
+═══════════════════════════════════════════════════════════
 
 📦 Declared load range (pack.mcmeta): 1.19.3 – 1.19.3
 📋 Minimum version from content: 1.20.5
@@ -361,6 +401,24 @@ base. When the rule behind the issue has a structured auto-fix (a command
 rewrite or field rename), the line is tagged `[auto-fixable]` — `--fix` can
 apply it automatically. Otherwise it's a manual hint.
 
+### Auto-fix suggestions
+
+After the report, the tool shows what can be fixed:
+
+```
+💡 AUTO-FIX SUGGESTIONS
+──────────────────────────────────────────────────
+
+✓ 12 issues can be auto-fixed
+    • 8 command rewrites (mcfunction files)
+    • 4 structural fixes (JSON/mcdoc)
+⚠ 3 issues need manual attention
+    • 3 registry issues (removed/renamed entries)
+
+To auto-fix, run:
+  $ dpcheck --dir ./my-datapack --fix 1.21
+```
+
 ### Why this version range
 
 At the bottom, the tool lists the community-known features that set the minimum
@@ -368,13 +426,32 @@ version, with example locations:
 
 ```
 WHY THIS VERSION RANGE (community knowledge):
-══════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════
 • The /item command (replace/modify) overhaul requires 1.20.5+
     Requires: >= 1.20.5
     Fix: Use /replaceitem (pre-1.20.5) ...
     Found: data\aop1\functions\dr.mcfunction:1
 ```
 
+### Summary mode (`--summary`)
+
+With `--summary`, outside-load-range versions are shown separately:
+
+```
+⚡ Datapack Version Checker v0.5.0 (content + load-range + structural + breaking changes)
+═══════════════════════════════════════════════════════════
+
+📦 Declared load range (pack.mcmeta): 1.21.10 – 26.2
+📋 Minimum version from content: 1.20.5
+🔍 Versions checked: 30
+✅ Fully compatible: 5
+❌ Breaks / incompatible: 3
+  Outside declared load range: 12
+```
+
+The "Outside declared load range" count shows versions where the pack would
+load (pack.mcmeta matches) but the content uses newer features. These aren't
+real bugs — they're just outside the range the author declared.
 ---
 
 ## 7. Pack analysis (dependency graph)
@@ -474,6 +551,7 @@ When using `--fix <target>`, the tool first generates a **porting plan** showing
 - **Cascade effects** — files that depend on a file being rewritten (so you know the ripple effect)
 - **Manual attention items** — features that need a rewrite but no automated rule exists yet
 - **Summary** — total actions, auto-fixable count, manual count, files affected
+- **Skipped files** — files whose registry doesn't exist in the target version (e.g., `dialog` files when targeting pre-1.21.6)
 
 The plan runs before any file is modified, so you can review what will change.
 
@@ -519,7 +597,6 @@ node dist/index.js --dir "../real-tests/daycounter"
 Result: **compatible with 26.1, 26.1.1, 26.1.2, 26.2**. The content uses
 `/dialog` (1.21.6+), so versions before 1.21.6 are listed as breaking — but all
 declared 26.x versions work.
-
 ---
 
 ## 9. How the tool actually works
@@ -542,7 +619,13 @@ force a fresh download.
 4. **Check JSON structure (mcdoc).** Validate each file against the
    [vanilla-mcdoc](https://github.com/SpyglassMC/vanilla-mcdoc) schema for that
    version — field names, dispatch `type` values, and `#[since]`/`#[until]`
-   version gating for 70+ datapack types.
+   version gating for 70+ datapack types (recipe, loot_table, advancement,
+   predicate, item_modifier, damage_type, enchantment, jukebox_song, chat_type,
+   trim_pattern, trim_material, banner_pattern, wolf_variant, pig_variant,
+   cat_variant, frog_variant, painting_variant, instrument, dimension_type,
+   dimension, trial_spawner, trade_set, villager_trade, dialog,
+   enchantment_provider, decorated_pot_pattern, cow_variant, chicken_variant,
+   zombie_nautilus_variant, and more).
 
 5. **Check JSON semantics (integrated into mcdoc).** Version-aware checks for
    predicate field renames (`alternative`/`any_of`, `requirements`/`all_of` in
@@ -605,7 +688,6 @@ force a fresh download.
 - So `dpcheck` uses `pack.mcmeta` for the load range, and uses real content
   analysis to find breaks — including cases where `pack.mcmeta` is too optimistic
   (declares an old version but uses new features).
-
 ---
 
 ## 10. The knowledge base (version-change rules)
@@ -616,7 +698,7 @@ Each rule says: *"if the datapack uses feature X, it needs at least version Y."*
 Rules live in one unified `PortRule` schema, so the same rule drives three things:
 
 1. **Detection** - the `match` / `type` / `since` fields power the version-range knowledge checks (this section) and per-version issue detection.
-2. **Guidance** - the `guidance` field becomes the per-issue porting *suggestion* shown in the CLI (`-> suggestion [auto-fixable]` line) and in the web GUI (green = auto-fixable, amber = manual).
+2. **Guidance** - the `guidance` field becomes the per-issue porting *suggestion* shown in the CLI (`→ suggestion [auto-fixable]` line) and in the web GUI (green = auto-fixable, amber = manual).
 3. **Auto-fix** - the structured `fix` action (`rewrite`, `rename_field`, `remove_field`, `comment_out`, `rename_registry_entry`) powers the `--fix` command rewrite engine and marks issues as auto-fixable.
 
 `CMD_REWRITES` (rewrite strategies) and the predicate/recipe rename tables used to live in separate files with separate schemas; they are now part of the same rule list, so a feature check and its fix can never drift apart. New rules can be added for any of the four rule types (see section 12).
@@ -695,6 +777,7 @@ datapack-version-checker/
 ├── tsconfig.json         # TypeScript config (NodeNext / ESM)
 ├── docs.md               # Detailed documentation
 ├── README.md             # Quick-start README
+├── LICENSE.md            # MIT license
 ├── src/
 │   ├── index.ts          # CLI entry point + argument parsing + serve
 │   ├── server.ts         # Express web server (GUI backend + API)
@@ -706,11 +789,13 @@ datapack-version-checker/
 │   ├── walker.ts         # Brigadier command-tree walker
 │   ├── json-check.ts     # JSON registry validation
 │   ├── json-format-check.ts # Version-aware JSON semantic format checks
-│   ├── mcdoc-check.ts    # vanilla-mcdoc structural validator (67+ resource type mappings)
-│   ├── knowledge.ts      # Community version-change rules (FEATURE_RULES)
-│   ├── resource-knowledge.ts # Resource pack version-change rules (RESOURCE_FEATURE_RULES)
+│   ├── mcdoc-check.ts    # vanilla-mcdoc structural validator (70+ type mappings)
+│   ├── rules.ts          # Single source of truth for all porting knowledge
+│   ├── knowledge.ts      # Re-exports from rules.ts (historical compatibility)
+│   ├── resource-knowledge.ts # Re-exports from rules.ts (historical compatibility)
 │   ├── version.ts        # Version comparison helpers
 │   ├── technical-changes.ts # misode/technical-changes fetcher
+│   ├── suggest.ts        # Fix suggestions
 │   ├── pack-mcmeta.ts    # pack.mcmeta reader (load range only)
 │   ├── cache.ts          # Local cache for API data
 │   ├── logger.ts         # Structured logger (stderr-based, level-configurable)
@@ -721,7 +806,7 @@ datapack-version-checker/
 │   ├── index.html        # Frontend HTML + embedded CSS
 │   └── src/
 │       ├── main.tsx      # React entry point
-│       ├── App.tsx       # Main app component (tabs, file upload, version picker)
+│       ├── App.tsx       # Main app component (Check / Fix tabs)
 │       ├── api.ts        # Frontend API client + TypeScript types
 │       ├── engine/
 │       │   ├── engine.ts         # Browser-side compatibility engine
@@ -739,7 +824,8 @@ datapack-version-checker/
 │       │   ├── logger.ts         # Logger (browser-compatible)
 │       │   └── types.ts          # Shared types (browser-compatible)
 │       └── components/
-│           └── Results.tsx  # Results display (version rows, issues, knowledge, analysis section)
+│           ├── Results.tsx   # Results display (version rows, issues, knowledge, analysis section)
+│           └── FixPanel.tsx  # Fix/port panel (source/target version, preview, download)
 ├── tests/
 │   ├── walker.test.ts          # Command walker tests
 │   ├── tokenizer.test.ts       # Tokenizer tests
@@ -805,6 +891,7 @@ All version data comes from these live sources (fetched at runtime, cached local
   - `GET https://api.spyglassmc.com/mcje/versions`
   - `GET https://api.spyglassmc.com/mcje/versions/{id}/commands`
   - `GET https://api.spyglassmc.com/mcje/versions/{id}/registries`
+- **vanilla-mcdoc** — structural schemas for 70+ datapack and resource pack types
 - **misode/technical-changes** — community-curated breaking-change notes per version
   (fetched via the GitHub API tree + raw markdown files, filtered by the `breaking` tag).
 
