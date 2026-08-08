@@ -661,6 +661,71 @@ function renamePredicateFields(
   return { data: walk(data), patches, details }
 }
 
+// ---------------------------------------------------------------------------
+// Entity predicate type -> entity_type rename (26.2 forward port)
+// ---------------------------------------------------------------------------
+// 26.2 changed EntityPredicate from a struct with a `type` field to a
+// component-map style keyed by `entity_type`. The rename only applies inside
+// entity predicate contexts: advancement conditions.entity, loot table
+// entity_properties conditions, and standalone predicate files. Nested
+// entity predicates (vehicle/passenger/targeted_entity) recurse; the
+// type_specific sub-predicate keeps its own `type` field.
+
+function renameEntityPredicateType(
+  data: any,
+  targetName: string,
+  relPath: string,
+): { data: any; patches: number; details: string[] } {
+  const details: string[] = []
+  let patches = 0
+
+  // Rename `type` -> `entity_type` inside one EntityPredicate object.
+  function fixPredicate(obj: any): any {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj
+    const result: any = {}
+    for (const [key, val] of Object.entries(obj)) {
+      if (key === 'type') {
+        result['entity_type'] = val
+        patches++
+        details.push(`${relPath}: Renamed type -> entity_type for 26.2+ entity predicate`)
+      } else {
+        result[key] = val
+      }
+    }
+    // Nested entity predicates
+    for (const nested of ['vehicle', 'passenger', 'targeted_entity']) {
+      if (result[nested] && typeof result[nested] === 'object' && !Array.isArray(result[nested])) {
+        result[nested] = fixPredicate(result[nested])
+      }
+    }
+    return result
+  }
+
+  function walk(obj: any): any {
+    if (!obj || typeof obj !== 'object') return obj
+    if (Array.isArray(obj)) return obj.map(walk)
+    const result: any = {}
+    for (const [key, val] of Object.entries(obj)) {
+      if (key === 'entity' && val && typeof val === 'object' && !Array.isArray(val)) {
+        // Advancement conditions.entity is an EntityPredicate
+        result[key] = fixPredicate(val)
+      } else if (key === 'predicate' && val && typeof val === 'object' && !Array.isArray(val)) {
+        // Loot table entity_properties condition predicate
+        result[key] = fixPredicate(val)
+      } else {
+        result[key] = walk(val)
+      }
+    }
+    return result
+  }
+
+  // Predicate files are standalone EntityPredicates
+  if (relPath.includes('/predicate/')) {
+    return { data: fixPredicate(data), patches, details }
+  }
+  return { data: walk(data), patches, details }
+}
+
 function fileToResourceId(relPath: string): string | null {
   if (relPath.endsWith('.mcfunction')) {
     const m = relPath.match(/^data\/([^/]+)\/functions\/(.+)\.mcfunction$/)
@@ -1065,6 +1130,15 @@ export async function fixDatapack(options: FixOptions): Promise<{
     // Predicate any_of -> alternative rename (backport pre-1.20)
     if (!portingForward && rel.includes('/predicate') && cmpVer(targetName, '1.20') < 0) {
       const fixResult = renamePredicateFields(currentData, targetName, rel)
+      currentData = fixResult.data
+      patches += fixResult.patches
+      details.push(...fixResult.details)
+    }
+
+    // Entity predicate type -> entity_type rename (forward to 26.2+)
+    if (portingForward && cmpVer(targetName, '26.2') >= 0 &&
+        (rel.includes('/advancement/') || rel.includes('/loot_table/') || rel.includes('/predicate/'))) {
+      const fixResult = renameEntityPredicateType(currentData, targetName, rel)
       currentData = fixResult.data
       patches += fixResult.patches
       details.push(...fixResult.details)

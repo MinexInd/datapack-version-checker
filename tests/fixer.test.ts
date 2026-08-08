@@ -13,6 +13,7 @@ const mockVersions = vi.hoisted<McmetaVersion[]>(() => [
   { id: '1.20.5', name: '1.20.5', type: 'release', stable: true, data_pack_version: 61, data_pack_version_minor: 0, resource_pack_version: 40, resource_pack_version_minor: 0, data_version: 3955, release_time: '2024-04-23T00:00:00Z' },
   { id: '1.21.4', name: '1.21.4', type: 'release', stable: true, data_pack_version: 71, data_pack_version_minor: 0, resource_pack_version: 47, resource_pack_version_minor: 0, data_version: 4620, release_time: '2024-12-03T00:00:00Z' },
   { id: '26.1', name: '26.1', type: 'release', stable: true, data_pack_version: 101, data_pack_version_minor: 0, resource_pack_version: 70, resource_pack_version_minor: 0, data_version: 9000, release_time: '2026-01-01T00:00:00Z' },
+  { id: '26.2', name: '26.2', type: 'release', stable: true, data_pack_version: 107, data_pack_version_minor: 0, resource_pack_version: 76, resource_pack_version_minor: 0, data_version: 9200, release_time: '2026-06-01T00:00:00Z' },
 ])
 
 // fixDatapack fetches the version list and mcdoc symbols; stub both so the
@@ -155,6 +156,49 @@ describe('resource pack fixer: new-style pack (min_format/max_format) support (r
       expect('supported_formats' in out.pack).toBe(false)
       expect('min_format' in out.pack).toBe(false)
       expect('max_format' in out.pack).toBe(false)
+    } finally {
+      cleanup(f)
+    }
+  })
+})
+
+describe('entity predicate type -> entity_type rename (26.2 forward port)', () => {
+  const advancement = JSON.stringify({
+    criteria: {
+      killed: {
+        trigger: 'minecraft:player_killed_entity',
+        conditions: {
+          entity: { type: 'minecraft:wither' },
+        },
+      },
+    },
+  })
+
+  it('renames type to entity_type when porting forward to 26.2', async () => {
+    const f = makePack(
+      { pack: { pack_format: 101, description: 'src' } },
+      { 'data/demo/advancement/kill_wither.json': advancement },
+    )
+    try {
+      await fixDatapack({ datapackDir: f.dir, outputDir: f.out, targetVersion: '26.2' })
+      const out = JSON.parse(readFileSync(join(f.out, 'data/demo/advancement/kill_wither.json'), 'utf-8'))
+      expect(out.criteria.killed.conditions.entity.entity_type).toBe('minecraft:wither')
+      expect('type' in out.criteria.killed.conditions.entity).toBe(false)
+    } finally {
+      cleanup(f)
+    }
+  })
+
+  it('leaves type untouched when porting to pre-26.2 targets', async () => {
+    const f = makePack(
+      { pack: { pack_format: 101, description: 'src' } },
+      { 'data/demo/advancement/kill_wither.json': advancement },
+    )
+    try {
+      await fixDatapack({ datapackDir: f.dir, outputDir: f.out, targetVersion: '26.1' })
+      const out = JSON.parse(readFileSync(join(f.out, 'data/demo/advancement/kill_wither.json'), 'utf-8'))
+      expect(out.criteria.killed.conditions.entity.type).toBe('minecraft:wither')
+      expect('entity_type' in out.criteria.killed.conditions.entity).toBe(false)
     } finally {
       cleanup(f)
     }
