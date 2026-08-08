@@ -12,6 +12,8 @@ const mockVersions = vi.hoisted<McmetaVersion[]>(() => [
   { id: '1.20.4', name: '1.20.4', type: 'release', stable: true, data_pack_version: 41, data_pack_version_minor: 0, resource_pack_version: 34, resource_pack_version_minor: 0, data_version: 3826, release_time: '2023-12-07T00:00:00Z' },
   { id: '1.20.5', name: '1.20.5', type: 'release', stable: true, data_pack_version: 61, data_pack_version_minor: 0, resource_pack_version: 40, resource_pack_version_minor: 0, data_version: 3955, release_time: '2024-04-23T00:00:00Z' },
   { id: '1.21.4', name: '1.21.4', type: 'release', stable: true, data_pack_version: 71, data_pack_version_minor: 0, resource_pack_version: 47, resource_pack_version_minor: 0, data_version: 4620, release_time: '2024-12-03T00:00:00Z' },
+  { id: '1.21.5', name: '1.21.5', type: 'release', stable: true, data_pack_version: 71, data_pack_version_minor: 0, resource_pack_version: 47, resource_pack_version_minor: 0, data_version: 4620, release_time: '2025-03-01T00:00:00Z' },
+  { id: '1.21', name: '1.21', type: 'release', stable: true, data_pack_version: 68, data_pack_version_minor: 0, resource_pack_version: 45, resource_pack_version_minor: 0, data_version: 4525, release_time: '2024-06-13T00:00:00Z' },
   { id: '26.1', name: '26.1', type: 'release', stable: true, data_pack_version: 101, data_pack_version_minor: 0, resource_pack_version: 70, resource_pack_version_minor: 0, data_version: 9000, release_time: '2026-01-01T00:00:00Z' },
   { id: '26.2', name: '26.2', type: 'release', stable: true, data_pack_version: 107, data_pack_version_minor: 0, resource_pack_version: 76, resource_pack_version_minor: 0, data_version: 9200, release_time: '2026-06-01T00:00:00Z' },
 ])
@@ -199,6 +201,92 @@ describe('entity predicate type -> entity_type rename (26.2 forward port)', () =
       const out = JSON.parse(readFileSync(join(f.out, 'data/demo/advancement/kill_wither.json'), 'utf-8'))
       expect(out.criteria.killed.conditions.entity.type).toBe('minecraft:wither')
       expect('entity_type' in out.criteria.killed.conditions.entity).toBe(false)
+    } finally {
+      cleanup(f)
+    }
+  })
+})
+
+describe('backport 1.21.5 -> 1.21 (backward port rewrites)', () => {
+  it('converts /replaceitem to /item replace when backporting to 1.21', async () => {
+    const f = makePack(
+      { pack: { pack_format: 71, description: 'src' } },
+      { 'data/demo/functions/backport.mcfunction': '/replaceitem entity @e[limit=1] armor.head minecraft:stone 1\n' },
+    )
+    try {
+      const { plan, summary } = await fixDatapack({ datapackDir: f.dir, outputDir: f.out, targetVersion: '1.21' })
+      expect(summary.errors).toEqual([])
+      expect(plan.direction).toBe('backward')
+      const out = readFileSync(join(f.out, 'data/demo/functions/backport.mcfunction'), 'utf-8')
+      expect(out).toBe('/item replace entity @e[limit=1] armor.head with minecraft:stone 1\n')
+    } finally {
+      cleanup(f)
+    }
+  })
+
+  it('does NOT downgrade /item to /replaceitem for 1.21 targets (no forward-only rewrite)', async () => {
+    const f = makePack(
+      { pack: { pack_format: 71, description: 'src' } },
+      { 'data/demo/functions/backport.mcfunction': '/item replace entity @e[limit=1] armor.head with minecraft:stone 1\n' },
+    )
+    try {
+      const { summary } = await fixDatapack({ datapackDir: f.dir, outputDir: f.out, targetVersion: '1.21' })
+      expect(summary.errors).toEqual([])
+      const out = readFileSync(join(f.out, 'data/demo/functions/backport.mcfunction'), 'utf-8')
+      expect(out).toBe('/item replace entity @e[limit=1] armor.head with minecraft:stone 1\n')
+    } finally {
+      cleanup(f)
+    }
+  })
+
+  it('comments out /test and /rotate (added after 1.21)', async () => {
+    const f = makePack(
+      { pack: { pack_format: 71, description: 'src' } },
+      { 'data/demo/functions/backport.mcfunction': '/test run hello\n/rotate entity @p 90 0\n' },
+    )
+    try {
+      await fixDatapack({ datapackDir: f.dir, outputDir: f.out, targetVersion: '1.21' })
+      const out = readFileSync(join(f.out, 'data/demo/functions/backport.mcfunction'), 'utf-8')
+      const lines = out.split('\n')
+      expect(lines[0]).toMatch(/^## FIXED\(/)
+      expect(lines[0]).toContain('/test')
+      expect(lines[1]).toMatch(/^## FIXED\(/)
+      expect(lines[1]).toContain('/rotate')
+    } finally {
+      cleanup(f)
+    }
+  })
+
+  it('comments out /give with item_model or consumable components (added 1.21.2+/1.21.4+)', async () => {
+    const f = makePack(
+      { pack: { pack_format: 71, description: 'src' } },
+      { 'data/demo/functions/backport.mcfunction': '/give @p minecraft:stick[minecraft:item_model="minecraft:sword"]\n/give @p minecraft:apple[minecraft:consumable={}]\n' },
+    )
+    try {
+      await fixDatapack({ datapackDir: f.dir, outputDir: f.out, targetVersion: '1.21' })
+      const out = readFileSync(join(f.out, 'data/demo/functions/backport.mcfunction'), 'utf-8')
+      const lines = out.split('\n')
+      expect(lines[0]).toMatch(/^## FIXED\(/)
+      expect(lines[0]).toContain('minecraft:item_model')
+      expect(lines[1]).toMatch(/^## FIXED\(/)
+      expect(lines[1]).toContain('minecraft:consumable')
+    } finally {
+      cleanup(f)
+    }
+  })
+
+  it('downgrades pack_format 71 -> 68 and leaves a 1.20.5-era command alone', async () => {
+    const f = makePack(
+      { pack: { pack_format: 71, description: 'src' } },
+      { 'data/demo/functions/backport.mcfunction': '/give @p minecraft:diamond\n' },
+    )
+    try {
+      await fixDatapack({ datapackDir: f.dir, outputDir: f.out, targetVersion: '1.21' })
+      const out = JSON.parse(readFileSync(join(f.out, 'pack.mcmeta'), 'utf-8'))
+      expect(out.pack.pack_format).toBe(68)
+      expect('supported_formats' in out.pack).toBe(false)
+      const fn = readFileSync(join(f.out, 'data/demo/functions/backport.mcfunction'), 'utf-8')
+      expect(fn).toBe('/give @p minecraft:diamond\n')
     } finally {
       cleanup(f)
     }
