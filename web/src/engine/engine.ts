@@ -33,6 +33,7 @@ interface CommandLine {
   line: number
   text: string
   root: string
+  isMacro?: boolean
 }
 
 function findMcfunctionFiles(files: PackFileMap): string[] {
@@ -66,13 +67,16 @@ function scanCommands(files: PackFileMap, paths: string[], baseDir: string): Com
     lines.forEach((line, i) => {
       const trimmed = line.trim()
       if (!trimmed || trimmed.startsWith('#')) return
-      const tokens = tokenizeCommand(trimmed)
+      const isMacro = trimmed.startsWith('$')
+      const commandText = isMacro ? trimmed.slice(1) : trimmed
+      const tokens = tokenizeCommand(commandText)
       if (tokens.length === 0) return
       cmds.push({
         file: rel,
         line: i + 1,
         text: trimmed,
         root: tokens[0].value.replace(/^\//, ''),
+        ...(isMacro ? { isMacro: true } : {}),
       })
     })
   }
@@ -517,6 +521,7 @@ export async function checkCompatibilityContentBased(
       tree = await fetchCommandTree(ver.id)
       onProgress?.(`Validating commands in ${ver.name}...`)
       for (const cmd of commands) {
+        if (cmd.isMacro) continue
         const res = validateCommand(cmd.text, tree, !strict)
         if (!res.valid) {
           mcfunctionIssues.push({

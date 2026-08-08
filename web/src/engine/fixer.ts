@@ -2,6 +2,7 @@ import { fetchVersions } from './api'
 import { getMcdocSymbols, cmpVer, fixMcdocFileData, checkMcdocData } from './mcdoc-check'
 import { FEATURE_RULES, type FeatureRule } from './knowledge'
 import { CMD_REWRITES, type CmdRewrite } from './rules'
+import { rewriteNbtInLine } from './nbt-rewrite'
 import { tokenizeCommand } from './tokenizer'
 import { versionNameToDataVersion } from './version'
 import { readPackMcmetaFromString } from './pack-mcmeta'
@@ -276,6 +277,7 @@ function fixMcfunctionFile(
   relPath: string,
   rewrites: CmdRewrite[],
   removals: FeatureRule[],
+  nbtRewrite: boolean = false,
 ): { result: string; patches: number; details: string[] } {
   const lines = content.split('\n')
   const details: string[] = []
@@ -290,9 +292,11 @@ function fixMcfunctionFile(
       continue
     }
 
+    const isMacro = trimmed.startsWith('$')
+    const trimForMatch = isMacro ? trimmed.slice(1) : trimmed
     let fixed = line
     let linePatched = false
-    const cmdLine = trimmed.startsWith('/') ? trimmed : '/' + trimmed
+    const cmdLine = trimForMatch.startsWith('/') ? trimForMatch : '/' + trimForMatch
 
     for (const rw of rewrites) {
       if (rw.id === 'macro_comment') {
@@ -306,13 +310,14 @@ function fixMcfunctionFile(
         continue
       }
 
-      const result = tryApplyRewrite(trimmed, rw)
+      const result = tryApplyRewrite(trimForMatch, rw)
       if (result !== null) {
         const indent = line.match(/^\s*/)?.[0] ?? ''
+        const prefix = isMacro ? '$' : ''
         if (rw.replacement.includes('## FIXED')) {
-          fixed = `${indent}## FIXED(${rw.description}): ${trimmed}`
+          fixed = `${indent}${prefix}## FIXED(${rw.description}): ${trimForMatch}`
         } else {
-          fixed = indent + result
+          fixed = indent + prefix + result
         }
         linePatched = true
         patches++
@@ -328,7 +333,8 @@ function fixMcfunctionFile(
         const root = tokens[0].value.replace(/^\//, '')
         if (root === rule.match) {
           const indent = line.match(/^\s*/)?.[0] ?? ''
-          fixed = `${indent}## FIXED(${rule.match} requires ${rule.minVersion}+): ${trimmed}`
+          const prefix = isMacro ? '$' : ''
+          fixed = `${indent}${prefix}## FIXED(${rule.match} requires ${rule.minVersion}+): ${trimForMatch}`
           linePatched = true
           patches++
           details.push(`${relPath}:${i + 1}: Commented out ${rule.match} (needs ${rule.minVersion}+)`)
@@ -338,12 +344,24 @@ function fixMcfunctionFile(
     }
 
     if (!linePatched) {
-      const subResult = tryRewriteSubCommands(trimmed, rewrites, removals, line, relPath, i + 1)
+      const subResult = tryRewriteSubCommands(trimForMatch, rewrites, removals, line, relPath, i + 1)
       if (subResult) {
-        fixed = subResult.line
+        fixed = isMacro
+          ? subResult.line.replace(/^(\s*)(.)/, (_, ws, ch) => ws + '$' + ch)
+          : subResult.line
         linePatched = true
         patches += subResult.patches
         details.push(...subResult.details)
+      }
+    }
+
+    // Pass 4: NBT rewrite (equipment, attribute prefixes, stringified JSON, count)
+    if (nbtRewrite) {
+      const nbtResult = rewriteNbtInLine(fixed)
+      if (nbtResult.changed) {
+        fixed = nbtResult.line
+        patches++
+        details.push(`${relPath}:${i + 1}: NBT rewrite (1.21.5 format)`)
       }
     }
 
@@ -483,7 +501,8 @@ function collectReferences(files: { file: string; content: string }[]): SimpleRe
       for (let i = 0; i < lines.length; i++) {
         const trimmed = lines[i].trim()
         if (!trimmed || trimmed.startsWith('#')) continue
-        const tokens = tokenizeCommand(trimmed.startsWith('/') ? trimmed : '/' + trimmed)
+        const commandText = trimmed.startsWith('$') ? trimmed.slice(1) : trimmed
+        const tokens = tokenizeCommand(commandText.startsWith('/') ? commandText : '/' + commandText)
         if (tokens.length === 0) continue
         const root = tokens[0].value.replace(/^\//, '')
 
@@ -714,6 +733,7 @@ export async function fixDatapack(options: FixOptions): Promise<{
 
   const { rewrites, removals } = getApplicableFixes(sourceVer, targetVer, allVersions)
   const portingForward = targetVer.data_version >= sourceVer.data_version
+  const nbtRewrite = portingForward && cmpVer(targetName, '1.21.5') >= 0
 
   const mcfunction: string[] = []
   const json: string[] = []
@@ -737,7 +757,7 @@ export async function fixDatapack(options: FixOptions): Promise<{
   for (const file of mcfunction) {
     const content = files[file]
     if (!content) continue
-    const { result, patches, details } = fixMcfunctionFile(content, file, rewrites, removals)
+    const { result, patches, details } = fixMcfunctionFile(content, file, rewrites, removals, nbtRewrite)
     output[file] = result
     if (patches > 0) {
       results.push({ file, patches, details })

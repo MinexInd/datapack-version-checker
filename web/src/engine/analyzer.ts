@@ -221,8 +221,10 @@ function parseMcfunctionRefs(files: PackFileMap, resources: ResourceEntry[]): Cr
     for (let i = 0; i < lines.length; i++) {
       const trimmed = lines[i].trim()
       if (!trimmed || trimmed.startsWith('#')) continue
+      const lineIsMacro = trimmed.startsWith('$')
+      const commandText = lineIsMacro ? trimmed.slice(1) : trimmed
 
-      const tokens = tokenizeCommand(trimmed.startsWith('/') ? trimmed : '/' + trimmed)
+      const tokens = tokenizeCommand(commandText.startsWith('/') ? commandText : '/' + commandText)
       if (tokens.length === 0) continue
 
       const root = tokens[0].value.replace(/^\//, '')
@@ -232,7 +234,7 @@ function parseMcfunctionRefs(files: PackFileMap, resources: ResourceEntry[]): Cr
         const funcIdx = root === 'function' ? 1 : 2
         if (tokens.length > funcIdx) {
           const ref = tokens[funcIdx].value
-          if (ref.includes(':')) {
+          if (ref.includes(':') && !ref.includes('$(')) {
             refs.push({ from: func.file, to: ref, type: 'function_call', file: func.file, line: i + 1, code: trimmed })
           }
         }
@@ -245,7 +247,7 @@ function parseMcfunctionRefs(files: PackFileMap, resources: ResourceEntry[]): Cr
             const subType = tokens[j + 1].value
             if (subType === 'predicate' && tokens.length > j + 2) {
               const predRef = tokens[j + 2].value
-              if (predRef.includes(':')) {
+              if (predRef.includes(':') && !predRef.includes('$(')) {
                 refs.push({ from: func.file, to: predRef, type: 'predicate_ref', file: func.file, line: i + 1, code: trimmed })
               }
             }
@@ -255,13 +257,16 @@ function parseMcfunctionRefs(files: PackFileMap, resources: ResourceEntry[]): Cr
 
       // scoreboard objectives add
       if (root === 'scoreboard' && tokens.length > 2 && tokens[1].value === 'objectives' && tokens[2].value === 'add' && tokens.length > 4) {
-        refs.push({ from: func.file, to: `objective:${tokens[3].value}`, type: 'scoreboard_objective', file: func.file, line: i + 1, code: trimmed })
+        const objName = tokens[3].value
+        if (!objName.includes('$(')) {
+          refs.push({ from: func.file, to: `objective:${objName}`, type: 'scoreboard_objective', file: func.file, line: i + 1, code: trimmed })
+        }
       }
 
       // loot command references
       if (root === 'loot' && tokens.length > 1) {
         const lootRef = tokens[1].value
-        if (lootRef.includes(':')) {
+        if (lootRef.includes(':') && !lootRef.includes('$(')) {
           refs.push({ from: func.file, to: lootRef, type: 'loot_table_ref', file: func.file, line: i + 1, code: trimmed })
         }
       }
@@ -269,7 +274,7 @@ function parseMcfunctionRefs(files: PackFileMap, resources: ResourceEntry[]): Cr
       // locate biome / locate structure
       if ((root === 'locate' || root === 'locatebiome') && tokens.length > 1) {
         const locRef = tokens[1].value
-        if (locRef.includes(':')) {
+        if (locRef.includes(':') && !locRef.includes('$(')) {
           refs.push({ from: func.file, to: locRef, type: 'registry_ref', file: func.file, line: i + 1, code: trimmed })
         }
       }
@@ -470,8 +475,9 @@ export function computeMetrics(files: PackFileMap, resources: ResourceEntry[]): 
     for (const line of lines) {
       const trimmed = line.trim()
       if (!trimmed || trimmed.startsWith('#')) continue
+      const commandText = trimmed.startsWith('$') ? trimmed.slice(1) : trimmed
       cmdCount++
-      const tokens = tokenizeCommand(trimmed.startsWith('/') ? trimmed : '/' + trimmed)
+      const tokens = tokenizeCommand(commandText.startsWith('/') ? commandText : '/' + commandText)
       if (tokens.length > 0 && tokens[0].value === '/execute') {
         let d = 0
         for (let i = 1; i < tokens.length; i++) {
