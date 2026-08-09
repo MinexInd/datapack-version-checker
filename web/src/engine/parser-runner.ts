@@ -40,15 +40,15 @@ function createSpikeCache(): Cache & CacheLike {
       const r = store.get(toUrl(request))
       return r ? [r.clone()] : []
     },
-    async add() { /* not needed for spike */ },
-    async addAll() { /* not needed for spike */ },
+    async add(): Promise<Response> { return undefined as unknown as Response },
+    async addAll(): Promise<Response[]> { return [] },
     async delete(request: RequestInfo) { return store.delete(toUrl(request)) },
     async keys(request?: RequestInfo) {
       if (!request) return [...store.keys()].map(k => new Request(k))
       const url = toUrl(request)
       return store.has(url) ? [new Request(url)] : []
     },
-  } as Cache & CacheLike
+  } as unknown as Cache & CacheLike
 }
 
 // --- Helpers ---
@@ -81,12 +81,12 @@ export async function analyzePackWithSpyglass(
   targetVersion: string,
   cache: CacheLike,
 ): Promise<ParserIssue[]> {
-  const spikeCache = cache
-    ? Object.assign(createSpikeCache(), {
-        async get(url: string) { return (cache as CacheLike).get(url) },
-        async put(url: string, response: Response) { return (cache as CacheLike).put(url, response) },
-      })
-    : createSpikeCache()
+  // Bridge: CacheLike (string-keyed get/put) to the standard Cache API
+  // (match/put by RequestInfo) expected by the spyglass fetcher.
+  const spikeCache = Object.assign(createSpikeCache(), {
+    async get(url: string) { return cache.get(url) },
+    async put(url: string, response: Response) { return cache.put(url, response) },
+  })
 
   const externals = createBrowserExternals(spikeCache)
   const logger = Logger.noop()

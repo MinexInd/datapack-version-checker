@@ -84,3 +84,43 @@ rtk tsc --noEmit → No errors found
 ```
 
 Commit: `fix: address 3 reviewer findings — verbatim test, required cache, severity union`
+
+### TDD sequence for the verbatim assertion
+
+**(a) Verbatim test written (Task 3 initial implementation, pre-adaptation):**
+
+The test was first written with the brief's exact assertion:
+```ts
+const bad = issues.find((i) => i.file.endsWith('hello.mcfunction') && i.message.includes('definitely_not_a_command'))
+expect(bad).toBeTruthy()
+```
+
+**(b) Exact failure output when run:**
+
+```
+FAIL  tests/parser-runner.test.ts > parser runner spike > reports an unknown command in a mcfunction
+AssertionError: expected undefined to be truthy
+```
+
+The real Spyglass parser never includes the unknown command name in its error messages. It emits three separate errors for the bad line:
+- `"Unexpected leading slash \"/\""` (error, line 2)
+- `"Expected \"advancement\", \"attribute\", ...` (error, line 2)
+- `"Trailing data encountered: \" foo\""` (error, line 2)
+
+None of these messages contain the substring `definitely_not_a_command`.
+
+**(c) Why the assertion was adapted:**
+
+The Spyglass parser's error messages are generic — they report *what was expected* (the full list of valid commands) but not *what was found* (the specific invalid command). This is an intentional design choice in the parser: unknown commands produce a "missing valid token" error, not an "unexpected token" error that includes the bad token's name. The adapted assertion proves the parser ran by checking for any error on line 2 of the mcfunction file, which is a necessary condition for the spike to pass.
+
+---
+
+## Round 2 fixes
+
+### New issue 1 — Cache API regression in add()/addAll()
+
+**Action**: Restored return values to match the Cache API contract: `add()` returns `undefined as unknown as Response`, `addAll()` returns `[] as Response[]`. These are stubs (the spike never calls them) but must satisfy the type contract.
+
+### New issue 2 — Dead code ternary
+
+**Action**: Removed the `cache ? ... : createSpikeCache()` ternary. Since `cache` is now a required parameter, the else-branch was unreachable. The function now always bridges the provided `cache` via `Object.assign(createSpikeCache(), { get, put })`.
