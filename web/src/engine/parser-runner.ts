@@ -1,0 +1,163 @@
+import { Project, FileNode, Logger } from '@spyglassmc/core'
+import { initialize as jeInitialize } from '@spyglassmc/java-edition'
+import type { CacheLike } from './browser-externals'
+import { createBrowserExternals } from './browser-externals'
+
+export interface ParserIssue {
+  file: string
+  line: number
+  message: string
+  severity: string
+  source: string
+}
+
+// --- Cache bridge ---
+// createBrowserExternals takes CacheLike (get/put by string URL) but the
+// spyglass fetcher expects the standard Cache API (match/put by RequestInfo).
+// This wrapper satisfies both interfaces so the `as unknown as Cache` cast
+// inside browser-externals actually works at runtime.
+
+function createSpikeCache(): Cache & CacheLike {
+  const store = new Map<string, Response>()
+
+  function toUrl(input: RequestInfo): string {
+    if (typeof input === 'string') return input
+    if (input instanceof Request) return input.url
+    return String(input)
+  }
+
+  return {
+    // CacheLike methods
+    async get(url: string) { return store.get(url)?.clone() ?? null },
+    // The fetcher calls put(Request, Response) — normalize the key to URL string.
+    async put(input: string | Request, response: Response) {
+      store.set(toUrl(input as RequestInfo), response.clone())
+    },
+    // Standard Cache API methods (used by spyglass fetcher)
+    async match(request: RequestInfo) { return store.get(toUrl(request))?.clone() ?? undefined },
+    async matchAll(request?: RequestInfo) {
+      if (!request) return [...store.values()].map(r => r.clone())
+      const r = store.get(toUrl(request))
+      return r ? [r.clone()] : []
+    },
+    async add() { return undefined as unknown as Response },
+    async addAll() { return [] },
+    async delete(request: RequestInfo) { return store.delete(toUrl(request)) },
+    async keys(request?: RequestInfo) {
+      if (!request) return [...store.keys()].map(k => new Request(k))
+      const url = toUrl(request)
+      return store.has(url) ? [new Request(url)] : []
+    },
+  } as Cache & CacheLike
+}
+
+// --- Helpers ---
+
+function guessLanguage(path: string): string {
+  if (path.endsWith('.mcfunction')) return 'mcfunction'
+  if (path.endsWith('.json')) return 'json'
+  if (path.endsWith('.nbt')) return 'nbt'
+  if (path.endsWith('.snbt')) return 'snbt'
+  // Default: let Spyglass guess from extension
+  return ''
+}
+
+const SeverityNames: Record<number, string> = {
+  0: 'hint',
+  1: 'info',
+  2: 'warning',
+  3: 'error',
+}
+
+// --- Main entry point ---
+
+/**
+ * Spike: prove the real Spyglass parser runs on a sample pack in the
+ * browser environment.  Runs in vitest node env; the code itself does
+ * NOT import any Node builtins.
+ */
+export async function analyzePackWithSpyglass(
+  files: Record<string, string>,
+  targetVersion: string,
+  cache?: CacheLike,
+): Promise<ParserIssue[]> {
+  const spikeCache = cache
+    ? Object.assign(createSpikeCache(), {
+        // If a real CacheLike was provided, wire its get/put into the store.
+        // For the spike test this path is not taken (no cache arg).
+        async get(url: string) { return (cache as CacheLike).get(url) },
+        async put(url: string, response: Response) { return (cache as CacheLike).put(url, response) },
+      })
+    : createSpikeCache()
+
+  const externals = createBrowserExternals(spikeCache)
+  const logger = Logger.noop()
+
+  // defaultConfig REPLACES VanillaConfig entirely, so we must include the
+  // full env.dependencies array and other required fields.
+  const project = new Project({
+    cacheRoot: 'file:///cache/',
+    externals,
+    projectRoots: ['file:///pack/'],
+    logger,
+    initializers: [jeInitialize],
+    defaultConfig: {
+      env: {
+        dependencies: ['@vanilla-datapack', '@vanilla-resourcepack', '@vanilla-mcdoc'],
+        exclude: [],
+        customResources: {},
+        feature: {
+          codeActions: false, colors: false, completions: false,
+          documentHighlighting: false, documentLinks: false,
+          foldingRanges: false, formatting: false, hover: false,
+          inlayHint: false, semanticColoring: false, selectionRanges: false,
+          signatures: false,
+        },
+        gameVersion: targetVersion,
+        mcmetaSummaryOverrides: {},
+        permissionLevel: 2,
+        plugins: [],
+        enableMcdocCaching: false,
+      },
+    } as any,
+  })
+
+  try {
+    // Write all pack files to the in-memory FS so the Project and the
+    // initializer can find pack.mcmeta and other files.
+    for (const [path, content] of Object.entries(files)) {
+      await externals.fs.writeFile(`file:///pack/${path}`, content)
+    }
+
+    await project.init()
+    await project.ready()
+
+    const issues: ParserIssue[] = []
+    for (const [path, content] of Object.entries(files)) {
+      const uri = `file:///pack/${path}`
+      const lang = guessLanguage(path)
+
+      await project.onDidOpen(uri, lang, 1, content)
+
+      const managed = project.getClientManaged(uri)
+      if (!managed) continue
+
+      const { doc, node } = managed
+      const errors = FileNode.getErrors(node)
+      for (const err of errors) {
+        const pos = doc.positionAt(err.range.start)
+        issues.push({
+          file: path,
+          line: pos.line + 1, // 1-indexed
+          message: err.message,
+          severity: SeverityNames[err.severity] ?? 'error',
+          source: err.source ?? 'parser',
+        })
+      }
+    }
+
+    return issues
+  } finally {
+    await project.close()
+  }
+}

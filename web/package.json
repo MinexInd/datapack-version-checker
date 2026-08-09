@@ -8,7 +8,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@spyglassmc/core": "^0.4.52",
+    "@spyglassmc/core": "0.4.52",
+    "@spyglassmc/java-edition": "0.3.65",
+    "@spyglassmc/mcdoc": "0.3.56",
+    "@spyglassmc/nbt": "0.3.58",
+    "@spyglassmc/json": "0.3.56",
+    "@spyglassmc/mcfunction": "0.2.55",
+    "@spyglassmc/locales": "0.3.26",
     "jszip": "^3.10.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
