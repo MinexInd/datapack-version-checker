@@ -1,51 +1,63 @@
-import { getCache, setCache, getCachedEtag, setCachedEtag } from './cache'
+import { createIdbCache, clearIdbCache, API_CACHE_DB } from './idb-cache'
+import type { CacheLike } from './idb-cache'
 import type { McmetaVersion, CommandTreeNode } from './types'
 
 const BASE = 'https://api.spyglassmc.com/mcje'
 
-async function doFetch<T>(url: string, cacheKey: string, label: string): Promise<T> {
-  const cached = getCache<T>(cacheKey)
-  const etag = getCachedEtag(cacheKey)
+const nullCache: CacheLike = { get: async () => null, put: async () => {} }
+
+let cachePromise: Promise<CacheLike> | null = null
+
+function getCache(): Promise<CacheLike> {
+  if (!cachePromise) {
+    // Fall back to a no-op cache if IndexedDB is unavailable (private mode, etc.)
+    cachePromise = createIdbCache(API_CACHE_DB).catch(() => nullCache)
+  }
+  return cachePromise
+}
+
+export async function clearCache(): Promise<void> {
+  cachePromise = null
+  await clearIdbCache(API_CACHE_DB)
+}
+
+async function doFetch<T>(url: string, label: string): Promise<T> {
+  const cache = await getCache()
+  const cached = await cache.get(url)
+  const etag = cached?.headers.get('etag') ?? null
   if (cached && etag) {
     // Cache hit with a known ETag: revalidate cheaply instead of re-downloading.
     try {
       const res = await fetch(url, { headers: { 'If-None-Match': etag } })
       if (res.status === 304) {
-        // Still fresh: bump the TTL and keep serving the cached copy.
-        setCache(cacheKey, cached)
-        setCachedEtag(cacheKey, etag)
-        return cached
+        // Still fresh: keep serving the cached copy.
+        return (await cached.json()) as T
       }
       if (res.ok) {
-        const data = (await res.json()) as T
-        setCache(cacheKey, data)
-        setCachedEtag(cacheKey, res.headers.get('etag'))
-        return data
+        await cache.put(url, res)
+        return (await res.json()) as T
       }
       throw new Error(`${label}: HTTP ${res.status}`)
     } catch {
       // Offline or server hiccup during revalidation: fall back to the cached copy.
-      return cached
+      return (await cached.json()) as T
     }
   }
-  if (cached) return cached
+  if (cached) return (await cached.json()) as T
 
   const res = await fetch(url)
   if (!res.ok) throw new Error(`${label}: HTTP ${res.status}`)
-  const data = (await res.json()) as T
-  setCache(cacheKey, data)
-  setCachedEtag(cacheKey, res.headers.get('etag'))
-  return data
+  await cache.put(url, res)
+  return (await res.json()) as T
 }
 
 export async function fetchVersions(): Promise<McmetaVersion[]> {
-  return doFetch<McmetaVersion[]>(`${BASE}/versions`, 'mcje_versions', 'versions')
+  return doFetch<McmetaVersion[]>(`${BASE}/versions`, 'versions')
 }
 
 export async function fetchCommandTree(versionId: string): Promise<CommandTreeNode> {
   return doFetch<CommandTreeNode>(
     `${BASE}/versions/${encodeURIComponent(versionId)}/commands`,
-    'mcje_commands_' + versionId,
     `command-tree:${versionId}`,
   )
 }
@@ -53,7 +65,6 @@ export async function fetchCommandTree(versionId: string): Promise<CommandTreeNo
 export async function fetchRegistries(versionId: string): Promise<Record<string, string[]>> {
   return doFetch<Record<string, string[]>>(
     `${BASE}/versions/${encodeURIComponent(versionId)}/registries`,
-    'mcje_registries_' + versionId,
     `registries:${versionId}`,
   )
 }

@@ -1,8 +1,11 @@
+import { clearIdbCache, API_CACHE_DB } from './idb-cache'
+
 const _cache = new Map<string, { data: any; expiry: number; etag: string | null }>()
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000
 
-export function clearCache(): void {
+export async function clearCache(): Promise<void> {
   _cache.clear()
+  await clearIdbCache(API_CACHE_DB)
 }
 
 export function getCache<T>(key: string, ttlMs: number = DEFAULT_TTL_MS): T | null {
