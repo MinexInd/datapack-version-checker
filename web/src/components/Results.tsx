@@ -272,7 +272,7 @@ function VersionRow({ v, defaultOpen, index, filterKind, onFilterKind, onPortTo 
   useEffect(() => { setOpen(defaultOpen ?? false) }, [defaultOpen])
   const c = issueCounts(v)
   const tagClass = v.version.type === 'snapshot' ? 'snapshot' : 'release'
-  const isBroken = v.status !== 'compatible'
+  const isBroken = v.status === 'content_issues'
 
   const grouped = useMemo(() => {
     if (!open) return null
@@ -309,6 +309,8 @@ function VersionRow({ v, defaultOpen, index, filterKind, onFilterKind, onPortTo 
         <div className="spacer" />
         {v.status === 'compatible' ? (
           <span className="pill ok">compatible</span>
+        ) : v.status === 'outside_load_range' ? (
+          <span className="pill reg">outside load range</span>
         ) : (
           <>
             <IssueCountsBar
@@ -636,6 +638,7 @@ export default function Results({ result, mode, duration, onPortTo }: Props) {
   const compat = result.compatible || []
   const incompat = result.incompatible || []
   const broken = incompat.filter(v => v.status !== 'outside_load_range')
+  const outsideRange = incompat.filter(v => v.status === 'outside_load_range')
   const totalIssues = incompat.reduce((acc, v) => acc + issueCounts(v).total, 0)
 
   // Filter broken versions by selected issue kind (hide versions with 0 matching issues)
@@ -788,6 +791,24 @@ export default function Results({ result, mode, duration, onPortTo }: Props) {
               ? `No ${KIND_META[filterKind]?.label.toLowerCase() ?? ''} issues found across versions`
               : 'No content issues found'}
           </div>
+        )}
+      </div>
+
+      {/* Outside declared load range */}
+      <div className="card">
+        <h2>
+          <span className="section-icon amber">O</span>
+          Outside Declared Load Range
+          <span className="sub">{outsideRange.length}</span>
+        </h2>
+        {outsideRange.length > 0 ? (
+          <div className="vlist">
+            {outsideRange.map((v, i) => (
+              <VersionRow key={v.version.id} v={v} defaultOpen={allOpen} index={i} filterKind={filterKind} onFilterKind={toggleFilter} onPortTo={onPortTo} />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">No versions outside the declared load range</div>
         )}
       </div>
 

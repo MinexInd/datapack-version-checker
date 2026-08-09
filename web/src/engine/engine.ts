@@ -380,6 +380,20 @@ function buildNewStyleLoadRange(
   }
 }
 
+export type VersionStatus = 'compatible' | 'content_issues' | 'outside_load_range'
+
+/**
+ * Decide a version's status from whether it falls inside the pack's declared
+ * load range and whether any content checks failed. Content issues always win
+ * over range, so a version outside the range that also has issues is reported
+ * as content_issues rather than outside_load_range.
+ */
+export function computeVersionStatus(inDeclaredRange: boolean, hasContentIssues: boolean): VersionStatus {
+  if (hasContentIssues) return 'content_issues'
+  if (inDeclaredRange) return 'compatible'
+  return 'outside_load_range'
+}
+
 export async function checkCompatibilityContentBased(
   files: PackFileMap,
   targetVersions?: string[],
@@ -506,11 +520,9 @@ export async function checkCompatibilityContentBased(
   }
 
   const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
-    const explicitSelection = targetVersions !== undefined || allVersionsFlag
     const inDeclaredRange = loadRange
       ? (ver.data_pack_version ?? 0) >= loadRange.min && (ver.data_pack_version ?? 0) <= loadRange.max
       : true
-    const inLoadRange = explicitSelection ? true : inDeclaredRange
 
     let mcfunctionIssues: McfunctionIssue[] = []
     let registryIssues: RegistryIssue[] = []
@@ -644,11 +656,12 @@ export async function checkCompatibilityContentBased(
       knowledgeIssues.length > 0 || structuralIssues.length > 0 ||
       deprecationIssues.length > 0
 
+    const status = computeVersionStatus(inDeclaredRange, hasContentIssues)
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inDeclaredRange ? 'exact' : 'none',
-      status: hasContentIssues ? 'content_issues' : (inLoadRange ? 'compatible' : 'outside_load_range'),
-      in_load_range: inLoadRange,
+      status,
+      in_load_range: inDeclaredRange,
       mcfunction_issues: [...mcfunctionIssues, ...knowledgeIssues],
       registry_issues: registryIssues,
       structural_issues: structuralIssues,
@@ -657,7 +670,7 @@ export async function checkCompatibilityContentBased(
       breaking_changes: breakingMap[ver.name] ?? [],
     }
 
-    if (inLoadRange && !hasContentIssues) compatible.push(result)
+    if (status === 'compatible') compatible.push(result)
     else incompatible.push(result)
     onCheckDone(ver.name)
   }
@@ -808,11 +821,9 @@ export async function checkResourcePack(
   }
 
   const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
-    const explicitSelection = targetVersions !== undefined || allVersionsFlag
     const inDeclaredRange = loadRange
       ? (ver.resource_pack_version ?? 0) >= loadRange.min && (ver.resource_pack_version ?? 0) <= loadRange.max
       : true
-    const inLoadRange = explicitSelection ? true : inDeclaredRange
 
     let mcfunctionIssues: McfunctionIssue[] = []
     let registryIssues: RegistryIssue[] = []
@@ -914,11 +925,12 @@ export async function checkResourcePack(
     const hasContentIssues =
       registryIssues.length > 0 || knowledgeIssues.length > 0 ||
       structuralIssues.length > 0 || deprecationIssues.length > 0
+    const status = computeVersionStatus(inDeclaredRange, hasContentIssues)
     const result: VersionCompatibility = {
       version: ver,
       pack_format_match: inDeclaredRange ? 'exact' : 'none',
-      status: hasContentIssues ? 'content_issues' : (inLoadRange ? 'compatible' : 'outside_load_range'),
-      in_load_range: inLoadRange,
+      status,
+      in_load_range: inDeclaredRange,
       mcfunction_issues: mcfunctionIssues,
       registry_issues: registryIssues,
       structural_issues: structuralIssues,
@@ -927,7 +939,7 @@ export async function checkResourcePack(
       breaking_changes: breakingMap[ver.name] ?? [],
     }
 
-    if (inLoadRange && !hasContentIssues) compatible.push(result)
+    if (status === 'compatible') compatible.push(result)
     else incompatible.push(result)
     onCheckDone(ver.name)
   }
