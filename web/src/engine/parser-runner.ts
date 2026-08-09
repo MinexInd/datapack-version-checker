@@ -7,7 +7,7 @@ export interface ParserIssue {
   file: string
   line: number
   message: string
-  severity: string
+  severity: 'error' | 'warning' | 'info' | 'hint'
   source: string
 }
 
@@ -40,8 +40,8 @@ function createSpikeCache(): Cache & CacheLike {
       const r = store.get(toUrl(request))
       return r ? [r.clone()] : []
     },
-    async add() { return undefined as unknown as Response },
-    async addAll() { return [] },
+    async add() { /* not needed for spike */ },
+    async addAll() { /* not needed for spike */ },
     async delete(request: RequestInfo) { return store.delete(toUrl(request)) },
     async keys(request?: RequestInfo) {
       if (!request) return [...store.keys()].map(k => new Request(k))
@@ -62,7 +62,7 @@ function guessLanguage(path: string): string {
   return ''
 }
 
-const SeverityNames: Record<number, string> = {
+const SeverityNames: Record<number, ParserIssue['severity']> = {
   0: 'hint',
   1: 'info',
   2: 'warning',
@@ -79,12 +79,10 @@ const SeverityNames: Record<number, string> = {
 export async function analyzePackWithSpyglass(
   files: Record<string, string>,
   targetVersion: string,
-  cache?: CacheLike,
+  cache: CacheLike,
 ): Promise<ParserIssue[]> {
   const spikeCache = cache
     ? Object.assign(createSpikeCache(), {
-        // If a real CacheLike was provided, wire its get/put into the store.
-        // For the spike test this path is not taken (no cache arg).
         async get(url: string) { return (cache as CacheLike).get(url) },
         async put(url: string, response: Response) { return (cache as CacheLike).put(url, response) },
       })
