@@ -716,6 +716,20 @@ export default function Results({ result, mode, duration, onPortTo }: Props) {
           </div>
         )}
 
+        {/* Parser availability notice */}
+        {(() => {
+          const allVersions = [...(result.compatible || []), ...(result.incompatible || [])]
+          const anyParserActive = allVersions.some(v => v.parserActive)
+          if (allVersions.length > 0 && !anyParserActive) {
+            return (
+              <div className="meta-line parser-notice">
+                Parser unavailable — using built-in checks
+              </div>
+            )
+          }
+          return null
+        })()}
+
         <div className="stats">
           <div className="stat green">
             <div className="num">{compat.length}</div>

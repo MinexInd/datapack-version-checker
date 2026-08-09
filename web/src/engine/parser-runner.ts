@@ -54,6 +54,24 @@ function createSpikeCache(): Cache & CacheLike {
 
 // --- Helpers ---
 
+/**
+ * Check if the pack has cross-file references that benefit from
+ * vanilla datapack validation (function calls, loot table refs, etc.).
+ * When none exist, the parser can skip the expensive tarball fetch.
+ */
+function hasCrossFileReferences(files: Record<string, string>): boolean {
+  for (const path of Object.keys(files)) {
+    if (path.startsWith('data/') && (
+      path.endsWith('.mcfunction') ||
+      path.includes('/loot_tables/') ||
+      path.includes('/advancements/')
+    )) {
+      return true
+    }
+  }
+  return false
+}
+
 function guessLanguage(path: string): string {
   if (path.endsWith('.mcfunction')) return 'mcfunction'
   if (path.endsWith('.json')) return 'json'
@@ -188,6 +206,13 @@ export async function analyzePackWithSpyglass(
   // Use a null-cache fallback if none provided (keeps the single-arg
   // call site working in tests and lightweight contexts).
   const effectiveCache: CacheLike = cache ?? { get: async () => null, put: async () => {} }
+
+  // Skip the expensive Spyglass parser entirely when the pack has no
+  // cross-file references (no functions, loot tables, or advancements).
+  // The parser mainly adds value for reference checking against vanilla data.
+  if (!hasCrossFileReferences(files)) {
+    return new Map<string, ParserIssue[]>()
+  }
 
   const results = new Map<string, ParserIssue[]>()
 

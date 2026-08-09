@@ -98,6 +98,7 @@ export interface VersionCompatibility {
   deprecation_issues?: RegistryDeprecation[]
   reference_issues?: ReferenceIssue[]
   breaking_changes?: string[]
+  parserActive?: boolean
 }
 
 export interface LoadRange {
