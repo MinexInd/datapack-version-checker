@@ -7,3 +7,9 @@ report.json
 *.zip
 server.log
 /graphify-out
+
+# AI tooling config and workflow docs (keep local only)
+/claude/
+AGENTS.md
+CLAUDE.md
+/docs/superpowers/
