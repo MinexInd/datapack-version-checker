@@ -513,12 +513,14 @@ export async function checkCompatibilityContentBased(
 
   // --- Parser lane: run Spyglass parser for all relevant versions at once ---
   let parserResults = new Map<string, import('./parser-runner').ParserIssue[]>()
+  let parserLaneFailed = false
   try {
     onProgress?.('Running Spyglass parser across versions...')
     const parserCache = await getCache()
     parserResults = await analyzePackWithSpyglass(files, allVersions, targetVersions, parserCache)
   } catch (e) {
     log.debug('Parser lane failed:', e)
+    parserLaneFailed = true
   }
 
   log.info(`Checking ${relevantVersions.length} versions...`)
@@ -690,7 +692,7 @@ export async function checkCompatibilityContentBased(
       deprecation_issues: deprecationIssues.length > 0 ? deprecationIssues : undefined,
       reference_issues: referenceIssues.length > 0 ? referenceIssues : undefined,
       breaking_changes: breakingMap[ver.name] ?? [],
-      parserActive: parserResults.has(ver.name),
+      parserActive: !parserLaneFailed && parserResults.has(ver.name),
     }
 
     if (status === 'compatible') compatible.push(result)

@@ -93,11 +93,16 @@ const SeverityNames: Record<number, ParserIssue['severity']> = {
 /**
  * Run the Spyglass parser against a single game version.
  * Returns raw ParserIssue[] for that version.
+ *
+ * When `needsVanillaData` is false the `@vanilla-datapack` dependency is
+ * dropped so the expensive tarball fetch is skipped, but mcdoc structural
+ * validation and command syntax checks still run against the pack files.
  */
 async function runParserForVersion(
   files: Record<string, string>,
   targetVersion: string,
   cache: CacheLike,
+  needsVanillaData: boolean,
 ): Promise<ParserIssue[]> {
   // Bridge: CacheLike (string-keyed get/put) to the standard Cache API
   // (match/put by RequestInfo) expected by the spyglass fetcher.
@@ -111,6 +116,13 @@ async function runParserForVersion(
 
   // defaultConfig REPLACES VanillaConfig entirely, so we must include the
   // full env.dependencies array and other required fields.
+  // Drop @vanilla-datapack when we don't need cross-file reference
+  // checking — this skips the expensive tarball fetch while still running
+  // mcdoc structural validation and command syntax checks.
+  const dependencies = needsVanillaData
+    ? ['@vanilla-datapack', '@vanilla-resourcepack', '@vanilla-mcdoc']
+    : ['@vanilla-resourcepack', '@vanilla-mcdoc']
+
   const project = new Project({
     cacheRoot: 'file:///cache/',
     externals,
@@ -119,7 +131,7 @@ async function runParserForVersion(
     initializers: [jeInitialize],
     defaultConfig: {
       env: {
-        dependencies: ['@vanilla-datapack', '@vanilla-resourcepack', '@vanilla-mcdoc'],
+        dependencies,
         exclude: [],
         customResources: {},
         feature: {
@@ -207,18 +219,17 @@ export async function analyzePackWithSpyglass(
   // call site working in tests and lightweight contexts).
   const effectiveCache: CacheLike = cache ?? { get: async () => null, put: async () => {} }
 
-  // Skip the expensive Spyglass parser entirely when the pack has no
-  // cross-file references (no functions, loot tables, or advancements).
-  // The parser mainly adds value for reference checking against vanilla data.
-  if (!hasCrossFileReferences(files)) {
-    return new Map<string, ParserIssue[]>()
-  }
+  // Determine whether the pack contains cross-file references (function
+  // calls, loot table refs, advancement refs).  When absent, skip the
+  // expensive vanilla datapack tarball fetch but still run mcdoc structural
+  // validation and command syntax checks against the pack files.
+  const needsVanillaData = hasCrossFileReferences(files)
 
   const results = new Map<string, ParserIssue[]>()
 
   for (const ver of versions) {
     try {
-      const issues = await runParserForVersion(files, ver.name, effectiveCache)
+      const issues = await runParserForVersion(files, ver.name, effectiveCache, needsVanillaData)
       results.set(ver.name, issues)
     } catch (e) {
       // On failure for a single version, record an empty result so the
