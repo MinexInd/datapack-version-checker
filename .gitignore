@@ -1,9 +1,0 @@
-node_modules/
-dist/
-*.log
-.DS_Store
-report.json
-*.tsbuildinfo
-*.zip
-server.log
-/graphify-out
