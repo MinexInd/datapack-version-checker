@@ -1,4 +1,4 @@
-import { fetchVersions, fetchCommandTree, fetchRegistries } from './api'
+import { fetchVersions, fetchCommandTree, fetchRegistries, getCache } from './api'
 import { validateCommand } from './walker'
 import { checkJsonData, checkDeprecatedRegistryEntries } from './json-check'
 import { tokenizeCommand } from './tokenizer'
@@ -12,6 +12,8 @@ import { checkJsonFormatSemantics } from './json-format-check'
 import { getLogger } from './logger'
 import { suggestForCommand, suggestForRegistry, suggestForDeprecation, suggestForStructural } from './suggest'
 import { analyzePack, type AnalysisResult } from './analyzer'
+import { analyzePackWithSpyglass } from './parser-runner'
+import { mapParserIssues } from './parser-issues'
 import type {
   McmetaVersion,
   VersionCompatibility,
@@ -646,6 +648,21 @@ export async function checkCompatibilityContentBased(
       }
     }
 
+    // --- Parser lane: run Spyglass parser for deeper validation ---
+    let parserActive = false
+    try {
+      const parserCache = await getCache()
+      const parserIssues = await analyzePackWithSpyglass(files, ver.name, parserCache)
+      const mapped = mapParserIssues(parserIssues, new Map(Object.entries(files)))
+      mcfunctionIssues.push(...mapped.mcfunction)
+      structuralIssues.push(...mapped.structural)
+      registryIssues.push(...mapped.registry)
+      referenceIssues.push(...mapped.reference)
+      parserActive = true
+    } catch (e) {
+      log.debug(`Parser lane failed for ${ver.name}:`, e)
+    }
+
     mcfunctionIssues = mcfunctionIssues.map(i => ({ ...i, ...suggestForCommand(i.command) }))
     registryIssues = registryIssues.map(i => ({ ...i, ...suggestForRegistry(i.registry, i.entry) }))
     deprecationIssues = deprecationIssues.map(i => ({ ...i, ...suggestForDeprecation(i.registry, i.entry) }))
@@ -668,6 +685,7 @@ export async function checkCompatibilityContentBased(
       deprecation_issues: deprecationIssues.length > 0 ? deprecationIssues : undefined,
       reference_issues: referenceIssues.length > 0 ? referenceIssues : undefined,
       breaking_changes: breakingMap[ver.name] ?? [],
+      parserActive,
     }
 
     if (status === 'compatible') compatible.push(result)

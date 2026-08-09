@@ -8,7 +8,7 @@ const nullCache: CacheLike = { get: async () => null, put: async () => {} }
 
 let cachePromise: Promise<CacheLike> | null = null
 
-function getCache(): Promise<CacheLike> {
+export function getCache(): Promise<CacheLike> {
   if (!cachePromise) {
     // Fall back to a no-op cache if IndexedDB is unavailable (private mode, etc.)
     cachePromise = createIdbCache(API_CACHE_DB).catch(() => nullCache)
