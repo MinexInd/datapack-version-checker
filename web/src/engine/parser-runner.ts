@@ -2,7 +2,34 @@ import { Project, FileNode, Logger } from '@spyglassmc/core'
 import { initialize as jeInitialize } from '@spyglassmc/java-edition'
 import type { CacheLike } from './browser-externals'
 import { createBrowserExternals } from './browser-externals'
+import { createIdbCache } from './idb-cache'
 import type { McmetaVersion } from './types'
+
+/**
+ * Deterministic, order-independent hash of pack contents.
+ * Sorts entries by path so file order doesn't affect the hash.
+ * Uses djb2 for speed — collision resistance isn't critical here,
+ * just avoiding re-parsing identical packs.
+ */
+export function hashPack(files: Record<string, string>): string {
+  const entries = Object.entries(files).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+  let hash = 5381
+  for (const [path, content] of entries) {
+    // Mix path then content into the hash
+    for (let i = 0; i < path.length; i++) {
+      hash = ((hash << 5) + hash + path.charCodeAt(i)) | 0
+    }
+    // null separator
+    hash = ((hash << 5) + hash) | 0
+    for (let i = 0; i < content.length; i++) {
+      hash = ((hash << 5) + hash + content.charCodeAt(i)) | 0
+    }
+  }
+  // Convert to unsigned hex
+  return (hash >>> 0).toString(16)
+}
+
+const PARSER_CACHE_DB = 'parser-result-cache'
 
 export interface ParserIssue {
   file: string
@@ -215,6 +242,14 @@ export async function analyzePackWithSpyglass(
     ? allVersions.filter(v => targetVersions.includes(v.id) || targetVersions.includes(v.name))
     : allVersions
 
+  // Early exit: if the pack has no parseable files, skip the parser entirely.
+  const hasParseable = Object.keys(files).some(p =>
+    p.endsWith('.mcfunction') || p.endsWith('.json') || p.endsWith('.nbt') || p.endsWith('.snbt')
+  )
+  if (!hasParseable) {
+    return new Map<string, ParserIssue[]>()
+  }
+
   // Use a null-cache fallback if none provided (keeps the single-arg
   // call site working in tests and lightweight contexts).
   const effectiveCache: CacheLike = cache ?? { get: async () => null, put: async () => {} }
@@ -225,15 +260,46 @@ export async function analyzePackWithSpyglass(
   // validation and command syntax checks against the pack files.
   const needsVanillaData = hasCrossFileReferences(files)
 
+  // Open the parser result cache (IndexedDB-backed). Cache misses are cheap;
+  // cache hits skip the entire Spyglass Project creation for that version.
+  let resultCache: CacheLike | null = null
+  try {
+    resultCache = await createIdbCache(PARSER_CACHE_DB)
+  } catch {
+    // IndexedDB unavailable (private mode, etc.) — proceed without caching.
+  }
+
+  const packHash = hashPack(files)
   const results = new Map<string, ParserIssue[]>()
 
   const CONCURRENCY = 3
   for (let i = 0; i < versions.length; i += CONCURRENCY) {
     const batch = versions.slice(i, i + CONCURRENCY)
     await Promise.all(batch.map(async (ver) => {
+      const cacheKey = `parser:${packHash}:${ver.name}`
+
+      // Check the IDB cache first.
+      if (resultCache) {
+        try {
+          const cached = await resultCache.get(cacheKey)
+          if (cached) {
+            const issues: ParserIssue[] = await cached.json()
+            results.set(ver.name, issues)
+            return
+          }
+        } catch {
+          // Cache read failure — fall through to parse.
+        }
+      }
+
       try {
         const issues = await runParserForVersion(files, ver.name, effectiveCache, needsVanillaData)
         results.set(ver.name, issues)
+
+        // Persist to cache. Write failures are non-fatal.
+        if (resultCache) {
+          resultCache.put(cacheKey, new Response(JSON.stringify(issues))).catch(() => {})
+        }
       } catch (e) {
         // On failure for a single version, record an empty result so the
         // caller knows this version was attempted but produced no issues.

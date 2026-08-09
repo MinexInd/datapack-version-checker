@@ -287,7 +287,7 @@ function checkReferences(
   return issues
 }
 
-const BATCH_SIZE = 3
+const BATCH_SIZE = 4
 
 export type ProgressCallback = (msg: string) => void
 

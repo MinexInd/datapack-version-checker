@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { analyzePackWithSpyglass } from '../src/engine/parser-runner'
+import { analyzePackWithSpyglass, hashPack } from '../src/engine/parser-runner'
 import type { CacheLike } from '../src/engine/browser-externals'
 import type { McmetaVersion } from '../src/engine/types'
 
@@ -50,5 +50,30 @@ describe('parser runner spike', () => {
       (i) => i.file.endsWith('hello.mcfunction') && i.line === 2 && i.severity === 'error',
     )
     expect(bad).toBeTruthy()
+  })
+})
+
+describe('hashPack', () => {
+  it('is deterministic for the same input', () => {
+    const files = { 'a.mcfunction': 'say hi', 'b.json': '{"x":1}' }
+    expect(hashPack(files)).toBe(hashPack(files))
+  })
+
+  it('is order-independent', () => {
+    const a = { 'x/a.mcfunction': 'hello', 'x/b.json': 'world' }
+    const b = { 'x/b.json': 'world', 'x/a.mcfunction': 'hello' }
+    expect(hashPack(a)).toBe(hashPack(b))
+  })
+
+  it('changes when file content changes', () => {
+    const a = { 'data/f.mcfunction': 'say hi' }
+    const b = { 'data/f.mcfunction': 'say bye' }
+    expect(hashPack(a)).not.toBe(hashPack(b))
+  })
+
+  it('changes when a file is added', () => {
+    const a = { 'data/f.mcfunction': 'say hi' }
+    const b = { 'data/f.mcfunction': 'say hi', 'data/g.json': '{}' }
+    expect(hashPack(a)).not.toBe(hashPack(b))
   })
 })
