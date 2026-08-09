@@ -511,17 +511,21 @@ export async function checkCompatibilityContentBased(
     }
   }
 
-  // --- Parser lane: run Spyglass parser for all relevant versions at once ---
-  let parserResults = new Map<string, import('./parser-runner').ParserIssue[]>()
+  // --- Parser lane: run Spyglass parser concurrently with custom checks ---
+  // Start the parser as a promise so the per-version loop below runs
+  // immediately without waiting for every parser version to finish.
   let parserLaneFailed = false
-  try {
-    onProgress?.('Running Spyglass parser across versions...')
-    const parserCache = await getCache()
-    parserResults = await analyzePackWithSpyglass(files, allVersions, targetVersions, parserCache)
-  } catch (e) {
-    log.debug('Parser lane failed:', e)
-    parserLaneFailed = true
-  }
+  const parserPromise = (async () => {
+    try {
+      onProgress?.('Running Spyglass parser across versions...')
+      const parserCache = await getCache()
+      return await analyzePackWithSpyglass(files, allVersions, targetVersions, parserCache)
+    } catch (e) {
+      log.debug('Parser lane failed:', e)
+      parserLaneFailed = true
+      return new Map<string, import('./parser-runner').ParserIssue[]>()
+    }
+  })()
 
   log.info(`Checking ${relevantVersions.length} versions...`)
   log.time('version-loop')
@@ -531,6 +535,14 @@ export async function checkCompatibilityContentBased(
   const onCheckDone = (name: string) => {
     done++
     onProgress?.(`Checked ${name} — ${done}/${total} versions`)
+  }
+
+  // Memoized resolver: await the parser promise once, cache the result for
+  // all per-version merges. Awaiting an already-resolved promise is cheap.
+  let _resolvedParserResults: Map<string, import('./parser-runner').ParserIssue[]> | null = null
+  const getParserResults = async () => {
+    if (!_resolvedParserResults) _resolvedParserResults = await parserPromise
+    return _resolvedParserResults
   }
 
   const checkOneVersion = async (ver: McmetaVersion): Promise<void> => {
@@ -661,6 +673,7 @@ export async function checkCompatibilityContentBased(
     }
 
     // --- Parser lane: merge pre-computed Spyglass parser issues ---
+    const parserResults = await getParserResults()
     const verParserIssues = parserResults.get(ver.name)
     if (verParserIssues) {
       const mapped = mapParserIssues(verParserIssues, new Map(Object.entries(files)))

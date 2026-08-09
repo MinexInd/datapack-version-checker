@@ -227,15 +227,19 @@ export async function analyzePackWithSpyglass(
 
   const results = new Map<string, ParserIssue[]>()
 
-  for (const ver of versions) {
-    try {
-      const issues = await runParserForVersion(files, ver.name, effectiveCache, needsVanillaData)
-      results.set(ver.name, issues)
-    } catch (e) {
-      // On failure for a single version, record an empty result so the
-      // caller knows this version was attempted but produced no issues.
-      results.set(ver.name, [])
-    }
+  const CONCURRENCY = 3
+  for (let i = 0; i < versions.length; i += CONCURRENCY) {
+    const batch = versions.slice(i, i + CONCURRENCY)
+    await Promise.all(batch.map(async (ver) => {
+      try {
+        const issues = await runParserForVersion(files, ver.name, effectiveCache, needsVanillaData)
+        results.set(ver.name, issues)
+      } catch (e) {
+        // On failure for a single version, record an empty result so the
+        // caller knows this version was attempted but produced no issues.
+        results.set(ver.name, [])
+      }
+    }))
   }
 
   return results
