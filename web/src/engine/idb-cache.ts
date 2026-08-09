@@ -57,6 +57,9 @@ function putEntry(db: IDBDatabase, url: string, entry: StoredResponse): Promise<
 }
 
 export async function createIdbCache(dbName: string): Promise<CacheLike> {
+  // Open eagerly so callers can detect IndexedDB unavailability up front
+  // (private mode, blocked storage) instead of failing on the first get/put.
+  await getDb(dbName)
   return {
     async get(url) {
       const db = await getDb(dbName)

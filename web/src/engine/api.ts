@@ -21,9 +21,27 @@ export async function clearCache(): Promise<void> {
   await clearIdbCache(API_CACHE_DB)
 }
 
+// A failed read is a cache miss: never let storage problems block a fetch.
+async function safeGet(cache: CacheLike, url: string): Promise<Response | null> {
+  try {
+    return await cache.get(url)
+  } catch {
+    return null
+  }
+}
+
+// A failed write must not fail a fetch that already succeeded over the network.
+async function safePut(cache: CacheLike, url: string, res: Response): Promise<void> {
+  try {
+    await cache.put(url, res)
+  } catch {
+    // Storage full or blocked: the network result still wins.
+  }
+}
+
 async function doFetch<T>(url: string, label: string): Promise<T> {
   const cache = await getCache()
-  const cached = await cache.get(url)
+  const cached = await safeGet(cache, url)
   const etag = cached?.headers.get('etag') ?? null
   if (cached && etag) {
     // Cache hit with a known ETag: revalidate cheaply instead of re-downloading.
@@ -34,7 +52,7 @@ async function doFetch<T>(url: string, label: string): Promise<T> {
         return (await cached.json()) as T
       }
       if (res.ok) {
-        await cache.put(url, res)
+        await safePut(cache, url, res)
         return (await res.json()) as T
       }
       throw new Error(`${label}: HTTP ${res.status}`)
@@ -47,7 +65,7 @@ async function doFetch<T>(url: string, label: string): Promise<T> {
 
   const res = await fetch(url)
   if (!res.ok) throw new Error(`${label}: HTTP ${res.status}`)
-  await cache.put(url, res)
+  await safePut(cache, url, res)
   return (await res.json()) as T
 }
 
