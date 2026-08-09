@@ -511,6 +511,16 @@ export async function checkCompatibilityContentBased(
     }
   }
 
+  // --- Parser lane: run Spyglass parser for all relevant versions at once ---
+  let parserResults = new Map<string, import('./parser-runner').ParserIssue[]>()
+  try {
+    onProgress?.('Running Spyglass parser across versions...')
+    const parserCache = await getCache()
+    parserResults = await analyzePackWithSpyglass(files, allVersions, targetVersions, parserCache)
+  } catch (e) {
+    log.debug('Parser lane failed:', e)
+  }
+
   log.info(`Checking ${relevantVersions.length} versions...`)
   log.time('version-loop')
 
@@ -648,19 +658,14 @@ export async function checkCompatibilityContentBased(
       }
     }
 
-    // --- Parser lane: run Spyglass parser for deeper validation ---
-    let parserActive = false
-    try {
-      const parserCache = await getCache()
-      const parserIssues = await analyzePackWithSpyglass(files, ver.name, parserCache)
-      const mapped = mapParserIssues(parserIssues, new Map(Object.entries(files)))
+    // --- Parser lane: merge pre-computed Spyglass parser issues ---
+    const verParserIssues = parserResults.get(ver.name)
+    if (verParserIssues) {
+      const mapped = mapParserIssues(verParserIssues, new Map(Object.entries(files)))
       mcfunctionIssues.push(...mapped.mcfunction)
       structuralIssues.push(...mapped.structural)
       registryIssues.push(...mapped.registry)
       referenceIssues.push(...mapped.reference)
-      parserActive = true
-    } catch (e) {
-      log.debug(`Parser lane failed for ${ver.name}:`, e)
     }
 
     mcfunctionIssues = mcfunctionIssues.map(i => ({ ...i, ...suggestForCommand(i.command) }))
@@ -685,7 +690,7 @@ export async function checkCompatibilityContentBased(
       deprecation_issues: deprecationIssues.length > 0 ? deprecationIssues : undefined,
       reference_issues: referenceIssues.length > 0 ? referenceIssues : undefined,
       breaking_changes: breakingMap[ver.name] ?? [],
-      parserActive,
+      parserActive: parserResults.has(ver.name),
     }
 
     if (status === 'compatible') compatible.push(result)

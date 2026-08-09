@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { analyzePackWithSpyglass } from '../src/engine/parser-runner'
 import type { CacheLike } from '../src/engine/browser-externals'
+import type { McmetaVersion } from '../src/engine/types'
 
 /** Minimal in-memory CacheLike for the spike test. */
 function createTestCache(): CacheLike {
@@ -11,13 +12,31 @@ function createTestCache(): CacheLike {
   }
 }
 
+/** Minimal McmetaVersion stub for the target version. */
+function stubVersion(name: string): McmetaVersion {
+  return {
+    id: name,
+    name,
+    type: 'release',
+    stable: true,
+    data_pack_version: 48,
+    data_pack_version_minor: 0,
+    resource_pack_version: 34,
+    resource_pack_version_minor: 0,
+    data_version: 3955,
+    release_time: '2025-06-01T00:00:00Z',
+  }
+}
+
 describe('parser runner spike', () => {
   it('reports an unknown command in a mcfunction', { timeout: 120_000 }, async () => {
     const files = {
       'pack.mcmeta': JSON.stringify({ pack: { pack_format: 48, description: 't' } }),
       'data/demo/functions/hello.mcfunction': 'say hi\n/definitely_not_a_command foo\n',
     }
-    const issues = await analyzePackWithSpyglass(files, '1.21', createTestCache())
+    const allVersions = [stubVersion('1.21')]
+    const results = await analyzePackWithSpyglass(files, allVersions, ['1.21'], createTestCache())
+    const issues = results.get('1.21') ?? []
     // API deviation: The brief's verbatim assertion was
     //   issues.find(i => i.message.includes('definitely_not_a_command'))
     // but the real Spyglass parser never includes the unknown command name

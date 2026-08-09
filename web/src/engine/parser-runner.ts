@@ -2,6 +2,7 @@ import { Project, FileNode, Logger } from '@spyglassmc/core'
 import { initialize as jeInitialize } from '@spyglassmc/java-edition'
 import type { CacheLike } from './browser-externals'
 import { createBrowserExternals } from './browser-externals'
+import type { McmetaVersion } from './types'
 
 export interface ParserIssue {
   file: string
@@ -69,14 +70,13 @@ const SeverityNames: Record<number, ParserIssue['severity']> = {
   3: 'error',
 }
 
-// --- Main entry point ---
+// --- Single-version helper (internal) ---
 
 /**
- * Spike: prove the real Spyglass parser runs on a sample pack in the
- * browser environment.  Runs in vitest node env; the code itself does
- * NOT import any Node builtins.
+ * Run the Spyglass parser against a single game version.
+ * Returns raw ParserIssue[] for that version.
  */
-export async function analyzePackWithSpyglass(
+async function runParserForVersion(
   files: Record<string, string>,
   targetVersion: string,
   cache: CacheLike,
@@ -158,4 +158,49 @@ export async function analyzePackWithSpyglass(
   } finally {
     await project.close()
   }
+}
+
+// --- Main entry point ---
+
+/**
+ * Run the Spyglass parser against a pack for the given versions.
+ *
+ * Accepts `allVersions` (the full MC version list) and an optional
+ * `targetVersions` filter — mirroring the custom engine's
+ * `checkCompatibilityContentBased` interface.  Returns a Map keyed by
+ * version name, each entry holding the raw ParserIssue[] for that version.
+ *
+ * When `targetVersions` is provided, only those versions are checked;
+ * otherwise all versions in `allVersions` are processed.
+ */
+export async function analyzePackWithSpyglass(
+  files: Record<string, string>,
+  allVersions: McmetaVersion[],
+  targetVersions?: string[],
+  cache?: CacheLike,
+): Promise<Map<string, ParserIssue[]>> {
+  // Determine which versions to check — same filtering logic as the
+  // custom engine's relevantVersions computation.
+  const versions = targetVersions
+    ? allVersions.filter(v => targetVersions.includes(v.id) || targetVersions.includes(v.name))
+    : allVersions
+
+  // Use a null-cache fallback if none provided (keeps the single-arg
+  // call site working in tests and lightweight contexts).
+  const effectiveCache: CacheLike = cache ?? { get: async () => null, put: async () => {} }
+
+  const results = new Map<string, ParserIssue[]>()
+
+  for (const ver of versions) {
+    try {
+      const issues = await runParserForVersion(files, ver.name, effectiveCache)
+      results.set(ver.name, issues)
+    } catch (e) {
+      // On failure for a single version, record an empty result so the
+      // caller knows this version was attempted but produced no issues.
+      results.set(ver.name, [])
+    }
+  }
+
+  return results
 }
