@@ -1,5 +1,6 @@
 import { getCache, setCache } from './cache'
 import { getLogger } from './logger'
+import { gunzipBytes, parseTar } from './tar'
 
 function parseVer(v: string): number[] | null {
   const m = v.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/)
@@ -95,32 +96,13 @@ export interface SymbolTable {
   dispatches: Map<string, DispatchDef>
 }
 
-async function gunzip(data: ArrayBuffer): Promise<Uint8Array> {
-  const ds = new DecompressionStream('gzip')
-  const writer = ds.writable.getWriter()
-  writer.write(new Uint8Array(data))
-  writer.close()
-  return new Uint8Array(await new Response(ds.readable).arrayBuffer())
-}
-
 async function fetchMcdocSources(): Promise<Map<string, string>> {
   const res = await fetch('https://api.spyglassmc.com/vanilla-mcdoc/tarball')
-  const compressed = await res.arrayBuffer()
-  const buf = await gunzip(compressed)
+  const buf = await gunzipBytes(new Uint8Array(await res.arrayBuffer()))
   const files = new Map<string, string>()
-  let off = 0
   const decoder = new TextDecoder()
-  while (off + 512 <= buf.length) {
-    const name = decoder.decode(buf.slice(off, off + 100)).replace(/\0.*$/, '')
-    const sizeStr = decoder.decode(buf.slice(off + 124, off + 136)).replace(/\0.*$/, '')
-    const size = parseInt(sizeStr.trim(), 8) || 0
-    const typeflag = decoder.decode(buf.slice(off + 156, off + 157))
-    off += 512
-    if (!name) break
-    if (typeflag === '0' || typeflag === '') {
-      files.set(name, decoder.decode(buf.slice(off, off + size)))
-    }
-    off += Math.ceil(size / 512) * 512
+  for (const entry of parseTar(buf)) {
+    files.set(entry.path, decoder.decode(entry.data))
   }
   return files
 }
