@@ -1,0 +1,9 @@
+node_modules/
+.superpowers/
+.gitnexus/
+.claude/
+.opencode/
+graphify-out/
+AGENTS.md
+CLAUDE.md
+server.log
