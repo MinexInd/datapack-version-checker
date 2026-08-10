@@ -125,4 +125,37 @@
   --measure: 68ch;
   --measure-tight: 56ch;
   --shell: 1120px;
+
+  /* ---------- App-chrome tokens (used by app.css) ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+  --sp-9: 96px;
+
+  --fs-2xl: 1.5rem;
+  --fs-xl: 1.25rem;
+  --fs-md: 1rem;
+  --fs-base: 0.9375rem;
+  --fs-sm: 0.875rem;
+  --fs-xs: 0.8125rem;
+  --fs-2xs: 0.6875rem;
+
+  --tracking-tight: -0.02em;
+  --tracking-snug: -0.01em;
+
+  --topbar-h: 56px;
+  --shell-width: var(--shell);
+
+  --on-accent: #ffffff;
+  --bg-sunken: var(--well);
+  --ring: 0 0 0 3px var(--stamp-wash);
+  --accent-line: var(--stamp-edge);
+  --accent-soft: var(--stamp-wash);
+  --shadow-accent: 0 2px 12px var(--accent-glow);
+  --font-ui: var(--font-sans);
 }
