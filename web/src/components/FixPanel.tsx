@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import type { McmetaVersion, FixPreview } from '../api'
-import { highlightMcfunction } from '../engine/highlight'
+import { highlightMcfunction, highlightJson } from '../engine/highlight'
+import { diffLines } from '../diff'
 
 const TYPE_LABELS: Record<string, string> = {
   advancement_icon: 'Advancement icon format',
@@ -31,7 +32,6 @@ function DiffView({ file, srcContent, outContent, details }: { file: string; src
   const isJson = file.endsWith('.json')
   const srcLines = srcContent.split('\n')
   const outLines = outContent.split('\n')
-  const maxLen = Math.max(srcLines.length, outLines.length)
 
   const changedLines = new Map<number, string>()
   for (const d of details) {
@@ -39,62 +39,47 @@ function DiffView({ file, srcContent, outContent, details }: { file: string; src
     if (m) changedLines.set(parseInt(m[2]), d)
   }
 
-  const maxLineWidth = String(maxLen).length
+  const { rows, added, removed, approximate } = useMemo(
+    () => diffLines(srcLines, outLines),
+    [srcContent, outContent],
+  )
 
-  if (isJson) {
-    return (
-      <div className="diff-panel">
-        <div className="diff-view">
-          <div className="diff-columns">
-            <div className="diff-col">
-              <div className="diff-col-header removed">Original</div>
-              <pre className="diff-code" dangerouslySetInnerHTML={{ __html: srcContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }} />
-            </div>
-            <div className="diff-col">
-              <div className="diff-col-header added">Ported</div>
-              <pre className="diff-code" dangerouslySetInnerHTML={{ __html: outContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }} />
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  const highlight = isJson ? highlightJson : highlightMcfunction
+  const gutter = String(Math.max(srcLines.length, outLines.length)).length
 
-  let diffHtml = ''
-  let added = 0
-  let removed = 0
-  for (let i = 0; i < maxLen; i++) {
-    const lineNum = (i + 1).toString().padStart(maxLineWidth, ' ')
-    const s = srcLines[i] ?? ''
-    const o = outLines[i] ?? ''
-    if (s !== o) {
-      added++
-      removed++
-      const d = changedLines.get(i + 1)
-      const detail = d ? d.replace(/^.*?:\d+:/, '').trim() : ''
-      const sHl = highlightMcfunction(s)
-      const oHl = highlightMcfunction(o)
-      diffHtml += `<div class="diff-line removed"><span class="diff-ln">${lineNum}</span><span class="diff-op">-</span><span class="diff-text">${sHl}</span></div>`
-      diffHtml += `<div class="diff-line added"><span class="diff-ln">${lineNum}</span><span class="diff-op">+</span><span class="diff-text">${oHl}${detail ? ` <span class="diff-detail">${detail}</span>` : ''}</span></div>`
-    } else {
-      if (i < 3 || i >= maxLen - 2) {
-        diffHtml += `<div class="diff-line context"><span class="diff-ln">${lineNum}</span><span class="diff-op"> </span><span class="diff-text">${highlightMcfunction(s)}</span></div>`
-      } else if (srcLines[i - 1] !== outLines[i - 1] || srcLines[i + 1] !== outLines[i + 1]) {
-        diffHtml += `<div class="diff-line context"><span class="diff-ln">${lineNum}</span><span class="diff-op"> </span><span class="diff-text">${highlightMcfunction(s)}</span></div>`
-      }
+  const html = rows.map(row => {
+    if (row.kind === 'gap') {
+      return `<div class="diff-line gap"><span class="diff-ln"></span><span class="diff-op"></span>` +
+        `<span class="diff-text">${row.hidden} unchanged line${row.hidden === 1 ? '' : 's'}</span></div>`
     }
-  }
+
+    const num = String(row.kind === 'added' ? row.outLine : row.srcLine).padStart(gutter, ' ')
+    const op = row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' '
+    const detailKey = row.kind === 'added' ? row.outLine : row.srcLine
+    const raw = detailKey != null ? changedLines.get(detailKey) : undefined
+    const detail = row.kind === 'added' && raw ? raw.replace(/^.*?:\d+:/, '').trim() : ''
+
+    return `<div class="diff-line ${row.kind}"><span class="diff-ln">${num}</span>` +
+      `<span class="diff-op">${op}</span><span class="diff-text">${highlight(row.text)}` +
+      `${detail ? ` <span class="diff-detail">${detail}</span>` : ''}</span></div>`
+  }).join('')
+
   return (
     <div className="diff-panel">
       <div className="diff-toolbar">
         <span className="diff-file">{file}</span>
+        {approximate && <span className="diff-approx" title="File too large for an exact diff — lines are compared by position">approximate</span>}
         <span className="diff-stat">
           <span className="add">+{added}</span>
           <span className="sep">/</span>
           <span className="del">−{removed}</span>
         </span>
       </div>
-      <div className="diff-view" dangerouslySetInnerHTML={{ __html: diffHtml }} />
+      {rows.length > 0 ? (
+        <div className="diff-view" dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <div className="diff-empty">No line changes — the file was reformatted or rewritten identically.</div>
+      )}
     </div>
   )
 }
@@ -203,7 +188,7 @@ export default function FixPanel({
           )}
 
           {fixPreview.results.length > 0 ? (
-            <div className="scl-box" style={{ maxHeight: 500 }} ref={sclRef}>
+            <div className="scl-box fix-file-list" ref={sclRef}>
               {fixPreview.results.map((r, i) => {
                 const isExpanded = expandedFiles.has(i)
                 const hasOutput = !!fixPreview.outputFiles?.[r.file]

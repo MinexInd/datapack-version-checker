@@ -3,14 +3,17 @@ import type { PackFileMap, CheckResponse, McmetaVersion, Mode } from './api'
 import { runCheck, runFix, runFixPreview, fetchVersions } from './api'
 import type { FixPreview } from './api'
 import Header from './components/Header'
+import HubPage from './components/HubPage'
 import PackSelector from './components/PackSelector'
 import CheckPanel from './components/CheckPanel'
 import FixPanel from './components/FixPanel'
 import Results from './components/Results'
 
 type Tab = 'check' | 'fix'
+type View = 'hub' | 'checker'
 
 export default function App() {
+  const [view, setView] = useState<View>('hub')
   const [tab, setTab] = useState<Tab>('check')
   const [mode, setMode] = useState<Mode>('auto')
   const [all, setAll] = useState(false)
@@ -141,8 +144,28 @@ export default function App() {
     }
   }, [files, fixTarget, fixSource])
 
+  if (view === 'hub') {
+    return <HubPage onOpenDatapackEditor={() => setView('checker')} />
+  }
+
   return (
     <div className="container">
+      <nav className="deskbar" aria-label="Studio">
+        <button
+          type="button"
+          className="deskbar-home"
+          onClick={() => setView('hub')}
+          title="Back to the MinexStudio desk"
+        >
+          Minex<span className="wm-tail">Studio</span><span className="wm-dot">.</span>
+        </button>
+        <span className="deskbar-sep" />
+        <span className="deskbar-crumb">Case 01 — Datapack Editor</span>
+        <button type="button" className="deskbar-back" onClick={() => setView('hub')}>
+          Back to desk
+        </button>
+      </nav>
+
       <Header />
 
       {!files && (

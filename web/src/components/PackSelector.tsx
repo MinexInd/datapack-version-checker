@@ -10,6 +10,23 @@ interface Props {
   onClear: () => void
 }
 
+// Folder and zipped uploads usually nest every path under the chosen folder
+// name (e.g. "pack/pack.mcmeta"). The engine expects pack-relative keys, so we
+// locate pack.mcmeta and trim its parent prefix off every entry.
+function normalizePackFiles(files: PackFileMap): PackFileMap {
+  const pmKey = Object.keys(files).find(k => {
+    const seg = k.split('/')
+    return seg[seg.length - 1] === 'pack.mcmeta' && !k.includes('/data/')
+  })
+  if (!pmKey || pmKey === 'pack.mcmeta') return files
+  const root = pmKey.slice(0, pmKey.length - 'pack.mcmeta'.length)
+  const out: PackFileMap = {}
+  for (const [k, v] of Object.entries(files)) {
+    out[k.startsWith(root) ? k.slice(root.length) : k] = v
+  }
+  return out
+}
+
 export default function PackSelector({ files, fileCount, fileName, onLoad, onClear }: Props) {
   const folderRef = useRef<HTMLInputElement>(null)
   const zipRef = useRef<HTMLInputElement>(null)
@@ -24,7 +41,7 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
       if (rel.startsWith('.')) continue
       entries[rel] = await f.text()
     }
-    await onLoad(entries, dir[0]?.webkitRelativePath?.split('/')[0] || 'folder')
+    await onLoad(normalizePackFiles(entries), dir[0]?.webkitRelativePath?.split('/')[0] || 'folder')
   }, [onLoad])
 
   const handleZip = useCallback(async (file: File) => {
@@ -40,7 +57,7 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
       )
     })
     await Promise.all(promises)
-    await onLoad(entries, file.name)
+    await onLoad(normalizePackFiles(entries), file.name)
   }, [onLoad])
 
   const handleZipInput = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,7 +84,7 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
       const entry = item.webkitGetAsEntry?.()
       if (entry?.isDirectory) {
         const allFiles = await readDirectoryEntry(entry)
-        onLoad(allFiles, entry.name)
+        onLoad(normalizePackFiles(allFiles), entry.name)
         return
       }
     }

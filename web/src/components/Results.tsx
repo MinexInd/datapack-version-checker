@@ -169,7 +169,7 @@ function FileGroup({ filePath, issues }: { filePath: string; issues: FlatIssue[]
         <span className="file-issue-count">{issues.length}</span>
         <div className="file-kind-tags">
           {[...kinds].map(k => (
-            <span key={k} className={`file-kind-tag ${k}`}>{KIND_META[k]?.icon}</span>
+            <span key={k} className={`file-kind-tag ${k}`} title={KIND_META[k]?.label}>{KIND_META[k]?.icon}</span>
           ))}
         </div>
       </div>
@@ -784,8 +784,10 @@ export default function Results({ result, mode, duration, onPortTo }: Props) {
             {Object.entries(KIND_META).map(([k, meta]) => (
               <button
                 key={k}
-                className={`filter-chip${filterKind === k ? ' active' : ''}`}
+                className={`filter-chip${filterKind === k ? ' active' : ''}${kindTotals[k] ? '' : ' is-empty'}`}
                 onClick={() => setFilterKind(filterKind === k ? null : k)}
+                disabled={!kindTotals[k] && filterKind !== k}
+                title={kindTotals[k] ? `Show only ${meta.label.toLowerCase()} issues` : `No ${meta.label.toLowerCase()} issues`}
               >
                 {meta.label}
                 <span className="count">{kindTotals[k]}</span>

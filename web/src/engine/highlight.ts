@@ -1,3 +1,31 @@
+/** JSON highlighter for the fix preview.
+ *
+ * mcfunction rules misread JSON badly: every quoted key becomes a string, `:`
+ * turns into a resource-location token, and `{`/`[` swallow whole objects as
+ * NBT. This tokenises JSON on its own terms so keys, values, and punctuation
+ * stay distinguishable. */
+export function highlightJson(code: string): string {
+  const escaped = code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  // A quoted run followed by a colon is a key; otherwise it is a string value.
+  return escaped.replace(
+    /("(?:[^"\\]|\\.)*")(\s*:)?|\b(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b|\b(true|false|null)\b/g,
+    (match, str, colon, num, lit) => {
+      if (str !== undefined) {
+        return colon
+          ? `<span class="hl-key">${str}</span>${colon}`
+          : `<span class="hl-string">${str}</span>`
+      }
+      if (num !== undefined) return `<span class="hl-number">${num}</span>`
+      if (lit !== undefined) return `<span class="hl-bool">${lit}</span>`
+      return match
+    },
+  )
+}
+
 export function highlightMcfunction(code: string): string {
   const escaped = code
     .replace(/&/g, '&amp;')

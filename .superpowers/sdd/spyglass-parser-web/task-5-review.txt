@@ -1,0 +1,318 @@
+=== COMMITS ===
+ea8f7bf wire parser lane into web engine
+
+=== STAT ===
+web/src/engine/api.ts           |  2 +-
+ web/src/engine/engine.ts        | 20 +++++++++++++++++++-
+ web/src/engine/types.ts         |  1 +
+ web/tests/engine-parser.test.ts | 23 +++++++++++++++++++++++
+ 4 files changed, 44 insertions(+), 2 deletions(-)
+
+=== DIFF ===
+web/src/engine/api.ts           |  2 +-
+ web/src/engine/engine.ts        | 20 +++++++++++++++++++-
+ web/src/engine/types.ts         |  1 +
+ web/tests/engine-parser.test.ts | 23 +++++++++++++++++++++++
+ 4 files changed, 44 insertions(+), 2 deletions(-)
+
+diff --git a/web/src/engine/api.ts b/web/src/engine/api.ts
+index 3f8e48b..aeed655 100644
+--- a/web/src/engine/api.ts
++++ b/web/src/engine/api.ts
+@@ -1,21 +1,21 @@
+ import { createIdbCache, clearIdbCache, API_CACHE_DB } from './idb-cache'
+ import type { CacheLike } from './idb-cache'
+ import type { McmetaVersion, CommandTreeNode } from './types'
+ 
+ const BASE = 'https://api.spyglassmc.com/mcje'
+ 
+ const nullCache: CacheLike = { get: async () => null, put: async () => {} }
+ 
+ let cachePromise: Promise<CacheLike> | null = null
+ 
+-function getCache(): Promise<CacheLike> {
++export function getCache(): Promise<CacheLike> {
+   if (!cachePromise) {
+     // Fall back to a no-op cache if IndexedDB is unavailable (private mode, etc.)
+     cachePromise = createIdbCache(API_CACHE_DB).catch(() => nullCache)
+   }
+   return cachePromise
+ }
+ 
+ export async function clearCache(): Promise<void> {
+   cachePromise = null
+   await clearIdbCache(API_CACHE_DB)
+diff --git a/web/src/engine/engine.ts b/web/src/engine/engine.ts
+index 4eaa98b..65e9e20 100644
+--- a/web/src/engine/engine.ts
++++ b/web/src/engine/engine.ts
+@@ -1,24 +1,26 @@
+-import { fetchVersions, fetchCommandTree, fetchRegistries } from './api'
++import { fetchVersions, fetchCommandTree, fetchRegistries, getCache } from './api'
+ import { validateCommand } from './walker'
+ import { checkJsonData, checkDeprecatedRegistryEntries } from './json-check'
+ import { tokenizeCommand } from './tokenizer'
+ import { FEATURE_RULES, type FeatureRule } from './knowledge'
+ import { RESOURCE_FEATURE_RULES } from './resource-knowledge'
+ import { versionNameToDataVersion } from './version'
+ import { getBreakingChanges } from './technical-changes'
+ import { readPackMcmetaFromString, normalizeFormatTuple, type FormatTuple } from './pack-mcmeta'
+ import { getMcdocSymbols, checkMcdocData, fileKindFromPath } from './mcdoc-check'
+ import { checkJsonFormatSemantics } from './json-format-check'
+ import { getLogger } from './logger'
+ import { suggestForCommand, suggestForRegistry, suggestForDeprecation, suggestForStructural } from './suggest'
+ import { analyzePack, type AnalysisResult } from './analyzer'
++import { analyzePackWithSpyglass } from './parser-runner'
++import { mapParserIssues } from './parser-issues'
+ import type {
+   McmetaVersion,
+   VersionCompatibility,
+   McfunctionIssue,
+   RegistryIssue,
+   RegistryDeprecation,
+   StructuralIssue,
+   ReferenceIssue,
+   CommandTreeNode,
+   CheckResult,
+@@ -639,20 +641,35 @@ export async function checkCompatibilityContentBased(
+           snippet: hit.snippet,
+           // Legacy FeatureRule view: `fix` carries the guidance prose, and
+           // rewrite/fix rules are excluded from FEATURE_RULES by design, so
+           // knowledge issues are informational only (never auto-fixable).
+           suggestion: hit.rule.fix,
+           autoFixable: false,
+         })
+       }
+     }
+ 
++    // --- Parser lane: run Spyglass parser for deeper validation ---
++    let parserActive = false
++    try {
++      const parserCache = await getCache()
++      const parserIssues = await analyzePackWithSpyglass(files, ver.name, parserCache)
++      const mapped = mapParserIssues(parserIssues, new Map(Object.entries(files)))
++      mcfunctionIssues.push(...mapped.mcfunction)
++      structuralIssues.push(...mapped.structural)
++      registryIssues.push(...mapped.registry)
++      referenceIssues.push(...mapped.reference)
++      parserActive = true
++    } catch (e) {
++      log.debug(`Parser lane failed for ${ver.name}:`, e)
++    }
++
+     mcfunctionIssues = mcfunctionIssues.map(i => ({ ...i, ...suggestForCommand(i.command) }))
+     registryIssues = registryIssues.map(i => ({ ...i, ...suggestForRegistry(i.registry, i.entry) }))
+     deprecationIssues = deprecationIssues.map(i => ({ ...i, ...suggestForDeprecation(i.registry, i.entry) }))
+     structuralIssues = structuralIssues.map(i => ({ ...i, ...suggestForStructural(i.issue) }))
+ 
+     const hasContentIssues =
+       mcfunctionIssues.length > 0 || registryIssues.length > 0 ||
+       knowledgeIssues.length > 0 || structuralIssues.length > 0 ||
+       deprecationIssues.length > 0
+ 
+@@ -661,20 +678,21 @@ export async function checkCompatibilityContentBased(
+       version: ver,
+       pack_format_match: inDeclaredRange ? 'exact' : 'none',
+       status,
+       in_load_range: inDeclaredRange,
+       mcfunction_issues: [...mcfunctionIssues, ...knowledgeIssues],
+       registry_issues: registryIssues,
+       structural_issues: structuralIssues,
+       deprecation_issues: deprecationIssues.length > 0 ? deprecationIssues : undefined,
+       reference_issues: referenceIssues.length > 0 ? referenceIssues : undefined,
+       breaking_changes: breakingMap[ver.name] ?? [],
++      parserActive,
+     }
+ 
+     if (status === 'compatible') compatible.push(result)
+     else incompatible.push(result)
+     onCheckDone(ver.name)
+   }
+ 
+   for (let i = 0; i < relevantVersions.length; i += BATCH_SIZE) {
+     const batch = relevantVersions.slice(i, i + BATCH_SIZE)
+     await Promise.all(batch.map(ver => checkOneVersion(ver)))
+diff --git a/web/src/engine/types.ts b/web/src/engine/types.ts
+index e4c8b7a..8d86061 100644
+--- a/web/src/engine/types.ts
++++ b/web/src/engine/types.ts
+@@ -40,20 +40,21 @@ export interface VersionCompatibility {
+   version: McmetaVersion
+   pack_format_match: 'exact' | 'supported_range' | 'none'
+   status?: 'compatible' | 'content_issues' | 'below_min' | 'outside_load_range'
+   in_load_range?: boolean
+   mcfunction_issues: McfunctionIssue[]
+   registry_issues: RegistryIssue[]
+   structural_issues?: StructuralIssue[]
+   deprecation_issues?: RegistryDeprecation[]
+   reference_issues?: ReferenceIssue[]
+   breaking_changes?: string[]
++  parserActive?: boolean
+ }
+ 
+ export interface McfunctionIssue {
+   file: string
+   line: number
+   command: string
+   issue: string
+   snippet?: string
+   suggestion?: string
+   autoFixable?: boolean
+diff --git a/web/tests/engine-parser.test.ts b/web/tests/engine-parser.test.ts
+new file mode 100644
+index 0000000..e265812
+--- /dev/null
++++ b/web/tests/engine-parser.test.ts
+@@ -0,0 +1,23 @@
++import { describe, it, expect } from 'vitest'
++import { checkCompatibilityContentBased } from '../src/engine/engine'
++
++describe('engine with parser lane', () => {
++  it('reports parser errors alongside custom checks', async () => {
++    // Use a command the custom walker accepts (valid tree path) but the
++    // Spyglass parser flags ΓÇö "effect give" with amplifier300 exceeds the
++    // 0-255 range that the parser validates semantically.
++    const files = {
++      'pack.mcmeta': JSON.stringify({ pack: { pack_format: 48, description: 't' } }),
++      'data/demo/functions/test.mcfunction': 'say hi\neffect give @s speed 10 300\n',
++    }
++    const result = await checkCompatibilityContentBased(files, ['1.21'])
++    const allVersions = [...result.compatible, ...result.incompatible]
++    const ver = allVersions.find((v) => v.version.name === '1.21')
++    expect(ver).toBeTruthy()
++    // The parser lane should produce at least one mcfunction issue for the
++    // bad amplifier.  The custom walker won't flag this because it only
++    // validates command tree structure, not argument value ranges.
++    expect(ver!.mcfunction_issues.length).toBeGreaterThan(0)
++    expect(ver!.parserActive).toBe(true)
++  }, 120_000)
++})
+
+Changes:
+
+web/src/engine/api.ts
+  @@ -1,21 +1,21 @@
+  -function getCache(): Promise<CacheLike> {
+  +export function getCache(): Promise<CacheLike> {
+     if (!cachePromise) {
+       // Fall back to a no-op cache if IndexedDB is unavailable (private mode, etc.)
+       cachePromise = createIdbCache(API_CACHE_DB).catch(() => nullCache)
+     }
+     return cachePromise
+   }
+   
+   export async function clearCache(): Promise<void> {
+     cachePromise = null
+     await clearIdbCache(API_CACHE_DB)
+  +1 -1
+
+web/src/engine/engine.ts
+  @@ -1,24 +1,26 @@
+  -import { fetchVersions, fetchCommandTree, fetchRegistries } from './api'
+  +import { fetchVersions, fetchCommandTree, fetchRegistries, getCache } from './api'
+   import { validateCommand } from './walker'
+   import { checkJsonData, checkDeprecatedRegistryEntries } from './json-check'
+   import { tokenizeCommand } from './tokenizer'
+   import { FEATURE_RULES, type FeatureRule } from './knowledge'
+   import { RESOURCE_FEATURE_RULES } from './resource-knowledge'
+   import { versionNameToDataVersion } from './version'
+   import { getBreakingChanges } from './technical-changes'
+   import { readPackMcmetaFromString, normalizeFormatTuple, type FormatTuple } from './pack-mcmeta'
+   import { getMcdocSymbols, checkMcdocData, fileKindFromPath } from './mcdoc-check'
+   import { checkJsonFormatSemantics } from './json-format-check'
+   import { getLogger } from './logger'
+   import { suggestForCommand, suggestForRegistry, suggestForDeprecation, suggestForStructural } from './suggest'
+   import { analyzePack, type AnalysisResult } from './analyzer'
+  +import { analyzePackWithSpyglass } from './parser-runner'
+  +import { mapParserIssues } from './parser-issues'
+   import type {
+     McmetaVersion,
+     VersionCompatibility,
+     McfunctionIssue,
+     RegistryIssue,
+     RegistryDeprecation,
+     StructuralIssue,
+     ReferenceIssue,
+     CommandTreeNode,
+     CheckResult,
+  @@ -639,20 +641,35 @@ export async function checkCompatibilityContentBased(
+  +    // --- Parser lane: run Spyglass parser for deeper validation ---
+  +    let parserActive = false
+  +    try {
+  +      const parserCache = await getCache()
+  +      const parserIssues = await analyzePackWithSpyglass(files, ver.name, parserCache)
+  +      const mapped = mapParserIssues(parserIssues, new Map(Object.entries(files)))
+  +      mcfunctionIssues.push(...mapped.mcfunction)
+  +      structuralIssues.push(...mapped.structural)
+  +      registryIssues.push(...mapped.registry)
+  +      referenceIssues.push(...mapped.reference)
+  +      parserActive = true
+  +    } catch (e) {
+  +      log.debug(`Parser lane failed for ${ver.name}:`, e)
+  +    }
+  +
+       mcfunctionIssues = mcfunctionIssues.map(i => ({ ...i, ...suggestForCommand(i.command) }))
+       registryIssues = registryIssues.map(i => ({ ...i, ...suggestForRegistry(i.registry, i.entry) }))
+       deprecationIssues = deprecationIssues.map(i => ({ ...i, ...suggestForDeprecation(i.registry, i.entry) }))
+       structuralIssues = structuralIssues.map(i => ({ ...i, ...suggestForStructural(i.issue) }))
+   
+       const hasContentIssues =
+         mcfunctionIssues.length > 0 || registryIssues.length > 0 ||
+         knowledgeIssues.length > 0 || structuralIssues.length > 0 ||
+         deprecationIssues.length > 0
+   
+  @@ -661,20 +678,21 @@ export async function checkCompatibilityContentBased(
+  +      parserActive,
+       }
+   
+       if (status === 'compatible') compatible.push(result)
+       else incompatible.push(result)
+       onCheckDone(ver.name)
+     }
+   
+     for (let i = 0; i < relevantVersions.length; i += BATCH_SIZE) {
+       const batch = relevantVersions.slice(i, i + BATCH_SIZE)
+       await Promise.all(batch.map(ver => checkOneVersion(ver)))
+  +19 -1
+
+web/src/engine/types.ts
+  @@ -40,20 +40,21 @@ export interface VersionCompatibility {
+  +  parserActive?: boolean
+   }
+   
+   export interface McfunctionIssue {
+     file: string
+     line: number
+     command: string
+     issue: string
+     snippet?: string
+     suggestion?: string
+     autoFixable?: boolean
+  +1 -0
+
+web/tests/engine-parser.test.ts
+  @@ -0,0 +1,23 @@
+  +import { describe, it, expect } from 'vitest'
+  +import { checkCompatibilityContentBased } from '../src/engine/engine'
+  +
+  +describe('engine with parser lane', () => {
+  +  it('reports parser errors alongside custom checks', async () => {
+  +    // Use a command the custom walker accepts (valid tree path) but the
+  +    // Spyglass parser flags ΓÇö "effect give" with amplifier300 exceeds the
+  +    // 0-255 range that the parser validates semantically.
+  +    const files = {
+  +      'pack.mcmeta': JSON.stringify({ pack: { pack_format: 48, description: 't' } }),
+  +      'data/demo/functions/test.mcfunction': 'say hi\neffect give @s speed 10 300\n',
+  +    }
+  +    const result = await checkCompatibilityContentBased(files, ['1.21'])
+  +    const allVersions = [...result.compatible, ...result.incompatible]
+  +    const ver = allVersions.find((v) => v.version.name === '1.21')
+  +    expect(ver).toBeTruthy()
+  +    // The parser lane should produce at least one mcfunction issue for the
+  +    // bad amplifier.  The custom walker won't flag this because it only
+  +    // validates command tree structure, not argument value ranges.
+  +    expect(ver!.mcfunction_issues.length).toBeGreaterThan(0)
+  +    expect(ver!.parserActive).toBe(true)
+  +  }, 120_000)
+  +})
+  +23 -0

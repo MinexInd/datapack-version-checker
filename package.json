@@ -29,6 +29,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@spyglassmc/core": "^0.4.52",
     "@spyglassmc/java-edition": "^0.3.65",
     "@spyglassmc/json": "^0.3.56",

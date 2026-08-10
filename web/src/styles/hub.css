@@ -1,0 +1,656 @@
+/* MinexStudio hub — "The Diagnostics Desk".
+   Self-contained on purpose: this sheet must not reach into the checker, which
+   still runs on the legacy <style> block in index.html. Every selector here is
+   either a hub-only class or scoped under one. */
+
+/* The ruled desk ground is painted on body by bridge.css, so both the hub and
+   the checker stand on the same surface. */
+
+.hub-root {
+  position: relative;
+  min-height: 100vh;
+}
+
+.hub {
+  position: relative;
+  z-index: 2;
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: 0 var(--s5) var(--s9);
+  font-family: var(--font-sans);
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+/* ---------- Motion: one grammar, filed in from below ---------- */
+
+@keyframes fileIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes stampIn {
+  from { opacity: 0; transform: rotate(-4deg) scale(1.08); }
+  to   { opacity: 1; transform: rotate(-4deg) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub *,
+  .hub *::before,
+  .hub *::after,
+  .deskbar * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.hub :focus-visible,
+.deskbar :focus-visible {
+  outline: 2px solid var(--stamp);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+/* ---------- Masthead: the first viewport is one filed document ---------- */
+
+.desk-masthead {
+  margin-top: var(--s7);
+  border: 1px solid var(--hairline);
+  background: var(--docket);
+  animation: fileIn var(--dur-slow) var(--ease) both;
+}
+
+/* Register strip — the form header line above the document body. */
+.register-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  flex-wrap: wrap;
+  padding: var(--s2) var(--s5);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--ground-deep);
+}
+
+.reg-field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s2);
+  white-space: nowrap;
+}
+
+.reg-key {
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.reg-val {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--ink-dim);
+}
+
+.reg-push { margin-left: auto; }
+
+/* Masthead body — asymmetric: identity and prose left, filing stamp right. */
+.masthead-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s6);
+  padding: var(--s7) var(--s5) var(--s6);
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: var(--t-display);
+  font-weight: var(--w-display);
+  letter-spacing: var(--tr-display);
+  line-height: var(--lh-display);
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.wordmark .wm-tail {
+  font-weight: 300;
+  color: var(--ink-dim);
+}
+
+/* The only place the accent touches the identity. */
+.wordmark .wm-dot { color: var(--stamp); }
+
+.masthead-line {
+  margin-top: var(--s4);
+  max-width: var(--measure-tight);
+  font-size: 1.02rem;
+  line-height: var(--lh-body);
+  color: var(--ink-dim);
+  text-wrap: pretty;
+}
+
+.masthead-line strong {
+  font-weight: var(--w-strong);
+  color: var(--ink);
+}
+
+/* Filing stamp. Deliberately not accent-coloured — the accent is spent on the
+   active case, and this is chrome. */
+.filing-stamp {
+  align-self: start;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--hairline);
+  text-align: center;
+  transform: rotate(-4deg);
+  animation: stampIn 0.45s var(--ease) 0.28s both;
+}
+
+.filing-stamp .fs-line1 {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.filing-stamp .fs-line2 {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* ---------- Readout strip: what the desk covers ---------- */
+
+.readout-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  border-top: 1px solid var(--hairline);
+  background: var(--ground-deep);
+}
+
+.readout-cell {
+  min-width: 0;
+  padding: var(--s3) var(--s5);
+  border-right: 1px solid var(--hairline);
+}
+
+.readout-cell:last-child { border-right: none; }
+
+.readout-cell .ro-key {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.readout-cell .ro-val {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--t-readout);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readout-cell .ro-arrow {
+  color: var(--ink-faint);
+  padding: 0 2px;
+}
+
+/* ---------- Docket header ---------- */
+
+.docket-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s4);
+  margin-top: var(--s8);
+  margin-bottom: var(--s4);
+  animation: fileIn var(--dur-slow) var(--ease) 0.1s both;
+}
+
+.docket-head h2 {
+  font-size: var(--t-head);
+  font-weight: 600;
+  letter-spacing: var(--tr-head);
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.docket-head .dh-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.docket-head .dh-count {
+  font-family: var(--font-mono);
+  font-size: var(--t-head);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+/* ---------- The case grid ---------- */
+
+.docket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--s4);
+}
+
+@media (min-width: 1000px) {
+  .docket-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .docket-grid { grid-template-columns: 1fr; }
+}
+
+/* ---------- The tool case ---------- */
+
+.tool-case {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--docket);
+  border: 1px solid var(--hairline);
+  animation: fileIn var(--dur-slow) var(--ease) both;
+  transition:
+    border-color var(--dur) var(--ease-quick),
+    transform var(--dur) var(--ease-quick),
+    box-shadow var(--dur) var(--ease-quick);
+}
+
+.tool-case:nth-child(1) { animation-delay: 0.16s; }
+.tool-case:nth-child(2) { animation-delay: 0.22s; }
+.tool-case:nth-child(3) { animation-delay: 0.28s; }
+
+.tool-case.is-open { border-color: var(--stamp-edge); }
+
+.tool-case.is-open:hover,
+.tool-case.is-open:focus-within {
+  transform: translateY(-2px);
+  box-shadow: var(--lift);
+  border-color: var(--stamp);
+}
+
+.tool-case.is-sealed { background: var(--ground-deep); }
+
+/* Case header bar */
+.case-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--ground-deep);
+}
+
+.tool-case.is-sealed .case-bar { background: transparent; }
+
+.case-no {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+}
+
+.tool-case.is-open .case-no { color: var(--stamp); }
+
+.case-bar .case-gap { flex: 1; }
+
+/* Status chip — the severity pill vocabulary, in its status register. */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 2px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: var(--t-chip);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status-chip::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-chip.open {
+  color: var(--stamp);
+  background: var(--stamp-wash);
+  border-color: var(--stamp-edge);
+}
+
+.status-chip.sealed {
+  color: var(--ink-faint);
+  background: var(--well);
+  border-color: var(--hairline);
+}
+
+/* Case body */
+.case-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--s5) var(--s4) var(--s4);
+}
+
+.case-title {
+  font-family: var(--font-display);
+  font-size: var(--t-title);
+  font-weight: var(--w-title);
+  letter-spacing: var(--tr-title);
+  line-height: var(--lh-title);
+  color: var(--ink);
+}
+
+.tool-case.is-sealed .case-title { color: var(--ink-dim); }
+
+.case-desc {
+  margin-top: var(--s2);
+  max-width: 44ch;
+  font-size: var(--t-body-sm);
+  line-height: 1.6;
+  color: var(--ink-dim);
+  text-wrap: pretty;
+}
+
+/* Docket rows — the evidentiary readout on each case. */
+.case-docket {
+  margin-top: var(--s5);
+  border-top: 1px solid var(--hairline-soft);
+}
+
+.docket-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.docket-row:last-child { border-bottom: none; }
+
+.docket-row .dk-key {
+  width: 76px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.docket-row .dk-val {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-mono);
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-case.is-open .docket-row .dk-val { color: var(--ink); }
+
+/* Actions align across the row regardless of description length. */
+.case-action {
+  margin-top: auto;
+  padding-top: var(--s5);
+}
+
+.case-action .hub-btn { width: 100%; }
+
+/* The seal on a closed case. Decorative, hidden from assistive tech. */
+.case-seal {
+  position: absolute;
+  right: -14px;
+  bottom: 46px;
+  padding: 3px 22px;
+  border: 1px solid var(--hairline);
+  transform: rotate(-11deg);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: var(--tr-seal);
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------- Buttons ---------- */
+
+.hub-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: 10px 18px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--docket-raised);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--t-body-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick),
+    color var(--dur-quick) var(--ease-quick),
+    box-shadow var(--dur-quick) var(--ease-quick);
+}
+
+.hub-btn:hover {
+  border-color: var(--ink-faint);
+  box-shadow: var(--lift-sm);
+}
+
+/* Stamp accent: primary action only. */
+.hub-btn.primary {
+  background: var(--stamp);
+  border-color: var(--stamp);
+  color: var(--stamp-ink);
+  font-weight: 600;
+}
+
+.hub-btn.primary:hover {
+  background: var(--stamp-bright);
+  border-color: var(--stamp-bright);
+  box-shadow: var(--lift);
+}
+
+.hub-btn.primary:active { background: var(--stamp-deep); }
+
+.hub-btn:disabled {
+  background: var(--well);
+  border-color: var(--hairline-soft);
+  color: var(--ink-faint);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.hub-btn .btn-arrow {
+  transition: transform var(--dur-quick) var(--ease-quick);
+}
+
+.hub-btn:hover .btn-arrow { transform: translateX(2px); }
+
+/* ---------- Hub footer ---------- */
+
+.hub-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  margin-top: var(--s8);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--hairline);
+}
+
+.hub-footer p {
+  margin-right: auto;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+.hub-footer a {
+  font-size: 0.8rem;
+  color: var(--ink-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--hairline);
+  transition: text-decoration-color var(--dur-quick) var(--ease-quick), color var(--dur-quick) var(--ease-quick);
+}
+
+.hub-footer a:hover {
+  color: var(--ink);
+  text-decoration-color: var(--stamp);
+}
+
+.hub-footer .hf-version {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-ghost);
+}
+
+/* ---------- Deskbar: the way back from a tool to the desk ---------- */
+
+.deskbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--hairline);
+  font-family: var(--font-sans);
+}
+
+.deskbar-home {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  padding: 5px 8px;
+  margin-left: -8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  cursor: pointer;
+  transition: background var(--dur-quick) var(--ease-quick), border-color var(--dur-quick) var(--ease-quick);
+}
+
+.deskbar-home:hover {
+  background: var(--docket);
+  border-color: var(--hairline);
+}
+
+.deskbar-home .wm-tail {
+  font-weight: 300;
+  color: var(--ink-dim);
+}
+
+.deskbar-home .wm-dot { color: var(--stamp); }
+
+.deskbar-sep {
+  width: 1px;
+  height: 16px;
+  flex-shrink: 0;
+  background: var(--hairline);
+}
+
+.deskbar-crumb {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.deskbar-back {
+  margin-left: auto;
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick), background var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick);
+}
+
+.deskbar-back:hover {
+  color: var(--ink);
+  background: var(--docket);
+  border-color: var(--hairline);
+}
+
+/* ---------- Narrow screens ---------- */
+
+@media (max-width: 720px) {
+  .hub { padding: 0 var(--s4) var(--s8); }
+
+  .masthead-body {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--s6) var(--s4) var(--s5);
+  }
+
+  .filing-stamp {
+    justify-self: start;
+    transform: rotate(-3deg);
+  }
+
+  @keyframes stampIn {
+    from { opacity: 0; transform: rotate(-3deg) scale(1.08); }
+    to   { opacity: 1; transform: rotate(-3deg) scale(1); }
+  }
+
+  .register-strip {
+    gap: var(--s4);
+    padding: var(--s2) var(--s4);
+  }
+
+  .readout-cell { padding: var(--s3) var(--s4); }
+
+  .docket-head { margin-top: var(--s7); }
+}

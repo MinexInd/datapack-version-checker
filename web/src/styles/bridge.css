@@ -1,0 +1,1415 @@
+/* Bridge: brings the checker onto the Diagnostics Desk.
+
+   The checker's stylesheet is ~1560 lines living inline in index.html and it
+   works. Rewriting it wholesale is a separate job. Instead this sheet does two
+   things, in order:
+
+     1. Remaps the legacy variable names onto the desk tokens, so every rule
+        that already reads var(--bg-elev) / var(--accent) / var(--red) lands on
+        the right colour with no edit.
+     2. Overrides the handful of rules that hardcode a gradient, a coloured
+        glow, or a thick coloured border — the things the remap can't reach and
+        the world explicitly refuses.
+
+   Loaded after the inline <style> block, so these win on equal specificity. */
+
+:root {
+  /* ---------- Families ---------- */
+  --font: var(--font-sans);
+  --mono: var(--font-mono);
+
+  /* ---------- Surfaces ---------- */
+  --bg: var(--ground);
+  --bg-elev: var(--docket);
+  --bg-elev-2: var(--docket-raised);
+  --bg-hover: #222b39;
+  --bg-active: #293343;
+  --border: var(--hairline);
+  --border-soft: var(--hairline-soft);
+  --border-faint: #161d28;
+
+  /* ---------- Ink ---------- */
+  --text: var(--ink);
+  --text-dim: var(--ink-dim);
+  --text-faint: var(--ink-faint);
+  --text-inverse: var(--stamp-ink);
+
+  /* ---------- Accent: the stamp, and only the stamp ---------- */
+  --accent: var(--stamp);
+  --accent-strong: var(--stamp);
+  --accent-deep: var(--stamp-deep);
+  --accent-glow: var(--stamp-wash);
+
+  /* ---------- The legacy colour names now speak severity ----------
+     The checker's palette had six hues doing decorative duty. Collapsing them
+     onto four severities is the point: a colour in a finding means something. */
+  --green: var(--sev-ok);
+  --green-bg: var(--sev-ok-wash);
+  --green-border: var(--sev-ok-edge);
+
+  --red: var(--sev-error);
+  --red-bg: var(--sev-error-wash);
+  --red-border: var(--sev-error-edge);
+
+  --amber: var(--sev-warn);
+  --amber-bg: var(--sev-warn-wash);
+  --amber-border: var(--sev-warn-edge);
+
+  --blue: var(--sev-info);
+  --blue-bg: var(--sev-info-wash);
+  --blue-border: var(--sev-info-edge);
+
+  /* Purple and teal were extra hues with no semantic job. Folded into info so
+     the severity vocabulary stays four words wide. */
+  --purple: var(--sev-info);
+  --purple-bg: var(--sev-info-wash);
+  --purple-border: var(--sev-info-edge);
+
+  --teal: var(--sev-info);
+  --teal-bg: var(--sev-info-wash);
+  --teal-border: var(--sev-info-edge);
+
+  /* ---------- Depth and shape ---------- */
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-lg: var(--lift);
+  --radius: var(--r-lg);
+  --radius-sm: var(--r-md);
+  --radius-xs: var(--r-sm);
+}
+
+/* ---------- Ground ----------
+   The legacy sheet paints a blue/violet radial wash and a dot grid on body.
+   The desk is a flat ruled surface. */
+
+body {
+  background: var(--ground);
+}
+
+body::before {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(var(--hairline-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hairline-soft) 1px, transparent 1px);
+  background-size: 88px 88px;
+  opacity: 0.5;
+}
+
+body::after {
+  content: none;
+}
+
+/* ---------- Header ----------
+   Gradient chip and gradient-clipped title, both refused by the world. The
+   mark becomes a stamped square; the title becomes weight and tracking. */
+
+.app-header {
+  padding: var(--s5) 0 var(--s4);
+  margin-bottom: var(--s6);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.app-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-md);
+  background: var(--stamp-wash);
+  border: 1px solid var(--stamp-edge);
+  box-shadow: none;
+}
+
+.app-logo svg {
+  stroke: var(--stamp);
+}
+
+.app-logo::after {
+  content: none;
+}
+
+.app-title {
+  font-size: 1.34rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+  color: var(--ink);
+}
+
+.app-subtitle {
+  font-size: 0.86rem;
+  color: var(--ink-dim);
+}
+
+.header-badge {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  padding: 3px 10px;
+}
+
+/* ---------- Hero cards: flat at rest, lift on hover ---------- */
+
+.hero-card {
+  border-radius: var(--r-lg);
+  box-shadow: none;
+  transition:
+    border-color var(--dur) var(--ease-quick),
+    transform var(--dur) var(--ease-quick),
+    box-shadow var(--dur) var(--ease-quick);
+}
+
+.hero-card:hover {
+  border-color: var(--hairline);
+  box-shadow: var(--lift-sm);
+  transform: translateY(-2px);
+}
+
+.hero-card .hc-icon {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink-faint);
+  margin-bottom: var(--s3);
+}
+
+.new-badge {
+  background: var(--stamp-wash);
+  border: 1px solid var(--stamp-edge);
+  color: var(--stamp);
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  letter-spacing: 0.1em;
+}
+
+/* ---------- Cards: flat paper ---------- */
+
+.card {
+  border-radius: var(--r-lg);
+  box-shadow: none;
+  padding: var(--s5);
+  margin-bottom: var(--s4);
+}
+
+.card:hover {
+  box-shadow: none;
+}
+
+.card h2 {
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  margin-bottom: var(--s4);
+}
+
+.card h2 .sub {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--ink-dim);
+}
+
+/* ---------- Tabs: a stamped tab, not a glowing pill ---------- */
+
+.tab-bar {
+  border-radius: var(--r-md);
+  padding: 3px;
+  gap: 3px;
+}
+
+.tab {
+  border-radius: var(--r-sm);
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.tab.active {
+  background: var(--stamp);
+  color: var(--stamp-ink);
+  box-shadow: none;
+  font-weight: 600;
+}
+
+.tab.active:hover {
+  background: var(--stamp-bright);
+  color: var(--stamp-ink);
+}
+
+/* ---------- Segmented control ---------- */
+
+.segmented {
+  border-radius: var(--r-md);
+}
+
+.segmented button {
+  border-radius: var(--r-sm);
+}
+
+.segmented button.active {
+  background: var(--stamp);
+  color: var(--stamp-ink);
+  font-weight: 600;
+}
+
+/* ---------- Inputs: inset wells ---------- */
+
+/* background-color, not the shorthand: `background:` would reset the chevron's
+   repeat and position and tile it across the whole select. */
+input[type='text'],
+select,
+textarea {
+  background-color: var(--well);
+  border-radius: var(--r-md);
+  font-size: 0.86rem;
+}
+
+input[type='text']:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--stamp);
+  box-shadow: 0 0 0 3px var(--stamp-wash);
+}
+
+/* The legacy chevron was drawn in the old slate blue. Repeat and position are
+   restated so this rule is self-contained. */
+select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='%238692a5' d='M6 8L2 4h8z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+/* The native dropdown list renders on the OS layer and does not inherit the
+   desk surface — set it explicitly or options come through near-black. */
+select option {
+  background-color: var(--docket);
+  color: var(--ink);
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  border-radius: var(--r-md);
+  font-family: var(--font-sans);
+  font-size: 0.84rem;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.btn:hover {
+  border-color: var(--ink-faint);
+  box-shadow: var(--lift-sm);
+}
+
+.btn-primary,
+.btn-success {
+  background: var(--stamp);
+  border-color: var(--stamp);
+  color: var(--stamp-ink);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.btn-primary:hover,
+.btn-success:hover {
+  background: var(--stamp-bright);
+  border-color: var(--stamp-bright);
+  box-shadow: var(--lift);
+}
+
+.btn-primary:disabled,
+.btn-success:disabled {
+  background: var(--well);
+  border-color: var(--hairline-soft);
+  color: var(--ink-faint);
+  opacity: 1;
+  box-shadow: none;
+}
+
+.btn-lg {
+  border-radius: var(--r-md);
+  font-size: 0.9rem;
+}
+
+/* ---------- Dropzone ---------- */
+
+.dropzone {
+  border-radius: var(--r-lg);
+  background: var(--well);
+}
+
+.dropzone:hover,
+.dropzone.dragover {
+  border-color: var(--stamp-edge);
+  box-shadow: inset 0 0 0 3px var(--stamp-wash);
+}
+
+.dropzone .dz-icon {
+  color: var(--ink-faint);
+}
+
+.dropzone .browse-link {
+  color: var(--stamp);
+}
+
+.dropzone .browse-link:hover {
+  color: var(--stamp-bright);
+}
+
+.dz-loaded {
+  border-radius: var(--r-lg);
+}
+
+.dz-loaded .meta .count {
+  font-family: var(--font-mono);
+}
+
+/* ---------- Selection states ----------
+   These hardcoded the old blue, so the variable remap can't reach them. */
+
+.check:has(input:checked) {
+  background: var(--stamp-wash);
+  border-color: var(--stamp-edge);
+}
+
+.check input {
+  accent-color: var(--stamp);
+}
+
+.scl-row.sel {
+  background: var(--stamp-wash);
+}
+
+.scl-row.sel .scl-name {
+  color: var(--stamp);
+}
+
+.scl-row.sel .scl-check {
+  background: var(--stamp);
+  border-color: var(--stamp);
+  color: var(--stamp-ink);
+}
+
+.scl-check {
+  border-radius: var(--r-sm);
+}
+
+.dz-loaded .checkicon,
+.empty-ok .ok-icon {
+  background: var(--sev-ok-wash);
+  border: 1px solid var(--sev-ok-edge);
+  color: var(--sev-ok);
+}
+
+.diff-line.removed {
+  background: var(--sev-error-wash);
+}
+
+.diff-line.added {
+  background: var(--sev-ok-wash);
+}
+
+/* ---------- Stats: mono numbers, flat tiles ---------- */
+
+.stat {
+  border-radius: var(--r-md);
+}
+
+.stat:hover {
+  border-color: var(--hairline);
+}
+
+.stat .num {
+  font-family: var(--font-mono);
+  font-size: 1.7rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.stat .label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* The fix-preview tiles used blue/green/purple/red as four separate hues. Purple
+   folding into info made "JSON fixes" read the same as "Files changed", so the
+   purple tile takes the stamp — it counts work the tool performed, which is the
+   one thing on that panel the accent is for. */
+.stat.purple {
+  background: var(--stamp-wash);
+}
+
+.stat.purple::before {
+  background: var(--stamp);
+}
+
+.stat.purple .num {
+  color: var(--stamp);
+}
+
+/* ---------- Results: the densest screen in the product ----------
+
+   Three problems the density created:
+     1. Every card carried equal weight, so the summary didn't lead.
+     2. Section marks were coloured tiles holding a single cryptic letter.
+     3. Findings nested a 480px scroller inside a page that already scrolls,
+        so the outer scrollbar lied about how much was left. */
+
+/* The summary is the answer; the sections below are the detail. Give it the
+   docket treatment so it reads as the top of the report. */
+.result-summary {
+  background: var(--docket);
+  border-color: var(--hairline);
+}
+
+.result-header-row {
+  align-items: baseline;
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--hairline-soft);
+  margin-bottom: var(--s4);
+}
+
+/* A letter in a coloured box reads as a logo, not a marker. Drop the box and
+   let the section title carry itself; the letter becomes a mono register mark. */
+.result-header-icon,
+.section-icon {
+  width: auto;
+  height: auto;
+  background: none !important;
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--ink-faint);
+  margin-right: var(--s2);
+}
+
+.section-icon.green { color: var(--sev-ok); }
+.section-icon.red { color: var(--sev-error); }
+.section-icon.amber { color: var(--sev-warn); }
+.section-icon.blue,
+.section-icon.purple { color: var(--sev-info); }
+
+/* Counts next to a section title are data. */
+.card h2 .sub,
+.file-issue-count,
+.duration-line b,
+.meta-line b {
+  font-family: var(--font-mono);
+}
+
+.file-issue-count {
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  color: var(--ink-dim);
+}
+
+/* Filter bar: a control strip, not a card. */
+.filter-bar {
+  background: var(--well);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-md);
+  padding: var(--s2) var(--s3);
+}
+
+.filter-bar .filter-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: var(--tr-label);
+  font-weight: 500;
+}
+
+.filter-chip {
+  background: transparent;
+  border-color: var(--hairline);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+}
+
+/* Active filter is a live constraint on what you're reading — worth the accent. */
+.filter-chip.active {
+  background: var(--stamp-wash);
+  border-color: var(--stamp);
+  color: var(--stamp);
+}
+
+.filter-chip .count {
+  font-family: var(--font-mono);
+  color: var(--ink-faint);
+  opacity: 1;
+}
+
+.filter-chip.active .count {
+  color: var(--stamp);
+}
+
+/* A chip whose count is zero can't filter to anything, so it should recede —
+   but "0 breaking changes" is itself worth reading, so it must stay legible.
+   Opacity would drag it to ~2:1; drop the border and step the ink down to
+   ink-faint instead, which holds 6.1:1 on the bar. */
+.filter-chip.is-empty {
+  border-color: transparent;
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.filter-chip.is-empty:hover {
+  border-color: transparent;
+  color: var(--ink-faint);
+}
+
+/* File groups: the file path is the anchor when scanning, so let it lead. */
+.file-group {
+  border-color: var(--hairline);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.file-group-header {
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline);
+  padding: var(--s2) var(--s3);
+}
+
+.file-path {
+  color: var(--ink);
+  font-size: 0.75rem;
+}
+
+/* The nested 480px scroller inside a scrolling page hides its own overflow and
+   traps the wheel. Let the page own vertical scrolling. */
+.issues-scroll {
+  max-height: none;
+  overflow-y: visible;
+  padding-right: 0;
+  gap: var(--s2);
+}
+
+/* Findings themselves */
+.issue-item {
+  background: var(--ground-deep);
+  padding: var(--s3);
+}
+
+.issue-item-body {
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.issue-loc {
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
+}
+
+.issue-cmd,
+.issue-code,
+.issue-snippet {
+  border-color: var(--hairline);
+  color: var(--ink-dim);
+}
+
+.issue-snippet .line-error {
+  border-radius: var(--r-xs);
+}
+
+/* Auto-fix vs manual is the most actionable split on the screen: one is work
+   the tool does, the other is work you do. Keep it as severity, not decoration. */
+.issue-hint {
+  border-radius: var(--r-sm);
+  font-size: 0.75rem;
+}
+
+.issue-hint .issue-hint-tag {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.checklist-chip.auto,
+.issue-hint.auto {
+  background: var(--sev-ok-wash);
+  border: 1px solid var(--sev-ok-edge);
+}
+
+.checklist-chip.manual,
+.issue-hint.manual {
+  background: var(--sev-warn-wash);
+  border: 1px solid var(--sev-warn-edge);
+}
+
+.checklist-loc {
+  color: var(--ink-faint);
+}
+
+.checklist-item {
+  background: var(--ground-deep);
+}
+
+.checklist-title {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.empty-state {
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+  padding: var(--s6) var(--s2);
+}
+
+/* Knowledge cards */
+.krule {
+  background: var(--ground-deep);
+}
+
+.krule-icon {
+  font-family: var(--font-mono);
+  color: var(--ink-faint);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+
+.kmin,
+.kfound {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+/* ---------- Version rows ---------- */
+
+.vrow {
+  border-radius: var(--r-md);
+}
+
+.vrow.open {
+  border-color: var(--stamp-edge);
+  box-shadow: none;
+}
+
+.vname {
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.vrow {
+  background: var(--docket);
+}
+
+/* The version row header is the busiest line in the product: name, tag, up to
+   six count pills, a filled button, and a chevron. Two fixes — the row only
+   lifts its surface on hover, and the port button stops competing with the
+   accent until you are actually in that row. */
+.vhead {
+  padding: var(--s3) var(--s4);
+}
+
+.vhead:hover {
+  background: var(--docket-raised);
+}
+
+.vrow.open .vhead {
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+/* Counts read as data, and the pill is a count not a category label. */
+.pill {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.pill-btn {
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.pill-btn:hover {
+  border-color: currentColor;
+}
+
+.pill.ok {
+  background: var(--sev-ok-wash);
+  color: var(--sev-ok);
+}
+
+/* "Port to X" is a real action but there is one per broken version — filling
+   them all would blow the accent budget on a list. Outline until hover. */
+.cta-port.btn-primary {
+  background: transparent;
+  border-color: var(--stamp-edge);
+  color: var(--stamp);
+  box-shadow: none;
+}
+
+.vhead:hover .cta-port.btn-primary,
+.cta-port.btn-primary:hover,
+.cta-port.btn-primary:focus-visible {
+  background: var(--stamp);
+  border-color: var(--stamp);
+  color: var(--stamp-ink);
+}
+
+.vhead .chev {
+  font-family: var(--font-mono);
+  color: var(--ink-faint);
+}
+
+/* ---------- Auto-Fix / Port ----------
+
+   This panel is a two-step flow: preview what would change, then download it.
+   The steps were indistinguishable — both buttons filled, both stamp-coloured —
+   so nothing said which one you were on. */
+
+/* Step 1 leads until a preview exists. */
+.fix-actions {
+  gap: var(--s3);
+  margin-top: var(--s5);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--hairline-soft);
+}
+
+/* Step 2 is the real commit: it writes a file to disk, so it keeps the fill and
+   Preview steps back to an outline once its work is done. */
+.fix-actions .btn-primary {
+  background: transparent;
+  border-color: var(--stamp-edge);
+  color: var(--stamp);
+}
+
+.fix-actions .btn-primary:hover:not(:disabled) {
+  background: var(--stamp-wash);
+  border-color: var(--stamp);
+  color: var(--stamp);
+  box-shadow: none;
+}
+
+.fix-actions .btn-success {
+  background: var(--stamp);
+  border-color: var(--stamp);
+  color: var(--stamp-ink);
+}
+
+.fix-actions .btn-success:hover:not(:disabled) {
+  background: var(--stamp-bright);
+  border-color: var(--stamp-bright);
+}
+
+/* Plan header: the one line that answers "what is about to happen". */
+.plan-header {
+  background: var(--ground-deep);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  padding: var(--s3) var(--s4);
+}
+
+/* Upgrade vs backport is a direction, not a severity — a backport is not a
+   warning. Both read as neutral stamps; the arrow in the versions carries it. */
+.plan-direction {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  border-radius: var(--r-pill);
+  padding: 3px 10px;
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  color: var(--ink-dim);
+}
+
+.plan-direction.fwd,
+.plan-direction.bwd {
+  background: var(--well);
+  color: var(--ink-dim);
+}
+
+.plan-versions {
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+}
+
+.plan-file-count {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ink-faint);
+}
+
+.plan-section-title {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+  color: var(--ink-faint);
+  margin-top: var(--s5);
+}
+
+.plan-rewrite {
+  background: var(--ground-deep);
+  border-color: var(--hairline-soft);
+  border-radius: var(--r-sm);
+}
+
+.plan-rewrite:hover {
+  background: var(--docket-raised);
+}
+
+.plan-rewrite-count {
+  font-family: var(--font-mono);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  color: var(--ink-dim);
+}
+
+/* Manual attention is genuinely a warning: the tool cannot do this for you. */
+.plan-manual {
+  background: var(--sev-warn-wash);
+  border: 1px solid var(--sev-warn-edge);
+  border-radius: var(--r-sm);
+}
+
+.plan-manual-desc {
+  color: var(--sev-warn);
+  font-size: 0.82rem;
+}
+
+.plan-manual-files {
+  color: var(--ink-faint);
+}
+
+/* The changed-file list capped at 500px and each open diff capped at 400px
+   inside it — a scroller, inside a scroller, inside the page. Expanding a file
+   left you reading a diff through a 400px slot with two scrollbars competing.
+   The list grows with the page; only the diff keeps a cap, and a taller one. */
+.fix-file-list {
+  max-height: none;
+  overflow: visible;
+}
+
+.diff-view {
+  max-height: 60vh;
+}
+
+/* Changed-file list */
+.fix-toolbar {
+  margin: var(--s5) 0 var(--s3);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.fix-toolbar-title {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+  color: var(--ink-faint);
+}
+
+.fix-file-header {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--ink);
+  padding: var(--s2) var(--s2);
+  border-radius: var(--r-sm);
+}
+
+.fix-file-header.clickable:hover {
+  color: var(--ink);
+  background: var(--docket-raised);
+}
+
+.fix-file-header .patch-count {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+.fix-file-icon {
+  color: var(--ink-faint);
+}
+
+.fix-file.expanded {
+  background: var(--ground-deep);
+  border-color: var(--hairline);
+  border-radius: var(--r-md);
+}
+
+.fix-detail {
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+}
+
+.fix-detail.detail-ok { color: var(--sev-ok); }
+.fix-detail.detail-warn { color: var(--sev-warn); }
+.fix-detail.detail-error { color: var(--sev-error); }
+.detail-arrow { color: var(--sev-ok); }
+
+/* Diff: removed and added are the one place red/green is literal rather than
+   severity, so it stays — but on the well, at a readable weight. */
+.diff-panel {
+  border-color: var(--hairline);
+  border-radius: var(--r-md);
+}
+
+.diff-toolbar {
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline);
+  padding: var(--s2) var(--s3);
+}
+
+.diff-view {
+  background: var(--well);
+}
+
+.diff-col {
+  border-color: var(--hairline);
+  border-radius: var(--r-sm);
+}
+
+.diff-col-header {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: var(--tr-label);
+}
+
+.diff-detail {
+  font-family: var(--font-mono);
+  background: var(--docket-raised);
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+}
+
+.diff-line.context {
+  color: var(--ink-dim);
+}
+
+/* Collapsed runs of unchanged lines. A stated count beats silently dropping
+   them — you can see the diff skipped something and how much. */
+.diff-line.gap {
+  color: var(--ink-faint);
+  font-size: 0.68rem;
+  font-style: italic;
+  background: var(--ground-deep);
+  border-top: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid var(--hairline-soft);
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+
+.diff-line.gap .diff-text {
+  padding-left: var(--s2);
+}
+
+.diff-approx {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sev-warn);
+  background: var(--sev-warn-wash);
+  border: 1px solid var(--sev-warn-edge);
+  border-radius: var(--r-pill);
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.diff-empty {
+  padding: var(--s4);
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  background: var(--well);
+}
+
+/* JSON keys need to separate from string values, which share the quote mark. */
+.hl-key {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.empty-ok p {
+  color: var(--ink-dim);
+}
+
+.empty-ok b {
+  color: var(--sev-ok);
+}
+
+.vtag,
+.scl-tag {
+  font-family: var(--font-mono);
+  border-radius: var(--r-pill);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Release vs snapshot was blue vs purple; both now resolve to info, which made
+   the two tags identical. This is a stability distinction, not a severity one,
+   so it drops out of the severity palette entirely: release is stated in ink,
+   snapshot is outlined and dimmer. */
+.vtag.release,
+.scl-tag.rel {
+  background: var(--well);
+  color: var(--ink-dim);
+  border: 1px solid var(--hairline);
+}
+
+.vtag.snapshot,
+.scl-tag.snap {
+  background: transparent;
+  color: var(--ink-faint);
+  border: 1px dashed var(--hairline);
+}
+
+/* ---------- Chips and pills ---------- */
+
+.pill,
+.filter-chip,
+.issue-badge,
+.checklist-chip {
+  font-family: var(--font-mono);
+  border-radius: var(--r-pill);
+  letter-spacing: 0.06em;
+}
+
+/* Kind vs severity.
+   Six issue kinds map onto four severity colours, so colour alone can no longer
+   tell Reference from Deprecated from Structural. Colour carries severity; the
+   glyph carries the kind. This tag was a colour-only swatch with an invisible
+   glyph — ink the glyph and put it on a neutral surface so the kind is legible. */
+.file-kind-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-sm);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+}
+
+.file-kind-tag.cmd { color: var(--sev-error); }
+.file-kind-tag.reg { color: var(--sev-warn); }
+.file-kind-tag.struct { color: var(--sev-info); }
+.file-kind-tag.ref { color: var(--sev-info); }
+.file-kind-tag.dep { color: var(--ink-dim); }
+.file-kind-tag.bc { color: var(--sev-warn); }
+
+/* The badge already spells the kind out, so the label does the distinguishing
+   and the colour is free to mean severity. */
+.issue-badge {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.issue-badge.dep {
+  background: var(--well);
+  color: var(--ink-dim);
+  border: 1px solid var(--hairline);
+}
+
+.pill.dep,
+.filter-chip.dep {
+  background: var(--well);
+  color: var(--ink-dim);
+}
+
+.pill-btn:hover {
+  transform: none;
+  border-color: currentColor;
+}
+
+.filter-chip.active {
+  box-shadow: none;
+  border-color: currentColor;
+}
+
+/* ---------- Findings ----------
+   The 3px coloured left border is the one decoration the world names outright.
+   Severity moves to the badge and a 1px edge; the rule stays hairline. */
+
+.issue,
+.issue-item,
+.checklist-item {
+  border-radius: var(--r-md);
+  border-left-width: 1px;
+  border-left-color: var(--hairline);
+}
+
+.issue.cmd,
+.issue.reg,
+.issue.struct,
+.issue.fmt,
+.issue.ref,
+.issue.dep,
+.issue-item.cmd,
+.issue-item.reg,
+.issue-item.struct,
+.issue-item.ref,
+.issue-item.dep,
+.issue-item.bc,
+.checklist-item.auto,
+.checklist-item.manual {
+  border-left-color: var(--hairline);
+}
+
+.issue-item:hover {
+  border-color: var(--hairline);
+  background: var(--docket-raised);
+  transform: none;
+}
+
+.issue .loc,
+.issue-loc,
+.checklist-loc {
+  font-family: var(--font-mono);
+}
+
+.issue-snippet,
+.issue-code,
+.issue-cmd,
+.code-snippet,
+.diff-code {
+  background: var(--well);
+  border-radius: var(--r-sm);
+}
+
+.checklist-card {
+  border-radius: var(--r-lg);
+  box-shadow: none;
+}
+
+/* Two-hue gradient spine on the checklist card: refused. */
+.checklist-card::before {
+  content: none;
+}
+
+.checklist-card {
+  padding-left: var(--s4);
+}
+
+.krule {
+  border-radius: var(--r-md);
+  border-left: 1px solid var(--hairline);
+}
+
+.krule:hover {
+  border-color: var(--hairline);
+}
+
+/* Coloured halos with no offset are decoration, not depth. */
+.issue-hint.auto .issue-hint-dot,
+.issue-hint.manual .issue-hint-dot {
+  box-shadow: none;
+}
+
+.issue-hint,
+.checklist-fix,
+.file-group,
+.fix-file,
+.diff-col,
+.diff-panel,
+.porting-plan,
+.plan-rewrite,
+.plan-manual,
+.empty-ok,
+.empty-state {
+  border-radius: var(--r-md);
+}
+
+/* ---------- Loading states ----------
+
+   These all animate, but three of them were invisible:
+     - the spinner is a white ring with a white top edge, so on the filled
+       stamp button it was white-on-orange and read as a static dot;
+     - the progress shimmer swept a 12% wash that vanished on the flat surface;
+     - skeletons kept the old slate surface and a 4% white sweep.
+   Colour, not motion, was the problem. */
+
+.progress-bar {
+  border-radius: var(--r-md);
+  background: var(--docket);
+  border-color: var(--stamp-edge);
+  color: var(--ink);
+}
+
+/* The sweep needs to be visible against the docket, not a 12% tint of it. */
+.progress-bar::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(240, 122, 53, 0.22),
+    transparent
+  );
+}
+
+/* The ring takes the current text colour, so it inherits correctly on every
+   surface: dark ink on the stamp button, light ink on a dark panel. */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.9;
+  animation: spin 0.6s linear infinite;
+}
+
+/* Skeletons: desk surfaces, and a sweep bright enough to read as motion. */
+.skeleton {
+  background: var(--docket-raised);
+  border-radius: var(--r-sm);
+}
+
+.skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(230, 235, 242, 0.09),
+    transparent
+  );
+}
+
+.skeleton-line {
+  background: var(--well);
+  border-radius: var(--r-pill);
+}
+
+.skeleton-row {
+  border-color: var(--hairline);
+  border-radius: var(--r-md);
+}
+
+.skeleton-pill {
+  border-radius: var(--r-pill);
+}
+
+.error {
+  border-radius: var(--r-md);
+}
+
+.error span:first-child {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+/* ---------- Syntax highlighting: onto the severity palette ---------- */
+
+.hl-comment { color: var(--ink-faint); }
+.hl-cmd { color: var(--sev-info); }
+.hl-selector { color: var(--sev-warn); }
+.hl-coord { color: var(--sev-ok); }
+.hl-string { color: var(--sev-ok); }
+.hl-number { color: var(--sev-info); }
+.hl-bool { color: var(--stamp); }
+.hl-nbt { color: var(--sev-warn); }
+.hl-rlid { color: var(--sev-info); }
+.hl-marker { color: var(--sev-error); }
+
+.section-icon.purple { color: var(--sev-info); }
+
+/* ---------- Focus and scrollbars ---------- */
+
+:focus-visible {
+  outline: 2px solid var(--stamp);
+  outline-offset: 2px;
+}
+
+.vhead:focus-visible,
+.scl-row:focus-visible,
+.fix-file-header.clickable:focus-visible {
+  outline: 2px solid var(--stamp);
+  outline-offset: -2px;
+}
+
+.scl-list:focus-within {
+  border-color: var(--stamp);
+  box-shadow: 0 0 0 3px var(--stamp-wash);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--well);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border: 3px solid var(--well);
+  border-radius: var(--r-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-faint);
+}
+
+a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--hairline);
+}
+
+a:hover {
+  color: var(--ink);
+  text-decoration-color: var(--stamp);
+}
+
+.app-footer a:hover,
+.footer-links a:hover {
+  color: var(--ink);
+}
+
+.app-footer {
+  border-top: 1px solid var(--hairline);
+}
+
+/* ---------- Motion: match the hub's entrance ---------- */
+
+.animate-in,
+.animate-in-d1,
+.animate-in-d2,
+.animate-in-d3 {
+  animation-name: fileIn;
+  animation-duration: var(--dur-slow);
+  animation-timing-function: var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
