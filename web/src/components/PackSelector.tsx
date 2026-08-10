@@ -104,7 +104,7 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
       <h2>
         Pack
         <span className="sub">
-          {files ? <><span className="kbd">Esc</span> to clear</> : 'folder or .zip containing pack.mcmeta'}
+          {files ? <><span className="kbd">Esc</span> to clear</> : 'required'}
         </span>
       </h2>
       {files ? (
@@ -132,7 +132,7 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
             </svg>
           </div>
           <p>Drop a datapack / resource pack here</p>
-          <div className="dz-hint">Drag a folder or .zip file</div>
+          <div className="dz-hint">Folder or .zip containing pack.mcmeta</div>
           <div className="dz-browse">
             <button type="button" className="browse-link" onClick={(e) => { e.stopPropagation(); folderRef.current?.click() }}>Browse folder</button>
             <span className="browse-sep">·</span>

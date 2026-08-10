@@ -176,10 +176,14 @@ body::after {
 }
 
 .hero-card .hc-icon {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--ink-faint);
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-md);
+  background: var(--stamp-wash);
+  border: 1px solid var(--stamp-edge);
+  color: var(--stamp);
   margin-bottom: var(--s3);
 }
 
@@ -216,6 +220,8 @@ body::after {
   font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--ink-faint);
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 label {
@@ -238,16 +244,21 @@ label {
   font-weight: 500;
 }
 
+/* Active tab: a stamped outline, not a filled bar. The Stamp Rarity Rule
+   spends the accent on the primary action and the open case — two filled
+   tabs would blow the ≤5% budget on a control strip. */
 .tab.active {
-  background: var(--stamp);
-  color: var(--stamp-ink);
+  background: var(--stamp-wash);
+  color: var(--stamp);
   box-shadow: none;
   font-weight: 600;
+  border-color: var(--stamp-edge);
 }
 
 .tab.active:hover {
-  background: var(--stamp-bright);
-  color: var(--stamp-ink);
+  background: var(--stamp-wash);
+  color: var(--stamp-bright);
+  border-color: var(--stamp);
 }
 
 /* ---------- Segmented control ---------- */

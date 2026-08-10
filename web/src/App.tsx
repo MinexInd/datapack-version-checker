@@ -171,22 +171,41 @@ export default function App() {
       {!files && (
         <div className="hero-grid animate-in-d1">
           <div className="hero-card">
-            <span className="hc-icon">&gt;</span>
+            <span className="hc-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="4 17 10 11 4 5" />
+                <line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+            </span>
             <h3>Command Validation</h3>
             <p>Checks every .mcfunction against the target version's command tree.</p>
           </div>
           <div className="hero-card">
-            <span className="hc-icon">#</span>
+            <span className="hc-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" />
+                <line x1="10" y1="3" x2="8" y2="21" /><line x1="16" y1="3" x2="14" y2="21" />
+              </svg>
+            </span>
             <h3>Registry &amp; mcdoc validation</h3>
             <p>Validates JSON files against per-version registries and mcdoc schemas.</p>
           </div>
           <div className="hero-card">
-            <span className="hc-icon">M</span>
+            <span className="hc-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M3 9h18M9 21V9" />
+              </svg>
+            </span>
             <h3>Structural JSON</h3>
             <p>Validates JSON against Minecraft's type system — catches field changes, removed fields, and structural issues across versions.</p>
           </div>
           <div className="hero-card">
-            <span className="hc-icon">+</span>
+            <span className="hc-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </span>
             <h3>Auto-Fix</h3>
             <p>Ports packs between versions — rewrites commands and fixes JSON automatically.</p>
           </div>
