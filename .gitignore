@@ -12,4 +12,6 @@ server.log
 /.claude/
 AGENTS.md
 CLAUDE.md
+DESIGN.md
+PRODUCT.md
 /docs/superpowers/
