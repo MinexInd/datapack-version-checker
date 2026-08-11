@@ -1,7 +1,7 @@
 # MinexStudio IDE — Implementation Plan
 
 **Generated:** 2026-08-10  
-**Status:** Phase 0 — Foundation  
+**Status:** Phase 0 ✓ complete — moving to Phase 1 — Core Editing  
 **Branch:** `master` (D:\dataapck version solution\datapack-version-checker)
 
 ---
@@ -114,6 +114,31 @@ Build a browser-based IDE for Minecraft datapacks — "VS Code for Datapacks" �
 | 5.2 | Extension API | File types, validators, templates, commands, panels, themes |
 | 5.3 | Templates marketplace | Boss, Minigame, Library, Magic, Skyblock, RPG |
 | 5.4 | COOP/COEP headers | SharedArrayBuffer for Spyglass on GitHub Pages |
+
+---
+
+## Phase 6 — Desktop App (Tauri) — Deferred, decide later
+
+**Decision (2026-08-11):** Stay web-first. Fix browser IDE bugs now; Tauri is a plan, not active work.
+
+### Rationale
+- Monaco is the same editor engine VSCode uses; `@spyglassmc/core` in the webview is the same engine the Spyglass VSCode extension's LSP server wraps. A desktop shell adds no editing features — only native I/O and packaging.
+- Tauri (Rust shell + existing React/Monaco/Spyglass frontend) gives Windows + macOS + Linux from one codebase, small binaries (~10 MB vs Electron ~150 MB), native filesystem (open datapack folders directly), real networking (no CORS/COEP), disk cache, installers per OS.
+- Rust earns its keep in the shell only (fs, networking, bundling). A full native Rust editor (egui/slint/iced) is a trap: reimplementing Monaco-level editing is years of work for a worse result.
+- Electron alternative: Node backend could run the real `@spyglassmc/language-server` over LSP, but core already runs in the webview — little gained, much heavier.
+
+### Phase 6 Tasks (when started)
+| ID | Task | Description |
+|----|------|-------------|
+| 6.1 | Tauri scaffold | `npm create tauri-app` in `web/`; point Vite build at Tauri's dist; `tauri.conf.json` window/identifier |
+| 6.2 | Native filesystem | Replace zip-upload with folder open via Tauri `dialog` + `fs` plugin; read pack.mcmeta, walk datapack dirs |
+| 6.3 | Network bypass | Serve Spyglass data through Rust `http` plugin or Tauri-side fetch — removes CORS/COEP preflight issues (api.spyglassmc.com returns 502 on OPTIONS) |
+| 6.4 | Disk cache | Swap IDB cache for filesystem cache under app-data |
+| 6.5 | Cross-OS | Windows + macOS .dmg + Linux AppImage builds; GitHub Actions matrix |
+| 6.6 | Optional LSP | Run `@spyglassmc/language-server` in Rust child process (Node bundled) for true LSP features |
+
+### Do NOT do first
+- Native Rust editor UI rewrite (egui/iced/slint) — no Monaco-equivalent widget exists in the Rust ecosystem; ROI negative.
 
 ---
 

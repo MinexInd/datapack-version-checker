@@ -6,6 +6,33 @@ import { createIdbCache } from './idb-cache'
 
 const PACK_ROOT = 'file:///pack/'
 const CACHE_DB = 'ide-spyglass-cache'
+export const IDE_DEPENDENCIES = ['@vanilla-datapack', '@vanilla-resourcepack', '@vanilla-mcdoc'] as const
+
+export type LogLevel = 'info' | 'warn' | 'error'
+export type LogCallback = (level: LogLevel, message: string) => void
+
+const SPAM_FILTER = [
+  'Tried to access unknown dispatcher',
+]
+
+/** Forward Spyglass log output to a UI callback (Output panel) instead of dropping it. */
+function createForwardingLogger(onLog: LogCallback): Logger {
+  const fmt = (args: unknown[]) =>
+    args.map(a => a instanceof Error ? a.message : typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
+  const isSpam = (msg: string) => SPAM_FILTER.some(s => msg.includes(s))
+  return {
+    error: (...args) => onLog('error', fmt(args)),
+    warn: (...args) => onLog('warn', fmt(args)),
+    info: (...args) => {
+      const m = fmt(args)
+      if (!isSpam(m)) onLog('info', m)
+    },
+    log: (...args) => {
+      const m = fmt(args)
+      if (!isSpam(m)) onLog('info', m)
+    },
+  }
+}
 
 export interface IdeFile {
   uri: string
@@ -87,35 +114,75 @@ export class SpyglassService {
   private service: Service | null = null
   private versions = new Map<string, number>()
   private readonly idbCacheDb: string
+  private readonly onLog: LogCallback
+  /** Chain of in-flight parse operations. Feature getters await it so they
+   *  never read a stale node right after an edit (completions were racing
+   *  the reparse and silently returning []). */
+  private parseChain: Promise<unknown> = Promise.resolve()
 
-  constructor(idbCacheDb = CACHE_DB) {
+  constructor(idbCacheDb = CACHE_DB, onLog?: LogCallback) {
     this.idbCacheDb = idbCacheDb
+    this.onLog = onLog ?? (() => {})
   }
 
   get ready(): boolean {
     return this.service !== null
   }
 
-  async init(files: Record<string, string>, gameVersion = 'Auto'): Promise<void> {
+  private queueParse(p: Promise<unknown>): Promise<void> {
+    const next = this.parseChain.then(() => p).then(() => undefined, () => undefined)
+    this.parseChain = next
+    return next
+  }
+
+  /** Wait for the latest open/change parse to settle before reading features. */
+  private async settled(): Promise<void> {
+    await this.parseChain
+  }
+
+  async init(
+    files: Record<string, string>,
+    gameVersion = 'Auto',
+    dependencies: readonly string[] = IDE_DEPENDENCIES,
+  ): Promise<void> {
     await this.close()
 
-    // Resolve gameVersion: if no pack.mcmeta present, 'Auto' will fail, so fall back
     const hasMcmeta = Object.keys(files).some(p => p === 'pack.mcmeta' || p.endsWith('/pack.mcmeta'))
-    const resolvedVersion = gameVersion === 'Auto' && !hasMcmeta ? '1.21' : gameVersion
 
     const cache = await createIdbCache(this.idbCacheDb)
+    // Spyglass's fetcher always calls match/put with a Request object, never a
+    // bare string — normalize to URL strings so the IDB cache actually
+    // persists across inits (otherwise every load re-downloads the vanilla
+    // tarballs and risks blowing the fetcher's hard 15s timeout).
+    const toUrl = (input: RequestInfo | string): string =>
+      typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
     const spikeCache = Object.assign(createSpikeCache(), {
-      async get(url: string) { return cache.get(url) },
-      async put(url: string, response: Response) { return cache.put(url, response) },
+      async match(input: RequestInfo) { return cache.get(toUrl(input)) },
+      async put(input: RequestInfo | string, response: Response) { return cache.put(toUrl(input), response) },
     })
 
     const externals = createBrowserExternals(spikeCache)
-    const logger = Logger.noop()
+    const logger = createForwardingLogger(this.onLog)
 
     for (const [path, content] of Object.entries(files)) {
       await externals.fs.writeFile(PACK_ROOT + path, content)
     }
 
+    // When there is no pack.mcmeta, 'Auto' version detection inside
+    // jeInitialize will fail. Write a minimal spyglass.json so the config
+    // service can override gameVersion to a safe default. When pack.mcmeta
+    // is present, VanillaConfig's 'Auto' resolves correctly and this file
+    // is ignored.
+    if (!hasMcmeta) {
+      await externals.fs.writeFile(PACK_ROOT + 'spyglass.json', JSON.stringify({
+        env: { gameVersion: '1.21' },
+      }))
+    }
+
+    // Omit defaultConfig entirely — VanillaConfig (used when undefined)
+    // includes the correct lint, format, and env defaults. Passing a
+    // partial config replaces VanillaConfig wholesale, which drops the
+    // lint block and causes every lint/complete call to throw.
     const service = new Service({
       logger,
       project: {
@@ -124,40 +191,14 @@ export class SpyglassService {
         projectRoots: [PACK_ROOT],
         logger,
         initializers: [jeInitialize],
-        defaultConfig: {
-          env: {
-            dependencies: ['@vanilla-datapack', '@vanilla-resourcepack', '@vanilla-mcdoc'],
-            exclude: [],
-            customResources: {},
-            feature: {
-              codeActions: false,
-              colors: true,
-              completions: true,
-              documentHighlighting: false,
-              documentLinks: false,
-              foldingRanges: false,
-              formatting: false,
-              hover: true,
-              inlayHint: false,
-              semanticColoring: true,
-              selectionRanges: false,
-              signatures: false,
-            },
-            gameVersion: resolvedVersion,
-            mcmetaSummaryOverrides: {},
-            permissionLevel: 2,
-            plugins: [],
-            enableMcdocCaching: false,
-          },
-        } as any,
       },
     })
 
     // Assign before init so close() can always clean up (Issue 3 fix)
     this.service = service
     try {
-      await service.project.init()
-      await service.project.ready()
+      await this.queueParse(service.project.init())
+      await this.queueParse(service.project.ready())
     } catch (e) {
       // Init failed — clean up the assigned service to avoid stale state
       this.service = null
@@ -193,7 +234,7 @@ export class SpyglassService {
     const version = (this.versions.get(uri) ?? 0) + 1
     this.versions.set(uri, version)
     const lang = guessLanguage(path)
-    await this.service.project.onDidOpen(uri, lang, version, content)
+    await this.queueParse(this.service.project.onDidOpen(uri, lang, version, content))
   }
 
   async updateFile(path: string, content: string): Promise<void> {
@@ -206,10 +247,25 @@ export class SpyglassService {
     }
     const version = (this.versions.get(uri) ?? 0) + 1
     this.versions.set(uri, version)
-    await this.service.project.onDidChange(uri, [{ text: content }], version)
+    await this.queueParse(this.service.project.onDidChange(uri, [{ text: content }], version))
   }
 
-  getMarkers(path: string): IdeMarker[] {
+  /** Bring the Spyglass doc in sync with the Monaco model text, so offsets
+   *  computed from Monaco map cleanly onto the parsed node. No-op when the
+   *  doc already matches (fast path for every keystroke). */
+  async ensureFileSynced(path: string, content: string): Promise<void> {
+    if (!this.service) return
+    const managed = this.service.project.getClientManaged(PACK_ROOT + path)
+    if (managed && managed.doc.getText() === content) {
+      await this.settled()
+      return
+    }
+    if (managed) await this.updateFile(path, content)
+    else await this.openFile(path, content)
+  }
+
+  async getMarkers(path: string): Promise<IdeMarker[]> {
+    await this.settled()
     const file = this.getFile(path)
     if (!file) return []
     const errors = FileNode.getErrors(file.node)
@@ -227,19 +283,22 @@ export class SpyglassService {
     })
   }
 
-  getSemanticTokens(path: string) {
+  async getSemanticTokens(path: string) {
+    await this.settled()
     const file = this.getFile(path)
     if (!file || !this.service) return []
     return this.service.colorize(file.node, file.doc)
   }
 
-  getCompletions(path: string, offset: number, triggerCharacter?: string): IdeCompletionItem[] {
+  async getCompletions(path: string, offset: number, triggerCharacter?: string): Promise<IdeCompletionItem[]> {
+    await this.settled()
     const file = this.getFile(path)
     if (!file || !this.service) return []
     return this.service.complete(file.node, file.doc, offset, triggerCharacter)
   }
 
-  getHover(path: string, offset: number): IdeHover | undefined {
+  async getHover(path: string, offset: number): Promise<IdeHover | undefined> {
+    await this.settled()
     const file = this.getFile(path)
     if (!file || !this.service) return undefined
     const hover = this.service.getHover(file.node, file.doc, offset)
@@ -251,6 +310,7 @@ export class SpyglassService {
   }
 
   async getDefinition(path: string, offset: number): Promise<IdeDefinition[]> {
+    await this.settled()
     const file = this.getFile(path)
     if (!file || !this.service) return []
     const result = await this.service.getSymbolLocations(file.node, file.doc, offset, ['definition', 'declaration'])

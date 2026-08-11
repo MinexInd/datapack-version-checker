@@ -6,7 +6,7 @@ import CheckPanel from './CheckPanel'
 import FixPanel from './FixPanel'
 import Results from './Results'
 import type { PackFileMap, Mode, McmetaVersion, CheckResponse, FixPreview } from '../api'
-import { SpyglassService } from '../engine/spyglass-service'
+import { SpyglassService, type IdeMarker } from '../engine/spyglass-service'
 import { registerSpyglassMonaco } from '../ide/monaco-spyglass'
 
 interface Props {
@@ -88,9 +88,14 @@ function langFor(path: string): string {
   const ext = path.split('.').pop()?.toLowerCase()
   if (ext === 'json' || path.endsWith('.mcmeta')) return 'json'
   if (ext === 'mcfunction') return 'mcfunction'
-  if (ext === 'nbt' || ext === 'snbt') return 'plaintext'
+  if (ext === 'nbt' || ext === 'snbt') return 'snbt'
   if (ext === 'md') return 'markdown'
   return 'plaintext'
+}
+
+function pathFromUri(uri: { path: string }): string {
+  const raw = uri.path
+  return raw.startsWith('/pack/') ? raw.slice('/pack/'.length) : raw
 }
 
 export default function IdePage({
@@ -117,48 +122,81 @@ export default function IdePage({
   const [openTabs, setOpenTabs] = useState<string[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const [panel, setPanel] = useState<'analysis' | 'fix' | 'output'>('analysis')
+  const [panel, setPanel] = useState<'analysis' | 'fix' | 'problems' | 'output'>('analysis')
   const [log, setLog] = useState<LogEntry[]>([])
 
   const serviceRef = useRef<SpyglassService | null>(null)
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null)
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null)
   const spyglassRegisteredRef = useRef(false)
+  const [spyglassStatus, setSpyglassStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle')
+  const spyglassReady = spyglassStatus === 'ready'
+
+  // Jump target from the Problems panel: reveal a position in the editor.
+  const [jump, setJump] = useState<{ path: string; lineNumber: number; column: number } | null>(null)
+
+  const stamp = () => new Date().toLocaleTimeString([], { hour12: false })
+  const addLog = useCallback((kind: LogEntry['kind'], message: string) => {
+    setLog(prev => [...prev, { time: stamp(), kind, message }].slice(-400))
+  }, [])
 
   // Spyglass service lifecycle: (re)create when a pack is loaded.
+  // The project must finish init() + ready() before any file can be
+  // opened — otherwise onDidOpen is dropped and every provider returns
+  // empty. Effects below are gated on spyglassReady for that reason.
   useEffect(() => {
     if (!originalFiles) {
       serviceRef.current?.close().catch(() => {})
       serviceRef.current = null
+      setSpyglassStatus('idle')
       return
     }
-    const service = new SpyglassService()
-    serviceRef.current = service
-    service.init(originalFiles, 'Auto').catch(err => {
-      console.error('Spyglass init failed', err)
+    const service = new SpyglassService(undefined, (level, message) => {
+      addLog(level === 'error' ? 'error' : 'info', `[spyglass] ${message}`)
     })
+    serviceRef.current = service
+    setSpyglassStatus('loading')
+    addLog('info', 'Spyglass initializing (vanilla data may download on first load)…')
+    service.init(originalFiles, 'Auto')
+      .then(() => {
+        setSpyglassStatus('ready')
+        addLog('success', 'Spyglass ready')
+      })
+      .catch(err => {
+        console.error('Spyglass init failed', err)
+        setSpyglassStatus('failed')
+        addLog('error', `Spyglass init failed: ${err instanceof Error ? err.message : String(err)}`)
+      })
     return () => {
       service.close().catch(() => {})
     }
-  }, [originalFiles])
+  }, [originalFiles, addLog])
 
-  // Keep the active file in sync with the Spyglass project.
+  // Open the active file once Spyglass is ready (and on every tab switch).
   useEffect(() => {
-    if (!activePath || !serviceRef.current) return
+    if (!spyglassReady || !activePath || !serviceRef.current) return
     const content = editedFiles[activePath] ?? originalFiles?.[activePath] ?? ''
     serviceRef.current.openFile(activePath, content).catch(() => {})
-  }, [activePath, originalFiles])
+  }, [spyglassReady, activePath, originalFiles])
 
+  // Keep Spyglass content in sync on every edit (debounced to avoid
+  // re-parsing on every keystroke — collapses rapid typing into a single
+  // parse 100ms after the last edit).
   useEffect(() => {
-    if (!activePath || !serviceRef.current) return
+    if (!spyglassReady || !activePath || !serviceRef.current) return
     const content = editedFiles[activePath] ?? originalFiles?.[activePath] ?? ''
-    serviceRef.current.updateFile(activePath, content).catch(() => {})
-  }, [activePath, editedFiles, originalFiles])
+    const timer = setTimeout(() => {
+      serviceRef.current?.updateFile(activePath, content).catch(() => {})
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [spyglassReady, activePath, editedFiles, originalFiles])
 
   // Debounced diagnostics markers for the active file.
   useEffect(() => {
-    if (!activePath || !serviceRef.current || !monacoRef.current) return
-    const timer = setTimeout(() => {
-      const spyglassMarkers = serviceRef.current!.getMarkers(activePath)
+    if (!spyglassReady || !activePath || !serviceRef.current || !monacoRef.current) return
+    const timer = setTimeout(async () => {
+      const spyglassMarkers = await serviceRef.current!.getMarkers(activePath)
+      if (!monacoRef.current) return
       const { MarkerSeverity } = monacoRef.current!
       const markers = spyglassMarkers.map(m => ({
         ...m,
@@ -172,7 +210,32 @@ export default function IdePage({
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [activePath, editedFiles, originalFiles])
+  }, [spyglassReady, activePath, editedFiles, originalFiles])
+
+  // Problems panel: markers for every open tab, like the VSCode Problems view.
+  const [problems, setProblems] = useState<{ path: string; marker: IdeMarker }[]>([])
+  useEffect(() => {
+    if (!spyglassReady || !serviceRef.current) {
+      setProblems([])
+      return
+    }
+    const paths = [...new Set([...(openTabs ?? []), ...(activePath ? [activePath] : [])])]
+    if (paths.length === 0) {
+      setProblems([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      const all: typeof problems = []
+      for (const path of paths) {
+        const markers = await serviceRef.current!.getMarkers(path)
+        if (cancelled) return
+        for (const marker of markers) all.push({ path, marker })
+      }
+      if (!cancelled) setProblems(all)
+    }, 400)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [spyglassReady, openTabs, activePath, editedFiles, originalFiles])
 
   const beforeMount = useCallback<BeforeMount>((monacoInstance) => {
     // getLanguages() comes back untyped here: @monaco-editor/react derives Monaco
@@ -202,6 +265,21 @@ export default function IdePage({
         },
       })
     }
+    if (!registered.some(l => l.id === 'snbt')) {
+      monacoInstance.languages.register({ id: 'snbt' })
+      monacoInstance.languages.setMonarchTokensProvider('snbt', {
+        tokenizer: {
+          root: [
+            [/#.*$/, 'comment'],
+            [/[{}[\]]/, 'delimiter.bracket'],
+            [/"[^"]*"/, 'string'],
+            [/-?\d+(?:\.\d+)?[bBfFdDlLsS]?/, 'number'],
+            [/true|false/, 'keyword'],
+            [/[a-zA-Z0-9_:.-]+/, 'identifier'],
+          ],
+        },
+      })
+    }
     if (!spyglassRegisteredRef.current) {
       registerSpyglassMonaco(monacoInstance, () => serviceRef.current)
       spyglassRegisteredRef.current = true
@@ -210,11 +288,28 @@ export default function IdePage({
 
   const handleMount: OnMount = useCallback((editor, monacoInstance) => {
     monacoRef.current = monacoInstance
+    editorRef.current = editor
   }, [])
 
-  const stamp = () => new Date().toLocaleTimeString([], { hour12: false })
-  const addLog = useCallback((kind: LogEntry['kind'], message: string) => {
-    setLog(prev => [...prev, { time: stamp(), kind, message }])
+  // When a Problems-panel entry is clicked, open the file and reveal the
+  // line once the editor is showing it.
+  useEffect(() => {
+    if (!jump) return
+    const editor = editorRef.current
+    const model = editor?.getModel()
+    const modelPath = model ? pathFromUri(model.uri) : null
+    if (modelPath === jump.path && editor) {
+      editor.setPosition({ lineNumber: jump.lineNumber, column: jump.column })
+      editor.revealLineInCenter(jump.lineNumber)
+      editor.focus()
+      setJump(null)
+    }
+  }, [jump, activePath])
+
+  const handleJump = useCallback((path: string, lineNumber: number, column: number) => {
+    setOpenTabs(prev => (prev.includes(path) ? prev : [...prev, path]))
+    setActivePath(path)
+    setJump({ path, lineNumber, column })
   }, [])
 
   const tree = useMemo(
@@ -341,6 +436,9 @@ export default function IdePage({
         <span className="ide-status">
           {fileName ? `${fileName} — ${fileCount} files` : 'no pack loaded'}
           {hasUnsaved && <span className="ide-unsaved"> · unsaved edits</span>}
+          <span className={`ide-spyglass-status ${spyglassStatus}`} title="Spyglass language service">
+            {spyglassStatus === 'ready' ? 'Spyglass ✓' : spyglassStatus === 'loading' ? 'Spyglass…' : spyglassStatus === 'failed' ? 'Spyglass ✗' : ''}
+          </span>
         </span>
       </div>
 
@@ -409,7 +507,7 @@ export default function IdePage({
           <div className="ide-editor">
             {activePath ? (
               <Editor
-                key={activePath}
+                key={`${activePath}::${spyglassReady ? 'ready' : 'init'}`}
                 path={`file:///pack/${activePath}`}
                 beforeMount={beforeMount}
                 onMount={handleMount}
@@ -453,6 +551,15 @@ export default function IdePage({
                 aria-selected={panel === 'fix'}
                 onClick={() => setPanel('fix')}
               >Fix</button>
+              <button
+                className={`ide-panel-tab${panel === 'problems' ? ' active' : ''}`}
+                role="tab"
+                aria-selected={panel === 'problems'}
+                onClick={() => setPanel('problems')}
+              >
+                Problems
+                {problems.length > 0 && <span className="ide-panel-count">{problems.length}</span>}
+              </button>
               <button
                 className={`ide-panel-tab${panel === 'output' ? ' active' : ''}`}
                 role="tab"
@@ -534,6 +641,37 @@ export default function IdePage({
                     hasFiles={!!originalFiles}
                     originalFiles={originalFiles}
                   />
+                </div>
+              )}
+
+              {panel === 'problems' && (
+                <div className="ide-panel-scroll">
+                  {problems.length === 0 ? (
+                    <div className="ide-output-empty">
+                      No problems detected in open files.
+                      {!spyglassReady && ' Spyglass is still initializing…'}
+                    </div>
+                  ) : (
+                    <div className="ide-problems">
+                      {problems.map(({ path, marker }, i) => (
+                        <button
+                          key={`${path}:${i}`}
+                          type="button"
+                          className={`ide-problem ide-problem-${marker.severity}`}
+                          onClick={() => handleJump(path, marker.startLineNumber, marker.startColumn)}
+                          title="Jump to problem"
+                        >
+                          <span className="ide-problem-icon">
+                            {marker.severity === 'error' ? '✕' : marker.severity === 'warning' ? '⚠' : marker.severity === 'info' ? 'ℹ' : '·'}
+                          </span>
+                          <span className="ide-problem-msg">{marker.message}</span>
+                          <span className="ide-problem-loc">
+                            {path}:{marker.startLineNumber}:{marker.startColumn}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

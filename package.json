@@ -13,6 +13,7 @@
     "build": "tsc && cd web && npm run build",
     "build:ts": "tsc",
     "build:web": "cd web && npm install && npm run build",
+    "postinstall": "npx tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

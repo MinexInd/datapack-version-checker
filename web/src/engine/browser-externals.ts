@@ -7,6 +7,48 @@ import type {
 } from '@spyglassmc/core'
 import { gunzipBytes, parseTar } from './tar'
 
+/**
+ * Rewrite Spyglass API requests through a local dev proxy.
+ *
+ * In the dev sandbox, the browser cannot reach api.spyglassmc.com directly
+ * (Spyglass's 15s fetcher timeout fires) even though Node can. When the Vite
+ * dev server is running, /api/spyglassmc proxies to the real host. In production
+ * (a GH Pages static build) the proxy route is absent, so we catch the failure
+ * and fall back to the direct, CORS-enabled fetch.
+ */
+const SPYGLASS_HOST = 'api.spyglassmc.com'
+const PROXY_PREFIX = '/api/spyglassmc'
+let fetchPatched = false
+function applyFetchProxy() {
+  if (fetchPatched || typeof window === 'undefined' || typeof globalThis.fetch !== 'function') return
+  fetchPatched = true
+  const original = globalThis.fetch
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    let url: string
+    if (typeof input === 'string') url = input
+    else if (input instanceof URL) url = input.toString()
+    else url = input.url
+    if (!url.startsWith(`https://${SPYGLASS_HOST}/`)) return original(input as RequestInfo, init)
+    const rewritten = PROXY_PREFIX + url.slice(`https://${SPYGLASS_HOST}`.length)
+    try {
+      const req = new Request(rewritten, {
+        method: (input as Request)?.method ?? init?.method ?? 'GET',
+        headers: (input as Request)?.headers ?? init?.headers,
+        body: (input as Request)?.body,
+        signal: (input as Request)?.signal ?? (init as any)?.signal,
+        credentials: 'omit',
+        mode: 'cors',
+      })
+      const res = await original(req, init)
+      if (res.ok || res.status < 500) return res
+      throw new Error(`proxy response ${res.status}`)
+    } catch {
+      return original(input as RequestInfo, init)
+    }
+  }
+}
+applyFetchProxy()
+
 type ExternalDirEntry = ExternalStats & { name: string }
 
 /**

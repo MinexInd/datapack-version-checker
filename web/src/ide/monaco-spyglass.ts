@@ -28,6 +28,37 @@ function posToMonaco(doc: SpyglassDoc, offset: number) {
   return { lineNumber: p.line + 1, column: p.character + 1 }
 }
 
+// Spyglass CompletionKind -> Monaco CompletionItemKind. The two enums use
+// different numbering (Spyglass starts at 1, Monaco at 0, Keyword/Text/etc.
+// are shifted), so pass items through this map or every icon renders wrong.
+const KIND_MAP: Record<number, number> = {
+  1: 18,   // Text
+  2: 0,    // Method
+  3: 1,    // Function
+  4: 2,    // Constructor
+  5: 3,    // Field
+  6: 4,    // Variable
+  7: 5,    // Class
+  8: 7,    // Interface
+  9: 8,    // Module
+  10: 9,   // Property
+  11: 12,  // Unit
+  12: 13,  // Value
+  13: 15,  // Enum
+  14: 17,  // Keyword
+  15: 27,  // Snippet
+  16: 19,  // Color
+  17: 20,  // File
+  18: 21,  // Reference
+  19: 23,  // Folder
+  20: 16,  // EnumMember
+  21: 14,  // Constant
+  22: 6,   // Struct
+  23: 10,  // Event
+  24: 11,  // Operator
+  25: 24,  // TypeParameter
+}
+
 interface SpyglassDoc {
   positionAt(offset: number): { line: number; character: number }
   offsetAt(pos: { line: number; character: number }): number
@@ -40,7 +71,9 @@ interface SpyglassDoc {
  * so providers stay valid before the service is initialized.
  */
 
-// Semantic tokens cache: keyed by path, stores {data, resultId, ts}
+// Semantic tokens cache: keyed by path + Monaco model version id, stores
+// {data, resultId, ts}. The version id part makes edits invalidate the
+// cache immediately instead of serving stale colors for up to TTL.
 const tokenCache = new Map<string, { data: Uint32Array; resultId: string; ts: number }>()
 const TOKEN_CACHE_TTL = 400
 
@@ -50,6 +83,10 @@ export function registerSpyglassMonaco(
 ): void {
   const { languages } = monaco
 
+  // Same Spyglass-backed providers for mcfunction, datapack mcdoc JSON and
+  // NBT — mirrors the VSCode extension's language registration.
+  const languages_ = ['mcfunction', 'json', 'snbt'] as const
+
   languages.setLanguageConfiguration('mcfunction', {
     comments: { lineComment: '#' },
     brackets: [['(', ')']],
@@ -57,7 +94,7 @@ export function registerSpyglassMonaco(
     surroundingPairs: [{ open: '(', close: ')' }],
   })
 
-  languages.registerDocumentSemanticTokensProvider('mcfunction', {
+  languages.registerDocumentSemanticTokensProvider([...languages_], {
     getLegend() {
       return {
         tokenTypes: [...LEGEND_TYPES],
@@ -69,17 +106,20 @@ export function registerSpyglassMonaco(
       if (!service) return { data: new Uint32Array(0), resultId: '0' }
       const path = pathFromUri(model.uri)
 
-      // Check cache — return if fresh enough
-      const cached = tokenCache.get(path)
+      // Cache key includes the model version: edits invalidate immediately.
+      const cacheKey = `${path}@${model.getVersionId()}`
+      const cached = tokenCache.get(cacheKey)
       const now = Date.now()
       if (cached && (now - cached.ts) < TOKEN_CACHE_TTL) {
         return { data: cached.data, resultId: cached.resultId }
       }
 
+      await service.ensureFileSynced(path, model.getValue())
+      if (token.isCancellationRequested) return { data: new Uint32Array(0), resultId: '0' }
       const file = service.getFile(path)
       if (!file) return { data: new Uint32Array(0), resultId: '0' }
 
-      const tokens = service.getSemanticTokens(path)
+      const tokens = await service.getSemanticTokens(path)
       const data: number[] = []
       let prevLine = 0
       let prevStart = 0
@@ -103,13 +143,13 @@ export function registerSpyglassMonaco(
       }
 
       const result = { data: new Uint32Array(data), resultId: String(data.length) }
-      tokenCache.set(path, { data: result.data, resultId: result.resultId, ts: Date.now() })
+      tokenCache.set(cacheKey, { data: result.data, resultId: result.resultId, ts: Date.now() })
       return result
     },
     releaseDocumentSemanticTokens() {},
   })
 
-  languages.registerCompletionItemProvider('mcfunction', {
+  languages.registerCompletionItemProvider([...languages_], {
     triggerCharacters: [
       ' ', '/', '$', '@', '#', '~', '^', '!', '?', '.', ':', ';', '=', '>', '<', '(', '{', '[',
     ],
@@ -117,15 +157,19 @@ export function registerSpyglassMonaco(
       const service = getService()
       if (!service) return { suggestions: [] }
       const path = pathFromUri(model.uri)
+
+      // Sync the Spyglass doc to the Monaco model first, then compute the
+      // offset from Monaco itself — the parsed node may still lag the model
+      // content during typing, and a stale doc makes every offset mismatch.
+      await service.ensureFileSynced(path, model.getValue())
+      if (token.isCancellationRequested) return { suggestions: [] }
       const file = service.getFile(path)
       if (!file) return { suggestions: [] }
 
-      const offset = file.doc.offsetAt({
-        line: position.lineNumber - 1,
-        character: position.column - 1,
-      })
+      const offset = model.getOffsetAt(position)
+      const items = await service.getCompletions(path, offset, context.triggerCharacter)
+      if (token.isCancellationRequested) return { suggestions: [] }
 
-      const items = service.getCompletions(path, offset, context.triggerCharacter)
       return {
         suggestions: items.map(item => {
           const range = item.range
@@ -144,7 +188,7 @@ export function registerSpyglassMonaco(
 
           return {
             label: item.label,
-            kind: (item.kind ?? 1) as Monaco.languages.CompletionItemKind,
+            kind: (KIND_MAP[item.kind ?? 1] ?? 18) as Monaco.languages.CompletionItemKind,
             detail: item.detail,
             documentation: item.documentation ? { value: item.documentation } : undefined,
             insertText: item.insertText ?? item.label,
@@ -155,20 +199,18 @@ export function registerSpyglassMonaco(
     },
   })
 
-  languages.registerHoverProvider('mcfunction', {
+  languages.registerHoverProvider([...languages_], {
     async provideHover(model, position) {
       const service = getService()
       if (!service) return null
       const path = pathFromUri(model.uri)
+
+      await service.ensureFileSynced(path, model.getValue())
       const file = service.getFile(path)
       if (!file) return null
 
-      const offset = file.doc.offsetAt({
-        line: position.lineNumber - 1,
-        character: position.column - 1,
-      })
-
-      const hover = service.getHover(path, offset)
+      const offset = model.getOffsetAt(position)
+      const hover = await service.getHover(path, offset)
       if (!hover) return null
 
       return {
@@ -183,19 +225,17 @@ export function registerSpyglassMonaco(
     },
   })
 
-  languages.registerDefinitionProvider('mcfunction', {
+  languages.registerDefinitionProvider([...languages_], {
     async provideDefinition(model, position) {
       const service = getService()
       if (!service) return []
       const path = pathFromUri(model.uri)
+
+      await service.ensureFileSynced(path, model.getValue())
       const file = service.getFile(path)
       if (!file) return []
 
-      const offset = file.doc.offsetAt({
-        line: position.lineNumber - 1,
-        character: position.column - 1,
-      })
-
+      const offset = model.getOffsetAt(position)
       const defs = await service.getDefinition(path, offset)
       return defs
         .filter(d => d.uri.startsWith(PACK_URI_PREFIX))

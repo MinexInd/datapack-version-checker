@@ -119,6 +119,30 @@
   color: var(--stamp);
 }
 
+.ide-spyglass-status {
+  margin-left: var(--s2);
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ide-spyglass-status.ready {
+  color: #2ea043;
+  background: rgba(46, 160, 67, 0.12);
+}
+
+.ide-spyglass-status.loading {
+  color: var(--ink-soft);
+  background: rgba(128, 128, 128, 0.14);
+}
+
+.ide-spyglass-status.failed {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.14);
+}
+
 /* ---------- Main split ---------- */
 
 .ide-main {
@@ -785,6 +809,76 @@
   color: var(--sev-error);
   border-left-color: var(--sev-error-edge);
   background: var(--sev-error-wash);
+}
+
+.ide-problems {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--s2) 0 var(--s4);
+  background: var(--well);
+}
+
+.ide-problem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  width: 100%;
+  padding: 3px var(--s4);
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: var(--ink-dim);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+
+.ide-problem:hover {
+  background: var(--ground-deep);
+}
+
+.ide-problem-icon {
+  flex: 0 0 14px;
+  text-align: center;
+  font-size: 0.68rem;
+}
+
+.ide-problem-msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ide-problem-loc {
+  flex: 0 0 auto;
+  color: var(--ink-ghost);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ide-problem-error {
+  color: var(--sev-error);
+  border-left-color: var(--sev-error-edge);
+}
+
+.ide-problem-error .ide-problem-icon {
+  color: var(--sev-error);
+}
+
+.ide-problem-warning {
+  color: var(--sev-warn);
+  border-left-color: var(--sev-warn-edge);
+}
+
+.ide-problem-warning .ide-problem-icon {
+  color: var(--sev-warn);
+}
+
+.ide-problem-info {
+  color: var(--ink-dim);
+  border-left-color: var(--hairline);
 }
 
 /* ---------- Embedded panels ---------- */

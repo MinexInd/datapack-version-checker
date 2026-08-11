@@ -86,7 +86,7 @@ function createSpikeCache(): Cache & CacheLike {
  * vanilla datapack validation (function calls, loot table refs, etc.).
  * When none exist, the parser can skip the expensive tarball fetch.
  */
-function hasCrossFileReferences(files: Record<string, string>): boolean {
+export function hasCrossFileReferences(files: Record<string, string>): boolean {
   for (const path of Object.keys(files)) {
     if (path.startsWith('data/') && (
       path.endsWith('.mcfunction') ||
