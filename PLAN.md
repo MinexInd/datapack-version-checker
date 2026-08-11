@@ -1,7 +1,7 @@
 # MinexStudio IDE — Implementation Plan
 
 **Generated:** 2026-08-10  
-**Status:** Phase 0 ✓ complete — moving to Phase 1 — Core Editing  
+**Status:** Phase 0 ✓, Phase 1.1 ✓, 1.9-1.11 + 1.6-1.8 queued — next: 1.2 file ops, then Spyglass version/analyze, then UI redesign  
 **Branch:** `master` (D:\dataapck version solution\datapack-version-checker)
 
 ---
@@ -67,6 +67,13 @@ Build a browser-based IDE for Minecraft datapacks — "VS Code for Datapacks" �
 | 1.3 | pack.mcmeta validation | Warn if missing pack_format; auto-set version on create |
 | 1.4 | Auto-save to IndexedDB | Persist draft edits per pack; restore on reload |
 | 1.5 | Keyboard shortcuts | Ctrl+S save, Ctrl+Enter run, Escape close tab |
+| 1.6 | MC version selector for Spyglass | Dropdown in the explorer header: **Auto** (detect from pack.mcmeta, current behavior) or a manual pick from the loaded `versions` list. Selecting a version re-inits Spyglass with that `gameVersion`, so lint/completions/diagnostics target e.g. 1.21.5 even when the pack declares an older format |
+| 1.7 | Analyze Datapack button | Button next to the Spyglass badge, mirroring the VSCode extension's analyze command (Ctrl+Shift+P "Spyglass: analyze"). Parses **all** pack files in one pass and fills the Problems panel with every error/fatal across the whole datapack (not just the open file's markers) |
+| 1.8 | Reset version + reload Spyglass | Companion to 1.6: a reset icon that reverts Spyglass to Auto and re-inits from scratch (fresh tarball/cache read). Together 1.6+1.8 let a user re-load the same pack against a different MC version — the porting workflow: load pack → check errors on old version → reset/switch version → see what breaks on the new one |
+| 1.9 | VS Code-style layout | User feedback (2026-08-11): the Analysis/Fix/Problems/Output panel is static and covers ~45% of the screen, cramping the editor to 3 visible lines. Redesign like VS Code: compact bottom panel (~20% height) with drag-resize divider + collapse toggle; editor stays ~75% of viewport; add a slim bottom status bar (line/col, language, Spyglass status) |
+| 1.10 | Rich syntax highlighting | User feedback: current highlighting is near-monochrome (cyan commands, everything else white). Implement Spyglass semantic-token colors (spyglass-ide already produces tokens): commands purple, subcommands/keywords orange, objectives light blue, selectors green, numbers green, strings/JSON keys distinct — VS Code style |
+| 1.11 | Problems panel redesign | User feedback: current flat list has a heavy orange bar, all-orange message text, full file path on the right of every row. Redesign to VS Code Problems: group by file with collapsible headers (file icon + name + dir path + per-file count badge), neutral light-gray message text, warning/error icons only for severity, source label (`spyglassmc(1.21.11)`) + `[Ln x, Col y]` inline after the message, filter input in the toolbar, compact rows |
+| 1.12 | Export datapack (save) | Download the current pack (original + edited files merged) as a zip — "save" for the IDE. Reuses the existing fix-download plumbing; filename `{pack}_edited.zip` |
 
 ---
 
@@ -79,6 +86,18 @@ Build a browser-based IDE for Minecraft datapacks — "VS Code for Datapacks" �
 | 2.3 | Rename refactor | Rename function updates all calls/tags/predicates |
 | 2.4 | Find references | Show all usages of a function/tag/predicate |
 | 2.5 | Inline diagnostics | Squiggly lines from checker results in Monaco gutter |
+
+## Phase 2b — File & Pack Management (deferred, later phases)
+
+User feedback (2026-08-11): "export datapack to save it, create new file, edit name, extension etc, drag n drop more files" — explicitly slated for later phases, not Phase 1.
+
+| ID | Task | Description |
+|----|------|-------------|
+| 2b.1 | Create new file | New file button/tree action: pick folder, name, extension (.mcfunction/.json/.mcmeta/.nbt), optional template (empty function, basic JSON, pack.mcmeta); opens in editor immediately |
+| 2b.2 | Rename file (incl. extension) | Inline rename in tree; changes extension too (tab URI/language re-guess, Spyglass doc reload); cross-reference update (function calls in other files) flagged as optional follow-up |
+| 2b.3 | Delete file | Tree action with confirm; removes from editedFiles/workspace + Spyglass; updates analysis if run |
+| 2b.4 | Drag & drop more files | Drop additional .zip/.mcmeta files/folders onto the IDE to merge into the open pack (not replace); conflicts resolved by file-level overwrite prompt |
+| 2b.5 | Export/move pack files | Move file between folders in the tree (drag onto folder row); keep open tabs |
 
 ---
 
@@ -184,6 +203,23 @@ App.tsx (view router, all state)
 - [x] Hub -> Datapack Editor opens IDE view
 - [x] Build passes, deploys to gh-pages
 - [x] SpyglassMC integration: semantic highlighting, inline diagnostics, autocomplete, hover, go-to-definition
+
+---
+
+## Definition of Done -- Phase 1 (Core Editing, in progress)
+
+- [ ] 1.1 Sync edited content into runCheck/runFix -- DONE in App.tsx workspaceFiles merge (verified 2026-08-11)
+- [ ] 1.2 File tree: folders done; create/rename/delete + tree shows edited-only files
+- [ ] 1.3 pack.mcmeta validation (warn missing pack_format; auto-set on create)
+- [ ] 1.4 IndexedDB auto-save + restore on reload
+- [ ] 1.5 Shortcuts: Ctrl+Enter + Escape done; Ctrl+S lands with 1.4
+- [ ] 1.6 MC version selector (Auto + manual) re-init Spyglass on change
+- [ ] 1.7 Analyze Datapack button -> Problems panel shows ALL pack errors
+- [ ] 1.8 Reset version + reload Spyglass (porting workflow enabler)
+- [ ] 1.9 VS Code-style layout: bottom panel ~20% + drag-resize + collapse + status bar
+- [ ] 1.10 Rich syntax highlighting via Spyglass semantic tokens (VS Code colors)
+- [ ] 1.11 Problems panel redesign (group by file, filter, neutral text, compact rows)
+- [ ] 1.12 Export datapack as zip (save)
 
 ---
 
