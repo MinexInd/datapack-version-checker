@@ -1,0 +1,924 @@
+/* MinexStudio — IDE shell.
+
+   The editor view replaces the normal .container page: it owns the viewport,
+   never scrolls as a whole, and each region manages its own overflow. The
+   vocabulary is the same desk vocabulary used everywhere else — flat tonal
+   surfaces, hairline rules, mono for anything that is data (paths, log lines,
+   timestamps), and the stamp reserved for the one active thing in each strip.
+
+   Only .ide-* rules live here. Where an embedded panel (PackSelector,
+   CheckPanel, FixPanel, Results) needs to sit differently inside the shell,
+   the tweak is scoped under an .ide ancestor so the standalone page is
+   untouched. */
+
+/* ---------- Shell ---------- */
+
+.ide {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ground);
+  font-family: var(--font-sans);
+}
+
+/* Region scrollbars are thinner than the page ones — a 10px bar reads as
+   furniture in a 260px sidebar. */
+.ide ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ide ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ide ::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: var(--r-pill);
+}
+
+.ide ::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-ghost);
+  background-clip: padding-box;
+}
+
+/* ---------- Top bar ---------- */
+
+.ide-topbar {
+  flex: 0 0 40px;
+  height: 40px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 0 var(--s3);
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ide-back {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-back:hover {
+  color: var(--ink);
+  background: var(--docket);
+  border-color: var(--hairline);
+}
+
+/* min-width: 0 on every truncating flex item — a flex child defaults to
+   min-width: auto, which refuses to shrink below its content and makes
+   text-overflow: ellipsis silently do nothing. This applies to the crumb,
+   the status, tab names and tree labels alike. */
+.ide-crumb {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: var(--s3);
+  border-left: 1px solid var(--hairline);
+}
+
+.ide-status {
+  min-width: 0;
+  margin-left: auto;
+  padding-left: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 46%;
+}
+
+.ide-unsaved {
+  color: var(--stamp);
+}
+
+/* ---------- Main split ---------- */
+
+.ide-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+/* ---------- Explorer ---------- */
+
+.ide-explorer {
+  flex: 0 0 260px;
+  width: 260px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ground-deep);
+  border-right: 1px solid var(--hairline);
+}
+
+.ide-explorer-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--hairline-soft);
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.ide-explorer-count {
+  margin-left: auto;
+  padding: 1px 7px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  color: var(--ink-ghost);
+  letter-spacing: 0.04em;
+}
+
+/* Pack meta row — name plus the clear button. */
+.ide-packmeta {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s2) var(--s2) var(--s3);
+  border-bottom: 1px solid var(--hairline-soft);
+  background: var(--well);
+}
+
+.ide-packmeta-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ide-packmeta-actions {
+  flex-shrink: 0;
+  display: inline-flex;
+}
+
+.ide-packmeta-actions .btn {
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+/* ---------- Tree ---------- */
+
+/* overflow-x is clipped rather than auto: rows are width:100% and truncate,
+   so a horizontal bar would only ever be a phantom stealing a row of height. */
+.ide-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--s1) 0 var(--s5);
+}
+
+.ide-tree-empty {
+  padding: var(--s5) var(--s3);
+  text-align: center;
+  font-size: var(--t-body-sm);
+  color: var(--ink-ghost);
+}
+
+/* Left padding is set inline per depth in the component — only the block and
+   right sides are declared here so indentation stays the component's job.
+   A deep path plus its inline indent can exceed 260px, so the row is allowed
+   to shrink and its label truncates instead of widening the column. */
+.ide-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  padding-block: 3px;
+  padding-right: var(--s3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 0.735rem;
+  line-height: 1.6;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-quick) var(--ease-quick),
+    color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-tree-row:hover {
+  background: var(--docket);
+  color: var(--ink);
+}
+
+.ide-tree-row:focus-visible {
+  outline-offset: -2px;
+}
+
+.ide-caret {
+  flex-shrink: 0;
+  width: 10px;
+  font-size: 0.5rem;
+  line-height: 1;
+  color: var(--ink-ghost);
+  transition: color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-folder:hover .ide-caret {
+  color: var(--ink-dim);
+}
+
+.ide-folder-icon {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  line-height: 1;
+  filter: grayscale(0.35);
+  opacity: 0.85;
+}
+
+.ide-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-dim);
+}
+
+.ide-folder.collapsed .ide-folder-name {
+  color: var(--ink-faint);
+}
+
+.ide-file-icon {
+  flex-shrink: 0;
+  width: 10px;
+  text-align: center;
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--ink-ghost);
+}
+
+.ide-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The open file is the one stamped thing in the sidebar. */
+.ide-file.active,
+.ide-file.active:hover {
+  background: var(--stamp-wash);
+  color: var(--stamp);
+  box-shadow: inset 2px 0 0 var(--stamp);
+}
+
+.ide-file.active .ide-file-icon {
+  color: var(--stamp);
+}
+
+/* PackSelector living in a 260px column: strip the card chrome and shrink the
+   dropzone so it does not push a scrollbar the moment the view opens. */
+.ide-loader {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--s3);
+}
+
+.ide-loader .card {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+
+.ide-loader .card h2 {
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: var(--s2);
+}
+
+.ide-loader .card h2 .sub {
+  font-size: 0.6rem;
+}
+
+.ide-loader .dropzone {
+  padding: var(--s5) var(--s3);
+  border-radius: var(--r-md);
+}
+
+.ide-loader .dropzone .dz-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.ide-loader .dropzone p {
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.ide-loader .dropzone .dz-hint {
+  font-size: 0.7rem;
+  margin-top: 5px;
+}
+
+.ide-loader .dropzone .dz-browse {
+  margin-top: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.76rem;
+}
+
+.ide-loader .dropzone .browse-sep {
+  display: none;
+}
+
+/* ---------- Center column ---------- */
+
+.ide-center {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---------- File tabs ---------- */
+
+.ide-tabs {
+  flex: 0 0 34px;
+  height: 34px;
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  padding-right: var(--s2);
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.ide-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+
+.ide-tabs-hint {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--s3);
+  font-size: 0.74rem;
+  color: var(--ink-ghost);
+  white-space: nowrap;
+}
+
+.ide-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 0 var(--s2) 0 var(--s3);
+  border-right: 1px solid var(--hairline-soft);
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 0.735rem;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: inset 0 2px 0 transparent;
+  transition: background var(--dur-quick) var(--ease-quick),
+    color var(--dur-quick) var(--ease-quick),
+    box-shadow var(--dur-quick) var(--ease-quick);
+}
+
+.ide-tab:hover {
+  background: var(--docket);
+  color: var(--ink-dim);
+}
+
+.ide-tab.active {
+  background: var(--well);
+  color: var(--ink);
+  box-shadow: inset 0 2px 0 var(--stamp);
+}
+
+.ide-tab-dot {
+  color: var(--stamp);
+  font-size: 0.55rem;
+  line-height: 1;
+}
+
+.ide-tab-dot:not(:empty) {
+  margin-right: -2px;
+}
+
+.ide-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ide-tab-close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-ghost);
+  font-size: 0.62rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick),
+    color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-tab:hover .ide-tab-close,
+.ide-tab.active .ide-tab-close,
+.ide-tab-close:focus-visible {
+  opacity: 1;
+}
+
+.ide-tab-close:hover {
+  background: var(--docket-raised);
+  color: var(--ink);
+}
+
+/* ---------- Editor ---------- */
+
+.ide-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--well);
+}
+
+/* @monaco-editor/react wraps the instance in a <section height:100%>. Making
+   it a flex child as well means the height resolves even when the percentage
+   does not. */
+.ide-editor > section {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* vs-dark ships its own near-black; pull the editor surface onto the desk so
+   the gutter and the shell read as one panel. Text tokens are left alone. */
+.ide-editor .monaco-editor,
+.ide-editor .monaco-editor .monaco-editor-background,
+.ide-editor .monaco-editor .margin,
+.ide-editor .monaco-editor-background {
+  background-color: var(--well);
+}
+
+.ide-editor .monaco-editor .scroll-decoration {
+  box-shadow: none;
+}
+
+.ide-editor-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s6) var(--s5);
+  text-align: center;
+  font-size: var(--t-body-sm);
+  color: var(--ink-ghost);
+}
+
+/* ---------- Bottom panel ---------- */
+
+/* 45% of the centre column, but never so short that the panel tabs and one
+   line of content stop fitting, and never so tall that the editor is a
+   letterbox. On a 600px-tall laptop the raw percentage leaves ~250px, which
+   is workable; the clamp only bites on genuinely small windows. */
+.ide-bottom {
+  flex: 0 0 45%;
+  min-height: 170px;
+  max-height: 68%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ground);
+  border-top: 1px solid var(--hairline);
+}
+
+.ide-panel-tabs {
+  flex: 0 0 30px;
+  height: 30px;
+  display: flex;
+  align-items: stretch;
+  gap: var(--s1);
+  padding: 0 var(--s2);
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.ide-panel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--s3);
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--t-chip);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color var(--dur-quick) var(--ease-quick),
+    box-shadow var(--dur-quick) var(--ease-quick);
+}
+
+.ide-panel-tab:hover {
+  color: var(--ink-dim);
+}
+
+.ide-panel-tab.active {
+  color: var(--stamp);
+  box-shadow: inset 0 -2px 0 var(--stamp);
+}
+
+.ide-panel-count {
+  padding: 0 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  color: var(--ink-ghost);
+  font-size: 0.58rem;
+  letter-spacing: 0.02em;
+}
+
+.ide-panel-tab.active .ide-panel-count {
+  border-color: var(--stamp-edge);
+  color: var(--stamp);
+}
+
+.ide-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* No padding-top: the run bar is sticky and bleeds to the panel edges, and a
+   sticky element with a negative top margin lurches when it detaches. The
+   first card supplies its own top gap instead (see below). */
+.ide-panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--s4) var(--s5);
+}
+
+/* ---------- Run bar ---------- */
+
+.ide-runbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin: 0 calc(var(--s4) * -1) var(--s3);
+  padding: var(--s2) var(--s4);
+  background: var(--ground);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.ide-runbar > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+
+.ide-runbar .btn {
+  flex-shrink: 0;
+  padding: 5px 14px;
+  font-size: 0.78rem;
+}
+
+.ide-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s6) var(--s4);
+  font-family: var(--font-mono);
+  font-size: var(--t-mono);
+  color: var(--ink-dim);
+}
+
+/* ---------- Empty states ---------- */
+
+.ide-analysis-empty {
+  padding: var(--s4) 0 0;
+  color: var(--ink-dim);
+}
+
+.ide-analysis-empty > p {
+  text-align: center;
+  font-size: var(--t-body-sm);
+  color: var(--ink-faint);
+}
+
+.ide-analysis-empty > p + p {
+  margin-top: 4px;
+}
+
+/* Written as p.ide-analysis-sub so it outweighs `.ide-analysis-empty > p`
+   on specificity rather than with !important. */
+.ide-analysis-empty > p.ide-analysis-sub {
+  max-width: var(--measure-tight);
+  margin-inline: auto;
+  color: var(--ink-ghost);
+  font-size: 0.78rem;
+}
+
+.ide-analysis-empty .card {
+  margin-top: var(--s4);
+  text-align: left;
+}
+
+/* ---------- Output log ---------- */
+
+/* Flex column rather than a plain block: it lets the empty state fill the
+   panel and centre itself without a percentage height, which would have
+   overflowed by the amount of the vertical padding. */
+.ide-output {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: var(--s2) 0 var(--s4);
+  background: var(--well);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.75;
+}
+
+.ide-output-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s5) var(--s4);
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: var(--t-body-sm);
+  color: var(--ink-ghost);
+}
+
+.ide-output-line {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: 1px var(--s4);
+  color: var(--ink-dim);
+  border-left: 2px solid transparent;
+}
+
+.ide-output-line:hover {
+  background: var(--ground-deep);
+}
+
+.ide-output-time {
+  flex: 0 0 58px;
+  color: var(--ink-ghost);
+  font-variant-numeric: tabular-nums;
+}
+
+.ide-output-kind {
+  flex: 0 0 52px;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: currentColor;
+  opacity: 0.85;
+}
+
+.ide-output-msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.ide-output-line.info {
+  color: var(--ink-dim);
+}
+
+.ide-output-line.run {
+  color: var(--stamp);
+  border-left-color: var(--stamp-edge);
+}
+
+.ide-output-line.success {
+  color: var(--sev-ok);
+  border-left-color: var(--sev-ok-edge);
+}
+
+.ide-output-line.error {
+  color: var(--sev-error);
+  border-left-color: var(--sev-error-edge);
+  background: var(--sev-error-wash);
+}
+
+/* ---------- Embedded panels ---------- */
+
+/* Cards stack inside a short panel, so the page-level rhythm is too loose. */
+.ide-panel-scroll .card {
+  margin-bottom: var(--s3);
+  padding: var(--s4);
+}
+
+/* The Fix panel has no run bar above it, so its first child restores the top
+   gap that .ide-panel-scroll gives up for the sticky bar. */
+.ide-panel-scroll > :first-child:not(.ide-runbar) {
+  margin-top: var(--s3);
+}
+
+.ide-panel-scroll .card:last-child {
+  margin-bottom: 0;
+}
+
+.ide-panel-scroll > .error {
+  margin-bottom: var(--s3);
+}
+
+/* Nothing inside the shell should fade in on every panel switch. */
+.ide .animate-in,
+.ide .animate-in-d1,
+.ide .animate-in-d2,
+.ide .animate-in-d3 {
+  animation: none;
+}
+
+/* Nested scroll containers.
+
+   The standalone page can afford a 480px issue list inside a full-height
+   document. In a ~300px panel those caps create a scrollbar inside a
+   scrollbar: you reach the bottom of the inner list and the outer panel has
+   not moved. Everything that scrolls internally is either shortened to fit or
+   released so the panel scrolls as one surface. */
+.ide-panel-scroll .scl-list {
+  max-height: 132px;
+}
+
+.ide-panel-scroll .issues-scroll,
+.ide-panel-scroll .knowledge-grid,
+.ide-panel-scroll .orphan-list,
+.ide-panel-scroll .fix-file-list {
+  max-height: none;
+  overflow: visible;
+}
+
+/* The diff keeps its own scroll — a long diff released into the panel would
+   bury the file list under it — but at a height that suits the panel. */
+.ide-panel-scroll .diff-view {
+  max-height: 220px;
+}
+
+/* Stat tiles are sized for a 1120px shell. In a half-height panel they want
+   to be readable at a glance, not monumental. */
+.ide-panel-scroll .stats {
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: var(--s2);
+}
+
+.ide-panel-scroll .stat {
+  padding: var(--s3) var(--s3);
+}
+
+.ide-panel-scroll .stat .num {
+  font-size: 1.32rem;
+}
+
+/* The results header keeps its four export buttons on one line and lets the
+   heading take the remaining room. */
+.ide-panel-scroll .result-header-row {
+  gap: var(--s2);
+}
+
+.ide-panel-scroll .result-actions .btn {
+  padding: 3px 9px;
+  font-size: 0.72rem;
+}
+
+/* Version rows wrap early in a narrow panel; the port CTA drops to its own
+   line rather than crushing the issue pills. */
+.ide-panel-scroll .vhead {
+  flex-wrap: wrap;
+  row-gap: var(--s1);
+}
+
+.ide-panel-scroll .cta-port {
+  padding: 3px 10px;
+  font-size: 0.72rem;
+}
+
+/* ---------- Narrow screens ---------- */
+
+@media (max-width: 1100px) {
+  .ide-explorer {
+    flex-basis: 220px;
+    width: 220px;
+  }
+}
+
+@media (max-width: 860px) {
+  .ide-main {
+    flex-direction: column;
+  }
+
+  .ide-explorer {
+    flex: 0 0 34%;
+    width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .ide-bottom {
+    flex-basis: 50%;
+  }
+
+  .ide-crumb {
+    display: none;
+  }
+
+  .ide-status {
+    max-width: 60%;
+  }
+
+  .ide-panel-scroll {
+    padding-inline: var(--s3);
+  }
+
+  .ide-runbar {
+    margin-inline: calc(var(--s3) * -1);
+    padding-inline: var(--s3);
+  }
+}

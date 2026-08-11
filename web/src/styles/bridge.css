@@ -102,100 +102,6 @@ body::after {
   content: none;
 }
 
-/* ---------- Header ----------
-   Gradient chip and gradient-clipped title, both refused by the world. The
-   mark becomes a stamped square; the title becomes weight and tracking. */
-
-.app-header {
-  padding: var(--s5) 0 var(--s4);
-  margin-bottom: var(--s6);
-  border-bottom: 1px solid var(--hairline);
-}
-
-.app-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--r-md);
-  background: var(--stamp-wash);
-  border: 1px solid var(--stamp-edge);
-  box-shadow: none;
-}
-
-.app-logo svg {
-  stroke: var(--stamp);
-}
-
-.app-logo::after {
-  content: none;
-}
-
-.app-title {
-  font-size: 1.34rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  background: none;
-  -webkit-background-clip: border-box;
-  background-clip: border-box;
-  -webkit-text-fill-color: currentColor;
-  color: var(--ink);
-}
-
-.app-subtitle {
-  font-size: 0.86rem;
-  color: var(--ink-dim);
-}
-
-.header-badge {
-  font-family: var(--font-mono);
-  font-size: 0.64rem;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  background: var(--well);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-pill);
-  padding: 3px 10px;
-}
-
-/* ---------- Hero cards: flat at rest, lift on hover ---------- */
-
-.hero-card {
-  border-radius: var(--r-lg);
-  box-shadow: none;
-  transition:
-    border-color var(--dur) var(--ease-quick),
-    transform var(--dur) var(--ease-quick),
-    box-shadow var(--dur) var(--ease-quick);
-}
-
-.hero-card:hover {
-  border-color: var(--hairline);
-  box-shadow: var(--lift-sm);
-  transform: translateY(-2px);
-}
-
-.hero-card .hc-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--r-md);
-  background: var(--stamp-wash);
-  border: 1px solid var(--stamp-edge);
-  color: var(--stamp);
-  margin-bottom: var(--s3);
-}
-
-.new-badge {
-  background: var(--stamp-wash);
-  border: 1px solid var(--stamp-edge);
-  color: var(--stamp);
-  border-radius: var(--r-pill);
-  font-family: var(--font-mono);
-  letter-spacing: 0.1em;
-}
-
 /* ---------- Cards: flat paper ---------- */
 
 .card {
@@ -228,37 +134,6 @@ label {
   font-size: 0.78rem;
   font-weight: 500;
   color: var(--ink-dim);
-}
-
-/* ---------- Tabs: a stamped tab, not a glowing pill ---------- */
-
-.tab-bar {
-  border-radius: var(--r-md);
-  padding: 3px;
-  gap: 3px;
-}
-
-.tab {
-  border-radius: var(--r-sm);
-  font-size: 0.86rem;
-  font-weight: 500;
-}
-
-/* Active tab: a stamped outline, not a filled bar. The Stamp Rarity Rule
-   spends the accent on the primary action and the open case — two filled
-   tabs would blow the ≤5% budget on a control strip. */
-.tab.active {
-  background: var(--stamp-wash);
-  color: var(--stamp);
-  box-shadow: none;
-  font-weight: 600;
-  border-color: var(--stamp-edge);
-}
-
-.tab.active:hover {
-  background: var(--stamp-wash);
-  color: var(--stamp-bright);
-  border-color: var(--stamp);
 }
 
 /* ---------- Segmented control ---------- */
@@ -1256,32 +1131,11 @@ select option {
 
 /* ---------- Loading states ----------
 
-   These all animate, but three of them were invisible:
-     - the spinner is a white ring with a white top edge, so on the filled
-       stamp button it was white-on-orange and read as a static dot;
-     - the progress shimmer swept a 12% wash that vanished on the flat surface;
-     - skeletons kept the old slate surface and a 4% white sweep.
-   Colour, not motion, was the problem. */
+   The spinner was a white ring with a white top edge, so on the filled stamp
+   button it was white-on-orange and read as a static dot. The ring now takes
+   the current text colour, so it inherits correctly on every surface: dark ink
+   on the stamp button, light ink on a dark panel. */
 
-.progress-bar {
-  border-radius: var(--r-md);
-  background: var(--docket);
-  border-color: var(--stamp-edge);
-  color: var(--ink);
-}
-
-/* The sweep needs to be visible against the docket, not a 12% tint of it. */
-.progress-bar::after {
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(240, 122, 53, 0.22),
-    transparent
-  );
-}
-
-/* The ring takes the current text colour, so it inherits correctly on every
-   surface: dark ink on the stamp button, light ink on a dark panel. */
 .spinner {
   width: 14px;
   height: 14px;
@@ -1289,35 +1143,6 @@ select option {
   border-top-color: transparent;
   opacity: 0.9;
   animation: spin 0.6s linear infinite;
-}
-
-/* Skeletons: desk surfaces, and a sweep bright enough to read as motion. */
-.skeleton {
-  background: var(--docket-raised);
-  border-radius: var(--r-sm);
-}
-
-.skeleton::after {
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(230, 235, 242, 0.09),
-    transparent
-  );
-}
-
-.skeleton-line {
-  background: var(--well);
-  border-radius: var(--r-pill);
-}
-
-.skeleton-row {
-  border-color: var(--hairline);
-  border-radius: var(--r-md);
-}
-
-.skeleton-pill {
-  border-radius: var(--r-pill);
 }
 
 .error {
@@ -1392,15 +1217,6 @@ a {
 a:hover {
   color: var(--ink);
   text-decoration-color: var(--stamp);
-}
-
-.app-footer a:hover,
-.footer-links a:hover {
-  color: var(--ink);
-}
-
-.app-footer {
-  border-top: 1px solid var(--hairline);
 }
 
 /* ---------- Motion: match the hub's entrance ---------- */

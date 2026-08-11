@@ -7,6 +7,7 @@ report.json
 *.zip
 server.log
 /graphify-out
+web/.vite/
 
 # AI tooling config and workflow docs (keep local only)
 /.claude/
@@ -15,3 +16,5 @@ CLAUDE.md
 DESIGN.md
 PRODUCT.md
 /docs/superpowers/
+/.superpowers/
+/.gitnexus/

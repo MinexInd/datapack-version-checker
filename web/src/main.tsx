@@ -6,6 +6,7 @@ import './styles/base.css'
 import './styles/bridge.css'
 import './styles/hub.css'
 import './styles/app.css'
+import './styles/ide.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode><App /></StrictMode>

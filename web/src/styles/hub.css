@@ -37,16 +37,14 @@
 @media (prefers-reduced-motion: reduce) {
   .hub *,
   .hub *::before,
-  .hub *::after,
-  .deskbar * {
+  .hub *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
 
-.hub :focus-visible,
-.deskbar :focus-visible {
+.hub :focus-visible {
   outline: 2px solid var(--stamp);
   outline-offset: 2px;
   border-radius: var(--r-xs);
@@ -545,84 +543,6 @@
   font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--ink-ghost);
-}
-
-/* ---------- Deskbar: the way back from a tool to the desk ---------- */
-
-.deskbar {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  flex-wrap: wrap;
-  padding: var(--s2) 0;
-  border-bottom: 1px solid var(--hairline);
-  font-family: var(--font-sans);
-}
-
-.deskbar-home {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 1px;
-  padding: 5px 8px;
-  margin-left: -8px;
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--ink);
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  cursor: pointer;
-  transition: background var(--dur-quick) var(--ease-quick), border-color var(--dur-quick) var(--ease-quick);
-}
-
-.deskbar-home:hover {
-  background: var(--docket);
-  border-color: var(--hairline);
-}
-
-.deskbar-home .wm-tail {
-  font-weight: 300;
-  color: var(--ink-dim);
-}
-
-.deskbar-home .wm-dot { color: var(--stamp); }
-
-.deskbar-sep {
-  width: 1px;
-  height: 16px;
-  flex-shrink: 0;
-  background: var(--hairline);
-}
-
-.deskbar-crumb {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-}
-
-.deskbar-back {
-  margin-left: auto;
-  padding: 5px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--ink-dim);
-  font-family: var(--font-sans);
-  font-size: 0.82rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color var(--dur-quick) var(--ease-quick), background var(--dur-quick) var(--ease-quick),
-    border-color var(--dur-quick) var(--ease-quick);
-}
-
-.deskbar-back:hover {
-  color: var(--ink);
-  background: var(--docket);
-  border-color: var(--hairline);
 }
 
 /* ---------- Narrow screens ---------- */

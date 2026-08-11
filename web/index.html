@@ -158,133 +158,6 @@
       line-height: 1.5;
     }
 
-    /* --- Header --- */
-    .app-header {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 24px 0 20px;
-      margin-bottom: 32px;
-      border-bottom: 1px solid var(--border-faint);
-    }
-
-    .app-logo {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      background: linear-gradient(135deg, var(--accent-strong), var(--purple));
-      display: grid;
-      place-items: center;
-      font-size: 1.3rem;
-      box-shadow: 0 4px 20px var(--accent-glow);
-      flex-shrink: 0;
-      position: relative;
-    }
-
-    .app-logo::after {
-      content: '';
-      position: absolute;
-      inset: -2px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, var(--accent-strong), transparent, var(--purple));
-      z-index: -1;
-      opacity: 0.4;
-    }
-
-    .app-title-group { flex: 1; min-width: 0; }
-    .app-title {
-      font-size: 1.5rem;
-      font-weight: 750;
-      letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #fff 40%, var(--accent));
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      line-height: 1.2;
-    }
-
-    .app-subtitle {
-      font-size: 0.88rem;
-      color: var(--text-dim);
-      font-weight: 450;
-      margin-top: 2px;
-    }
-
-    .header-badge {
-      font-size: 0.72rem;
-      font-weight: 550;
-      color: var(--text-faint);
-      border: 1px solid var(--border);
-      padding: 5px 12px;
-      border-radius: 20px;
-      background: var(--bg-elev);
-      white-space: nowrap;
-      letter-spacing: 0.01em;
-    }
-
-    /* --- Hero section (feature highlights) --- */
-    .hero-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 28px;
-    }
-
-    .new-badge {
-      display: inline-block;
-      font-size: 0.6rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      padding: 2px 6px;
-      margin-left: 4px;
-      border-radius: 4px;
-      background: linear-gradient(135deg, #3b82f6, #c084fc);
-      color: #fff;
-      vertical-align: middle;
-    }
-
-    .hero-card {
-      background: var(--bg-elev);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 18px 20px;
-      box-shadow: var(--shadow-sm);
-      transition: all 0.2s ease;
-    }
-
-    .hero-card:hover {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 1px var(--accent-glow), var(--shadow);
-      transform: translateY(-2px);
-    }
-
-    .hero-card .hc-icon {
-      font-size: 1.4rem;
-      margin-bottom: 10px;
-      display: block;
-    }
-
-    .hero-card h3 {
-      font-size: 0.88rem;
-      font-weight: 650;
-      color: var(--text);
-      margin-bottom: 4px;
-    }
-
-    .hero-card p {
-      font-size: 0.78rem;
-      color: var(--text-dim);
-      line-height: 1.5;
-    }
-
-    @media (max-width: 980px) {
-      .hero-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    @media (max-width: 540px) {
-      .hero-grid { grid-template-columns: 1fr; }
-    }
-
     /* --- Cards --- */
     .card {
       background: var(--bg-elev);
@@ -321,44 +194,6 @@
       font-size: 0.8rem;
       color: var(--text-dim);
       font-weight: 550;
-    }
-
-    /* --- Tabs --- */
-    .tab-bar {
-      display: flex;
-      gap: 4px;
-      background: var(--bg-elev);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 4px;
-      margin-bottom: 20px;
-    }
-
-    .tab {
-      flex: 1;
-      padding: 10px 16px;
-      border: none;
-      border-radius: 7px;
-      background: transparent;
-      color: var(--text-dim);
-      cursor: pointer;
-      font-size: 0.88rem;
-      font-weight: 550;
-      font-family: var(--font);
-      transition: all 0.18s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-
-    .tab:hover { color: var(--text); background: var(--bg-hover); }
-
-    .tab.active {
-      background: linear-gradient(180deg, var(--accent-strong), var(--accent-deep));
-      color: #fff;
-      box-shadow: 0 2px 12px var(--accent-glow);
-      font-weight: 600;
     }
 
     /* --- Segmented control --- */
@@ -1062,30 +897,7 @@
     .empty-ok p { font-size: 0.85rem; color: var(--text-dim); }
     .empty-ok b { color: var(--green); }
 
-    /* --- Progress / error banners --- */
-    .progress-bar {
-      display: flex; align-items: center; gap: 12px;
-      padding: 14px 18px; margin-bottom: 20px;
-      background: var(--blue-bg); border: 1px solid var(--blue-border);
-      border-radius: var(--radius); color: var(--text); font-size: 0.88rem; font-weight: 500;
-      animation: fadeScale 0.2s ease;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .progress-bar::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.08), transparent);
-      animation: shimmer 1.8s ease-in-out infinite;
-    }
-
-    @keyframes shimmer {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
-    }
-
+    /* --- Error banner --- */
     .error {
       display: flex; align-items: center; gap: 12px;
       padding: 14px 18px; margin-bottom: 20px;
@@ -1309,57 +1121,6 @@
     .stat.purple::before { background: var(--purple); }
     .stat.purple .num { color: var(--purple); }
 
-    /* --- Loading skeleton --- */
-    .skeleton {
-      position: relative;
-      overflow: hidden;
-      background: var(--bg-elev-2);
-      border-radius: 7px;
-    }
-
-    .skeleton::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
-      animation: shimmer 1.5s ease-in-out infinite;
-    }
-
-    .skeleton-line {
-      height: 12px;
-      border-radius: 6px;
-      margin-bottom: 8px;
-    }
-
-    .skeleton-line.w60 { width: 60%; }
-    .skeleton-line.w80 { width: 80%; }
-    .skeleton-line.w40 { width: 40%; }
-
-    .skeleton-row {
-      padding: 13px 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      margin-bottom: 8px;
-    }
-
-    .skeleton-row .sk-name {
-      flex: 1;
-    }
-
-    .skeleton-row .sk-pills {
-      display: flex;
-      gap: 6px;
-    }
-
-    .skeleton-pill {
-      width: 52px;
-      height: 22px;
-      border-radius: 20px;
-    }
-
     /* --- Version row glow on expand --- */
     .vrow.open {
       border-color: var(--accent);
@@ -1444,39 +1205,6 @@
     }
     .circular-dep-file { color: var(--amber); font-weight: 600; }
     .circular-dep-arrow { color: var(--red); }
-
-    /* --- Footer --- */
-    .app-footer {
-      text-align: center;
-      padding: 48px 0 24px;
-      border-top: 1px solid var(--border-faint);
-      margin-top: 48px;
-    }
-
-    .app-footer p {
-      font-size: 0.78rem;
-      color: var(--text-faint);
-      line-height: 1.8;
-    }
-
-    .app-footer a { color: var(--text-dim); }
-    .app-footer a:hover { color: var(--accent); }
-
-    .footer-links {
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-      margin-top: 10px;
-    }
-
-    .footer-links a {
-      font-size: 0.76rem;
-      color: var(--text-faint);
-      text-decoration: none;
-      transition: color 0.15s;
-    }
-
-    .footer-links a:hover { color: var(--accent); text-decoration: none; }
 
     /* --- Per-issue hint lines (suggestions) --- */
     .issue-hint {
@@ -1643,15 +1371,9 @@
       .diff-col + .diff-col { margin-left: 0; margin-top: 8px; }
     }
 
-    @media (max-width: 640px) {
-      .header-badge { display: none; }
-      .app-header { padding: 20px 0 16px; margin-bottom: 24px; }
-    }
-
     @media (max-width: 560px) {
       .container { padding: 0 14px 56px; }
       .card { padding: 18px; }
-      .tab { font-size: 0.82rem; padding: 9px 8px; }
       .run-row .btn-primary { margin-left: 0; flex: 1 1 100%; }
       .fix-actions .btn { flex: 1 1 100%; }
       .plan-file-count { margin-left: 0; width: 100%; }
