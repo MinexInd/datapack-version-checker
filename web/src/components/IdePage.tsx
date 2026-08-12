@@ -98,6 +98,10 @@ function pathFromUri(uri: { path: string }): string {
   return raw.startsWith('/pack/') ? raw.slice('/pack/'.length) : raw
 }
 
+// Monaco 0.56 dropped editor.getTheme() from the standalone API, so the
+// readonly flag below replaces that guard (defineTheme itself is idempotent).
+let minexDarkDefined = false
+
 export default function IdePage({
   originalFiles,
   editedFiles,
@@ -295,7 +299,7 @@ export default function IdePage({
     // longer resolves, so the whole namespace degrades to any. Annotating the
     // callback keeps this callsite honest under noImplicitAny.
     const registered = monacoInstance.languages.getLanguages() as MonacoLanguages.ILanguageExtensionPoint[]
-    if (!monacoInstance.editor.getTheme().startsWith('minex-dark')) {
+    if (!minexDarkDefined) {
       // Spyglass semantic tokens in VS Code Dark+ palette: purple keywords,
       // orange strings, light-blue variables/properties, green numbers.
       // The legend types come from @spyglassmc/core ColorTokenTypes; every
@@ -304,6 +308,13 @@ export default function IdePage({
         base: 'vs-dark',
         inherit: true,
         semanticHighlighting: true,
+        // colors is REQUIRED in Monaco >= 0.5x: the tokenTheme getter reads
+        // themeData.colors['editor.foreground'] unguarded, so omitting the
+        // map crashes setTheme with "colors is undefined".
+        colors: {
+          'editor.background': '#0e131b',
+          'editor.foreground': '#e6ebf2',
+        },
         rules: [
           { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
           { token: 'keyword', foreground: 'c586c0' },
@@ -325,6 +336,7 @@ export default function IdePage({
           { token: 'error', foreground: 'f48771' },
         ],
       })
+      minexDarkDefined = true
     }
     if (!registered.some(l => l.id === 'mcfunction')) {
       monacoInstance.languages.register({ id: 'mcfunction' })

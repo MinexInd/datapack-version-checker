@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Redirecting...</title>
+  <script>
+    // GH Pages serves this file for unknown paths. Stash the requested
+    // route and bounce to the app root; App.tsx restores the clean URL
+    // via history.replaceState on first load.
+    sessionStorage.setItem('dpcheck-redirect', location.pathname + location.search)
+    location.replace(location.pathname.slice(0, location.pathname.lastIndexOf('/') + 1))
+  </script>
+</head>
+<body></body>
+</html>

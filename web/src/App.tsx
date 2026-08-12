@@ -7,8 +7,13 @@ import IdePage from './components/IdePage'
 
 type View = 'hub' | 'ide'
 
+function viewFromPath(): View {
+  const seg = window.location.pathname.split('/').filter(Boolean).pop()
+  return seg === 'datapack-editor' ? 'ide' : 'hub'
+}
+
 export default function App() {
-  const [view, setView] = useState<View>('hub')
+  const [view, setView] = useState<View>(viewFromPath)
   const [mode, setMode] = useState<Mode>('auto')
   const [all, setAll] = useState(false)
   const [strict, setStrict] = useState(false)
@@ -40,6 +45,21 @@ export default function App() {
       .then(v => setVersions(v))
       .catch(() => {})
       .finally(() => setVersionsLoading(false))
+  }, [])
+
+  useEffect(() => {
+    const onPop = () => setView(viewFromPath())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  useEffect(() => {
+    const redirect = sessionStorage.getItem('dpcheck-redirect')
+    if (redirect) {
+      sessionStorage.removeItem('dpcheck-redirect')
+      history.replaceState(null, '', redirect)
+      setView(viewFromPath())
+    }
   }, [])
 
   const loadFiles = useCallback(async (entries: PackFileMap, name: string) => {
@@ -146,6 +166,16 @@ export default function App() {
     }
   }, [workspaceFiles, fixTarget, fixSource])
 
+  const openEditor = useCallback(() => {
+    history.pushState(null, '', 'datapack-editor')
+    setView('ide')
+  }, [])
+
+  const backToHub = useCallback(() => {
+    history.pushState(null, '', './')
+    setView('hub')
+  }, [])
+
   if (view === 'ide') {
     return (
       <IdePage
@@ -156,7 +186,7 @@ export default function App() {
         fileName={fileName}
         onLoad={loadFiles}
         onClear={clearFiles}
-        onBack={() => setView('hub')}
+        onBack={backToHub}
         mode={mode}
         onModeChange={setMode}
         all={all}
@@ -185,5 +215,5 @@ export default function App() {
     )
   }
 
-  return <HubPage onOpenDatapackEditor={() => setView('ide')} />
+  return <HubPage onOpenDatapackEditor={openEditor} />
 }
