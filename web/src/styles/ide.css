@@ -134,7 +134,7 @@
 }
 
 .ide-spyglass-status.loading {
-  color: var(--ink-soft);
+  color: var(--ink-dim);
   background: rgba(128, 128, 128, 0.14);
 }
 
@@ -565,19 +565,56 @@
 
 /* ---------- Bottom panel ---------- */
 
-/* 45% of the centre column, but never so short that the panel tabs and one
-   line of content stop fitting, and never so tall that the editor is a
-   letterbox. On a 600px-tall laptop the raw percentage leaves ~250px, which
-   is workable; the clamp only bites on genuinely small windows. */
+/* 22% of the centre column by default — enough for a few rows of problems
+   without cramping the editor. The user can drag the divider above to any
+   height (stored inline as px) or collapse the panel to just its tabs. */
 .ide-bottom {
-  flex: 0 0 45%;
-  min-height: 170px;
+  flex: 0 0 22%;
+  min-height: 0;
   max-height: 68%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--ground);
   border-top: 1px solid var(--hairline);
+}
+
+/* Collapsed: only the tab strip remains (its height + the hairline). */
+.ide-bottom.collapsed {
+  flex-basis: 0;
+  max-height: 40px;
+}
+
+.ide-bottom.collapsed .ide-panel-body {
+  display: none;
+}
+
+/* The draggable divider between the editor and the panel. A 9px hit area
+   with a 1px visible rule; the whole strip is the grab target. */
+.ide-panel-resize {
+  flex: 0 0 9px;
+  height: 9px;
+  position: relative;
+  z-index: 3;
+  cursor: ns-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.ide-panel-resize::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 4px;
+  height: 1px;
+  background: var(--hairline);
+  transition: background var(--dur-quick) var(--ease-quick);
+}
+
+.ide-panel-resize:hover::after,
+.ide-panel-resize:active::after {
+  background: var(--stamp);
 }
 
 .ide-panel-tabs {
@@ -589,6 +626,58 @@
   padding: 0 var(--s2);
   background: var(--ground-deep);
   border-bottom: 1px solid var(--hairline-soft);
+}
+
+/* Filter + collapse live at the right end of the tab strip. */
+.ide-problem-filter {
+  flex: 0 0 220px;
+  max-width: 30%;
+  margin-left: auto;
+  align-self: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  outline: none;
+  transition: border-color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-problem-filter::placeholder {
+  color: var(--ink-ghost);
+}
+
+.ide-problem-filter:focus {
+  border-color: var(--stamp-edge);
+}
+
+.ide-panel-collapse {
+  flex-shrink: 0;
+  align-self: center;
+  width: 24px;
+  height: 22px;
+  margin-left: var(--s1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: 0.55rem;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-panel-collapse:hover {
+  color: var(--ink);
+  background: var(--docket);
+  border-color: var(--hairline);
 }
 
 .ide-panel-tab {
@@ -815,15 +904,17 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: var(--s2) 0 var(--s4);
+  padding: var(--s1) 0 var(--s4);
   background: var(--well);
 }
 
-.ide-problem {
+/* File header row — the one interactive grouping element. */
+.ide-problem-file {
   display: flex;
-  align-items: baseline;
-  gap: var(--s3);
+  align-items: center;
+  gap: 6px;
   width: 100%;
+  min-width: 0;
   padding: 3px var(--s4);
   border: none;
   background: transparent;
@@ -831,54 +922,185 @@
   font: inherit;
   color: var(--ink-dim);
   cursor: pointer;
-  border-left: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.ide-problem-file:hover {
+  background: var(--ground-deep);
+  color: var(--ink);
+}
+
+.ide-problem-caret {
+  flex-shrink: 0;
+  width: 12px;
+  color: var(--ink-ghost);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.ide-problem-file-icon {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  line-height: 1;
+  filter: grayscale(0.4);
+  opacity: 0.9;
+}
+
+.ide-problem-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.ide-problem-file-dir {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--ink-ghost);
+}
+
+/* Per-file count, VS Code style. */
+.ide-problem-file-count {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--ground-deep);
+  color: var(--ink-ghost);
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Individual problem row. Message stays neutral — only the icon carries
+   severity, matching the VS Code Problems view. */
+.ide-problem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  width: 100%;
+  min-width: 0;
+  padding: 2px var(--s4) 2px calc(var(--s4) + 18px);
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: var(--ink-dim);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .ide-problem:hover {
   background: var(--ground-deep);
+  color: var(--ink);
 }
 
 .ide-problem-icon {
   flex: 0 0 14px;
   text-align: center;
   font-size: 0.68rem;
+  line-height: 1;
+}
+
+.ide-problem-icon.sev-error {
+  color: var(--sev-error);
+}
+
+.ide-problem-icon.sev-warning {
+  color: var(--sev-warn);
+}
+
+.ide-problem-icon.sev-info {
+  color: var(--sev-info);
 }
 
 .ide-problem-msg {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-dim);
+}
+
+.ide-problem:hover .ide-problem-msg {
+  color: var(--ink);
+}
+
+.ide-problem-source {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--ink-faint);
 }
 
 .ide-problem-loc {
-  flex: 0 0 auto;
-  color: var(--ink-ghost);
+  flex-shrink: 0;
   font-family: var(--font-mono);
   font-size: 0.68rem;
+  color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
 }
 
-.ide-problem-error {
-  color: var(--sev-error);
-  border-left-color: var(--sev-error-edge);
+/* ---------- Status bar ---------- */
+
+.ide-statusbar {
+  flex: 0 0 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 0 var(--s3);
+  background: var(--ground-deep);
+  border-top: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--ink-faint);
 }
 
-.ide-problem-error .ide-problem-icon {
-  color: var(--sev-error);
+.ide-statusbar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  color: var(--ink-faint);
 }
 
-.ide-problem-warning {
-  color: var(--sev-warn);
-  border-left-color: var(--sev-warn-edge);
+.ide-statusbar-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.ide-problem-warning .ide-problem-icon {
-  color: var(--sev-warn);
+.ide-statusbar-spacer {
+  flex: 1 1 auto;
 }
 
-.ide-problem-info {
+.ide-statusbar-spyglass {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ide-statusbar-spyglass.ready {
+  color: #2ea043;
+  background: rgba(46, 160, 67, 0.12);
+}
+
+.ide-statusbar-spyglass.loading {
   color: var(--ink-dim);
-  border-left-color: var(--hairline);
+  background: rgba(128, 128, 128, 0.14);
+}
+
+.ide-statusbar-spyglass.failed {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.14);
 }
 
 /* ---------- Embedded panels ---------- */
@@ -996,7 +1218,8 @@
   }
 
   .ide-bottom {
-    flex-basis: 50%;
+    flex-basis: 40%;
+    max-height: 60%;
   }
 
   .ide-crumb {

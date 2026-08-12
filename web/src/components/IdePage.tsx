@@ -124,6 +124,12 @@ export default function IdePage({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [panel, setPanel] = useState<'analysis' | 'fix' | 'problems' | 'output'>('analysis')
   const [log, setLog] = useState<LogEntry[]>([])
+  // Bottom panel: height in px once the user drags the divider (null = the
+  // CSS default of 22%), plus a collapsed state that hides the body.
+  const [panelHeight, setPanelHeight] = useState<number | null>(null)
+  const [panelCollapsed, setPanelCollapsed] = useState(false)
+  // Slim status bar: cursor position follows the editor.
+  const [cursor, setCursor] = useState({ lineNumber: 1, column: 1 })
 
   const serviceRef = useRef<SpyglassService | null>(null)
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null)
@@ -214,6 +220,9 @@ export default function IdePage({
 
   // Problems panel: markers for every open tab, like the VSCode Problems view.
   const [problems, setProblems] = useState<{ path: string; marker: IdeMarker }[]>([])
+  const [problemFilter, setProblemFilter] = useState('')
+  // Collapsed file headers in the grouped problems list.
+  const [problemsCollapsed, setProblemsCollapsed] = useState<Set<string>>(new Set())
   useEffect(() => {
     if (!spyglassReady || !serviceRef.current) {
       setProblems([])
@@ -237,12 +246,67 @@ export default function IdePage({
     return () => { cancelled = true; clearTimeout(timer) }
   }, [spyglassReady, openTabs, activePath, editedFiles, originalFiles])
 
+  // Group problems by file, VS Code style: each file gets a collapsible
+  // header (name + dir + count) with its markers indented beneath.
+  const problemGroups = useMemo(() => {
+    const byPath = new Map<string, { path: string; markers: IdeMarker[] }>()
+    for (const { path, marker } of problems) {
+      const g = byPath.get(path)
+      if (g) g.markers.push(marker)
+      else byPath.set(path, { path, markers: [marker] })
+    }
+    const q = problemFilter.trim().toLowerCase()
+    const groups = [...byPath.values()]
+      .map(g => ({
+        ...g,
+        markers: q
+          ? g.markers.filter(m =>
+              m.message.toLowerCase().includes(q) ||
+              g.path.toLowerCase().includes(q))
+          : g.markers,
+      }))
+      .filter(g => g.markers.length > 0)
+      .sort((a, b) => a.path.localeCompare(b.path))
+    return groups
+  }, [problems, problemFilter])
+
   const beforeMount = useCallback<BeforeMount>((monacoInstance) => {
     // getLanguages() comes back untyped here: @monaco-editor/react derives Monaco
     // from a deep 'monaco-editor/esm/...' path that the package's exports map no
     // longer resolves, so the whole namespace degrades to any. Annotating the
     // callback keeps this callsite honest under noImplicitAny.
     const registered = monacoInstance.languages.getLanguages() as MonacoLanguages.ILanguageExtensionPoint[]
+    if (!monacoInstance.editor.getTheme().startsWith('minex-dark')) {
+      // Spyglass semantic tokens in VS Code Dark+ palette: purple keywords,
+      // orange strings, light-blue variables/properties, green numbers.
+      // The legend types come from @spyglassmc/core ColorTokenTypes; every
+      // type gets a rule so nothing falls back to the washed-out default.
+      monacoInstance.editor.defineTheme('minex-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        semanticHighlighting: true,
+        rules: [
+          { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
+          { token: 'keyword', foreground: 'c586c0' },
+          { token: 'modifier', foreground: 'c586c0' },
+          { token: 'function', foreground: 'dcdcaa' },
+          { token: 'type', foreground: '4ec9b0' },
+          { token: 'struct', foreground: '4ec9b0' },
+          { token: 'enum', foreground: 'b8d7a3' },
+          { token: 'enumMember', foreground: 'b8d7a3' },
+          { token: 'number', foreground: 'b5cea8' },
+          { token: 'literal', foreground: 'b5cea8' },
+          { token: 'vector', foreground: 'b5cea8' },
+          { token: 'string', foreground: 'ce9178' },
+          { token: 'escape', foreground: 'd7ba7d' },
+          { token: 'property', foreground: '9cdcfe' },
+          { token: 'variable', foreground: '9cdcfe' },
+          { token: 'resourceLocation', foreground: '9cdcfe' },
+          { token: 'operator', foreground: 'd4d4d4' },
+          { token: 'error', foreground: 'f48771' },
+        ],
+      })
+    }
     if (!registered.some(l => l.id === 'mcfunction')) {
       monacoInstance.languages.register({ id: 'mcfunction' })
       monacoInstance.languages.setLanguageConfiguration('mcfunction', {
@@ -289,6 +353,35 @@ export default function IdePage({
   const handleMount: OnMount = useCallback((editor, monacoInstance) => {
     monacoRef.current = monacoInstance
     editorRef.current = editor
+    // Status bar line/col follows the cursor.
+    editor.onDidChangeCursorPosition(e => {
+      setCursor({ lineNumber: e.position.lineNumber, column: e.position.column })
+    })
+    setCursor({ lineNumber: editor.getPosition()?.lineNumber ?? 1, column: editor.getPosition()?.column ?? 1 })
+  }, [])
+
+  // Drag the divider above the bottom panel to resize it. The panel lives in
+  // a column that ends at the viewport bottom, so the height is the distance
+  // from the pointer up to the top of the panel (inverse of clientY relative
+  // to the container). Clamp to keep both the editor and the panel usable.
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const startResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const panelEl = panelRef.current
+    if (!panelEl) return
+    const startY = e.clientY
+    const startH = panelEl.getBoundingClientRect().height
+    const onMove = (ev: PointerEvent) => {
+      const h = Math.min(Math.max(startH + (startY - ev.clientY), 90), window.innerHeight - 160)
+      setPanelHeight(h)
+      setPanelCollapsed(false)
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
   }, [])
 
   // When a Problems-panel entry is clicked, open the file and reveal the
@@ -514,7 +607,7 @@ export default function IdePage({
                 language={langFor(activePath)}
                 value={activeContent}
                 onChange={(value) => handleEdited(activePath, value)}
-                theme="vs-dark"
+                theme="minex-dark"
                 options={{
                   minimap: { enabled: false },
                   fontSize: 13,
@@ -537,7 +630,19 @@ export default function IdePage({
             )}
           </div>
 
-          <div className="ide-bottom">
+          <div
+            className="ide-panel-resize"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize panel"
+            onPointerDown={startResize}
+          />
+
+          <div
+            className={`ide-bottom${panelCollapsed ? ' collapsed' : ''}`}
+            ref={panelRef}
+            style={panelHeight != null ? { flexBasis: `${panelHeight}px` } : undefined}
+          >
             <div className="ide-panel-tabs" role="tablist" aria-label="IDE panels">
               <button
                 className={`ide-panel-tab${panel === 'analysis' ? ' active' : ''}`}
@@ -568,6 +673,25 @@ export default function IdePage({
               >
                 Output
                 {log.length > 0 && <span className="ide-panel-count">{log.length}</span>}
+              </button>
+              {panel === 'problems' && (
+                <input
+                  className="ide-problem-filter"
+                  type="search"
+                  placeholder="Filter (message or path)"
+                  aria-label="Filter problems"
+                  value={problemFilter}
+                  onChange={e => setProblemFilter(e.target.value)}
+                  spellCheck={false}
+                />
+              )}
+              <button
+                type="button"
+                className="ide-panel-collapse"
+                title={panelCollapsed ? 'Expand panel' : 'Collapse panel'}
+                onClick={() => setPanelCollapsed(v => !v)}
+              >
+                {panelCollapsed ? '▲' : '▼'}
               </button>
             </div>
 
@@ -646,30 +770,59 @@ export default function IdePage({
 
               {panel === 'problems' && (
                 <div className="ide-panel-scroll">
-                  {problems.length === 0 ? (
+                  {problemGroups.length === 0 ? (
                     <div className="ide-output-empty">
-                      No problems detected in open files.
+                      {problemFilter
+                        ? 'No problems match the filter.'
+                        : 'No problems detected in open files.'}
                       {!spyglassReady && ' Spyglass is still initializing…'}
                     </div>
                   ) : (
                     <div className="ide-problems">
-                      {problems.map(({ path, marker }, i) => (
-                        <button
-                          key={`${path}:${i}`}
-                          type="button"
-                          className={`ide-problem ide-problem-${marker.severity}`}
-                          onClick={() => handleJump(path, marker.startLineNumber, marker.startColumn)}
-                          title="Jump to problem"
-                        >
-                          <span className="ide-problem-icon">
-                            {marker.severity === 'error' ? '✕' : marker.severity === 'warning' ? '⚠' : marker.severity === 'info' ? 'ℹ' : '·'}
-                          </span>
-                          <span className="ide-problem-msg">{marker.message}</span>
-                          <span className="ide-problem-loc">
-                            {path}:{marker.startLineNumber}:{marker.startColumn}
-                          </span>
-                        </button>
-                      ))}
+                      {problemGroups.map(group => {
+                        const isGroupCollapsed = problemsCollapsed.has(group.path)
+                        const dir = group.path.includes('/')
+                          ? group.path.slice(0, group.path.lastIndexOf('/'))
+                          : ''
+                        return (
+                          <div key={group.path} className="ide-problem-group">
+                            <button
+                              type="button"
+                              className="ide-problem-file"
+                              onClick={() => setProblemsCollapsed(prev => {
+                                const next = new Set(prev)
+                                if (next.has(group.path)) next.delete(group.path)
+                                else next.add(group.path)
+                                return next
+                              })}
+                            >
+                              <span className="ide-problem-caret">{isGroupCollapsed ? '▸' : '▾'}</span>
+                              <span className="ide-problem-file-icon" aria-hidden>📄</span>
+                              <span className="ide-problem-file-name" title={group.path}>
+                                {group.path.split('/').pop()}
+                              </span>
+                              {dir && <span className="ide-problem-file-dir">{dir}</span>}
+                              <span className="ide-problem-file-count">{group.markers.length}</span>
+                            </button>
+                            {!isGroupCollapsed && group.markers.map((marker, i) => (
+                              <button
+                                key={`${group.path}:${i}`}
+                                type="button"
+                                className="ide-problem"
+                                onClick={() => handleJump(group.path, marker.startLineNumber, marker.startColumn)}
+                                title={`${marker.severity}: ${marker.message}`}
+                              >
+                                <span className={`ide-problem-icon sev-${marker.severity}`}>
+                                  {marker.severity === 'error' ? '✕' : marker.severity === 'warning' ? '⚠' : marker.severity === 'info' ? 'ℹ' : '·'}
+                                </span>
+                                <span className="ide-problem-msg">{marker.message}</span>
+                                <span className="ide-problem-source">spyglassmc</span>
+                                <span className="ide-problem-loc">[Ln {marker.startLineNumber}, Col {marker.startColumn}]</span>
+                              </button>
+                            ))}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -691,6 +844,22 @@ export default function IdePage({
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="ide-statusbar">
+            <span className="ide-statusbar-item">
+              <span className={`ide-statusbar-spyglass ${spyglassStatus}`}>
+                {spyglassStatus === 'ready' ? 'Spyglass ✓' : spyglassStatus === 'loading' ? 'Spyglass…' : spyglassStatus === 'failed' ? 'Spyglass ✗' : 'Spyglass'}
+              </span>
+            </span>
+            <span className="ide-statusbar-item ide-statusbar-file" title={activePath ?? undefined}>
+              {activePath ? activePath.split('/').pop() : 'no file open'}
+            </span>
+            <span className="ide-statusbar-spacer" />
+            {activePath && (
+              <span className="ide-statusbar-item">{langFor(activePath)}</span>
+            )}
+            <span className="ide-statusbar-item">Ln {cursor.lineNumber}, Col {cursor.column}</span>
           </div>
         </div>
       </div>
