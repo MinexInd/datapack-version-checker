@@ -119,6 +119,86 @@
   color: var(--stamp);
 }
 
+/* ---------- Version selector + toolbar buttons (1.6 / 1.7 / 1.8) ---------- */
+
+.ide-version-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.ide-version-text {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  user-select: none;
+}
+
+.ide-version-select {
+  height: 22px;
+  padding: 0 18px 0 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  outline: none;
+  cursor: pointer;
+  appearance: auto;
+  transition: border-color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-version-select:focus {
+  border-color: var(--stamp-edge);
+}
+
+.ide-version-warning {
+  flex-shrink: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--sev-warn);
+  background: var(--sev-warn-wash, rgba(219, 170, 56, 0.1));
+  padding: 1px 8px;
+  border-radius: var(--r-sm);
+}
+
+.ide-topbar-btn {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-topbar-btn:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--docket);
+  border-color: var(--stamp-edge);
+}
+
+.ide-topbar-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .ide-spyglass-status {
   margin-left: var(--s2);
   padding: 1px 6px;
@@ -1074,6 +1154,11 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.ide-statusbar-version {
+  color: var(--ink-dim);
+  font-weight: 500;
 }
 
 .ide-statusbar-spacer {

@@ -322,4 +322,43 @@ export class SpyglassService {
         range: loc.range ?? { start: 0, end: 0 },
       }))
   }
+
+  /** Open every file in the pack, wait for all parses to settle, then
+   *  collect markers from every file. Used by the "Analyze Datapack"
+   *  button which needs whole-pack diagnostics in one pass. */
+  async analyzeAll(
+    files: Record<string, string>,
+  ): Promise<{ path: string; marker: IdeMarker }[]> {
+    if (!this.service) return []
+
+    // Fire off opens for every file — they chain through parseChain so
+    // they execute in order but we only await once at the end.
+    await Promise.all(
+      Object.entries(files).map(([path, content]) => this.openFile(path, content)),
+    )
+    await this.settled()
+
+    const results: { path: string; marker: IdeMarker }[] = []
+    for (const path of Object.keys(files)) {
+      const file = this.getFile(path)
+      if (!file) continue
+      const errors = FileNode.getErrors(file.node)
+      for (const err of errors) {
+        const start = file.doc.positionAt(err.range.start)
+        const end = file.doc.positionAt(err.range.end)
+        results.push({
+          path,
+          marker: {
+            severity: severityName(err.severity),
+            message: err.message,
+            startLineNumber: start.line + 1,
+            startColumn: start.character + 1,
+            endLineNumber: end.line + 1,
+            endColumn: end.character + 1,
+          },
+        })
+      }
+    }
+    return results
+  }
 }

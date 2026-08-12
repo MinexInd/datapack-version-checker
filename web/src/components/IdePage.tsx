@@ -138,6 +138,17 @@ export default function IdePage({
   const [spyglassStatus, setSpyglassStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle')
   const spyglassReady = spyglassStatus === 'ready'
 
+  // 1.6 — MC version selector state
+  const [selectedGameVersion, setSelectedGameVersion] = useState('Auto')
+  const [versionWarning, setVersionWarning] = useState<string | null>(null)
+
+  // 1.7 — Analyze-all mode: when true, the Problems panel shows whole-pack
+  // markers from analyzeAll rather than per-open-tab markers.
+  const [analyzeAllMode, setAnalyzeAllMode] = useState(false)
+
+  // 1.8 — Bump to force the init effect to re-run (reload button).
+  const [reloadKey, setReloadKey] = useState(0)
+
   // Jump target from the Problems panel: reveal a position in the editor.
   const [jump, setJump] = useState<{ path: string; lineNumber: number; column: number } | null>(null)
 
@@ -146,10 +157,8 @@ export default function IdePage({
     setLog(prev => [...prev, { time: stamp(), kind, message }].slice(-400))
   }, [])
 
-  // Spyglass service lifecycle: (re)create when a pack is loaded.
-  // The project must finish init() + ready() before any file can be
-  // opened — otherwise onDidOpen is dropped and every provider returns
-  // empty. Effects below are gated on spyglassReady for that reason.
+  // Spyglass service lifecycle: (re)create when a pack is loaded or the
+  // game version / reload key changes.
   useEffect(() => {
     if (!originalFiles) {
       serviceRef.current?.close().catch(() => {})
@@ -162,21 +171,27 @@ export default function IdePage({
     })
     serviceRef.current = service
     setSpyglassStatus('loading')
-    addLog('info', 'Spyglass initializing (vanilla data may download on first load)…')
-    service.init(originalFiles, 'Auto')
+    setVersionWarning(null)
+    addLog('info', `Spyglass initializing (MC ${selectedGameVersion}, vanilla data may download on first load)…`)
+    service.init(originalFiles, selectedGameVersion)
       .then(() => {
         setSpyglassStatus('ready')
-        addLog('success', 'Spyglass ready')
+        addLog('success', `Spyglass ready (MC ${selectedGameVersion})`)
       })
       .catch(err => {
         console.error('Spyglass init failed', err)
         setSpyglassStatus('failed')
-        addLog('error', `Spyglass init failed: ${err instanceof Error ? err.message : String(err)}`)
+        if (selectedGameVersion !== 'Auto') {
+          setVersionWarning(`Version "${selectedGameVersion}" failed — reverting to Auto`)
+          setSelectedGameVersion('Auto')
+        } else {
+          addLog('error', `Spyglass init failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
       })
     return () => {
       service.close().catch(() => {})
     }
-  }, [originalFiles, addLog])
+  }, [originalFiles, selectedGameVersion, reloadKey, addLog])
 
   // Open the active file once Spyglass is ready (and on every tab switch).
   useEffect(() => {
@@ -219,11 +234,15 @@ export default function IdePage({
   }, [spyglassReady, activePath, editedFiles, originalFiles])
 
   // Problems panel: markers for every open tab, like the VSCode Problems view.
+  // In analyzeAllMode the problems come from the whole-pack sweep instead.
   const [problems, setProblems] = useState<{ path: string; marker: IdeMarker }[]>([])
   const [problemFilter, setProblemFilter] = useState('')
   // Collapsed file headers in the grouped problems list.
   const [problemsCollapsed, setProblemsCollapsed] = useState<Set<string>>(new Set())
   useEffect(() => {
+    // In analyzeAllMode the problems are set explicitly by the Analyze
+    // button handler — don't overwrite them with per-tab markers.
+    if (analyzeAllMode) return
     if (!spyglassReady || !serviceRef.current) {
       setProblems([])
       return
@@ -244,7 +263,7 @@ export default function IdePage({
       if (!cancelled) setProblems(all)
     }, 400)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [spyglassReady, openTabs, activePath, editedFiles, originalFiles])
+  }, [spyglassReady, openTabs, activePath, editedFiles, originalFiles, analyzeAllMode])
 
   // Group problems by file, VS Code style: each file gets a collapsible
   // header (name + dir + count) with its markers indented beneath.
@@ -385,7 +404,9 @@ export default function IdePage({
   }, [])
 
   // When a Problems-panel entry is clicked, open the file and reveal the
-  // line once the editor is showing it.
+  // line once the editor is showing it. cursor is included because the
+  // Monaco onMount callback sets it — this retries the jump after a
+  // cross-file switch where the editor hasn't mounted yet on first pass.
   useEffect(() => {
     if (!jump) return
     const editor = editorRef.current
@@ -397,7 +418,7 @@ export default function IdePage({
       editor.focus()
       setJump(null)
     }
-  }, [jump, activePath])
+  }, [jump, activePath, cursor])
 
   const handleJump = useCallback((path: string, lineNumber: number, column: number) => {
     setOpenTabs(prev => (prev.includes(path) ? prev : [...prev, path]))
@@ -479,6 +500,61 @@ export default function IdePage({
     onPortTo(versionName)
   }, [addLog, onPortTo])
 
+  // --- 1.6 MC version selector -------------------------------------------
+  const sortedVersions = useMemo(() => {
+    return [...versions].sort((a, b) => b.data_version - a.data_version)
+  }, [versions])
+
+  const handleVersionChange = useCallback((newVersion: string) => {
+    if (newVersion === selectedGameVersion) return
+    setAnalyzeAllMode(false)
+    setProblems([])
+    setSelectedGameVersion(newVersion)
+  }, [selectedGameVersion])
+
+  // --- 1.7 Analyze Datapack ----------------------------------------------
+  const mergedFiles = useMemo<PackFileMap | null>(() => {
+    if (!originalFiles) return null
+    if (Object.keys(editedFiles).length === 0) return originalFiles
+    return { ...originalFiles, ...editedFiles }
+  }, [originalFiles, editedFiles])
+
+  const handleAnalyzeAll = useCallback(async () => {
+    if (!serviceRef.current || !mergedFiles) return
+    setPanel('problems')
+    setAnalyzeAllMode(true)
+    addLog('run', 'analyzing full datapack…')
+    try {
+      const results = await serviceRef.current.analyzeAll(mergedFiles)
+      setProblems(results)
+      addLog('success', `analyze complete — ${results.length} problem${results.length !== 1 ? 's' : ''}`)
+    } catch (err) {
+      addLog('error', `analyze failed: ${err instanceof Error ? err.message : String(err)}`)
+      setAnalyzeAllMode(false)
+    }
+  }, [mergedFiles, addLog])
+
+  // --- 1.8 Reset / Reload ------------------------------------------------
+  const handleReset = useCallback(() => {
+    if (!window.confirm('Discard all edits and reset to original files?')) return
+    setOpenTabs([])
+    setActivePath(null)
+    onEditedFilesChange({})
+    setAnalyzeAllMode(false)
+    setProblems([])
+    setJump(null)
+    addLog('info', 'edits discarded — reset to original files')
+  }, [addLog, onEditedFilesChange])
+
+  const handleReload = useCallback(() => {
+    setAnalyzeAllMode(false)
+    setProblems([])
+    setLog([])
+    setJump(null)
+    setReloadKey(k => k + 1)
+    addLog('info', 'reloading Spyglass…')
+  }, [addLog])
+
   function renderTree(node: TreeNode, depth: number): ReactNode {
     return node.children.map(child => {
       if (child.isDir) {
@@ -526,6 +602,54 @@ export default function IdePage({
           ‹ Desk
         </button>
         <span className="ide-crumb">Case 01 — Datapack Editor</span>
+
+        {/* 1.6 — Version selector */}
+        <label className="ide-version-label" title="Spyglass game version">
+          <span className="ide-version-text">Version</span>
+          <select
+            className="ide-version-select"
+            value={selectedGameVersion}
+            onChange={e => handleVersionChange(e.target.value)}
+          >
+            <option value="Auto">Auto</option>
+            {sortedVersions.map(v => (
+              <option key={v.id} value={v.name}>
+                {v.name}{v.type === 'snapshot' ? ' (snap)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* 1.6 — Version warning (inline, only when present) */}
+        {versionWarning && (
+          <span className="ide-version-warning" title={versionWarning}>⚠ {versionWarning}</span>
+        )}
+
+        {/* 1.7 — Analyze button */}
+        <button
+          type="button"
+          className="ide-topbar-btn"
+          onClick={handleAnalyzeAll}
+          disabled={!spyglassReady || !originalFiles}
+          title="Analyze all pack files (Ctrl+Shift+A)"
+        >Analyze</button>
+
+        {/* 1.8 — Reset + Reload */}
+        <button
+          type="button"
+          className="ide-topbar-btn"
+          onClick={handleReset}
+          disabled={!originalFiles}
+          title="Discard edits and revert to original files"
+        >Reset</button>
+        <button
+          type="button"
+          className="ide-topbar-btn"
+          onClick={handleReload}
+          disabled={!originalFiles}
+          title="Reload Spyglass from scratch"
+        >Reload</button>
+
         <span className="ide-status">
           {fileName ? `${fileName} — ${fileCount} files` : 'no pack loaded'}
           {hasUnsaved && <span className="ide-unsaved"> · unsaved edits</span>}
@@ -772,9 +896,11 @@ export default function IdePage({
                 <div className="ide-panel-scroll">
                   {problemGroups.length === 0 ? (
                     <div className="ide-output-empty">
-                      {problemFilter
-                        ? 'No problems match the filter.'
-                        : 'No problems detected in open files.'}
+                      {analyzeAllMode
+                        ? 'No problems found across the entire datapack.'
+                        : problemFilter
+                          ? 'No problems match the filter.'
+                          : 'No problems detected in open files.'}
                       {!spyglassReady && ' Spyglass is still initializing…'}
                     </div>
                   ) : (
@@ -851,6 +977,9 @@ export default function IdePage({
               <span className={`ide-statusbar-spyglass ${spyglassStatus}`}>
                 {spyglassStatus === 'ready' ? 'Spyglass ✓' : spyglassStatus === 'loading' ? 'Spyglass…' : spyglassStatus === 'failed' ? 'Spyglass ✗' : 'Spyglass'}
               </span>
+            </span>
+            <span className="ide-statusbar-item ide-statusbar-version" title="Target Minecraft version">
+              MC {selectedGameVersion === 'Auto' ? 'Auto' : selectedGameVersion}
             </span>
             <span className="ide-statusbar-item ide-statusbar-file" title={activePath ?? undefined}>
               {activePath ? activePath.split('/').pop() : 'no file open'}
