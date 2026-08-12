@@ -1849,3 +1849,11 @@
   background: var(--docket);
   border-color: var(--stamp-edge);
 }
+
+/* Draft restore + stale-result banners (Milestone 1) */
+.ide-draft-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;background:var(--warn-bg,#3a3120);border-bottom:1px solid var(--warn-border,#5b4c26);color:var(--text,#e8e8e8);font-size:13px;}
+.ide-draft-banner-text{line-height:1.4;}
+.ide-draft-banner-actions{display:flex;gap:8px;flex-shrink:0;}
+.ide-draft-banner-actions button{padding:4px 12px;border-radius:4px;border:1px solid var(--accent,#4a90d9);background:var(--accent,#4a90d9);color:#fff;cursor:pointer;font-size:13px;}
+.ide-draft-banner-actions button.secondary{background:transparent;border-color:var(--border,#3a3a3a);color:var(--text,#e8e8e8);}
+.ide-stale{padding:8px 14px;margin:8px 12px;border:1px solid var(--warn-border,#8a6d1f);border-left:3px solid var(--warn-border,#8a6d1f);border-radius:4px;background:var(--warn-bg,#2c2a1e);color:var(--warn-text,#e0c14f);font-size:13px;}

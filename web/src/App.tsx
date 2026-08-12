@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import type { PackFileMap, CheckResponse, McmetaVersion, Mode } from './api'
 import { runCheck, runFix, runFixPreview, fetchVersions } from './api'
 import type { FixPreview } from './api'
+import { buildWorkspaceFiles } from './workspace'
 import HubPage from './components/HubPage'
 import IdePage from './components/IdePage'
 
@@ -20,11 +21,33 @@ export default function App() {
   const [selectedVersions, setSelectedVersions] = useState<string[]>([])
   const [files, setFiles] = useState<PackFileMap | null>(null)
   const [editedFiles, setEditedFiles] = useState<PackFileMap>({})
-  const workspaceFiles = useMemo<PackFileMap | null>(() => {
-    if (!files) return null
-    if (Object.keys(editedFiles).length === 0) return files
-    return { ...files, ...editedFiles }
-  }, [files, editedFiles])
+  // Milestone 1: deletions now live here so the single buildWorkspaceFiles
+  // derivation below (used by check, fix, analyze and export) sees them too —
+  // previously check/fix ignored deletions while analyze/export did not.
+  const [deletedFiles, setDeletedFiles] = useState<Set<string>>(new Set())
+  // Monotonic revision stamped on every workspace mutation. Any async result
+  // (check, fix preview, analyze) is checked against it and marked stale when
+  // edits happened while the run was in flight, instead of silently overwriting.
+  const [revision, setRevision] = useState(0)
+  const revisionRef = useRef(revision)
+  useEffect(() => { revisionRef.current = revision }, [revision])
+  const [resultStale, setResultStale] = useState(false)
+  const [previewStale, setPreviewStale] = useState(false)
+
+  const workspaceFiles = useMemo<PackFileMap | null>(
+    () => buildWorkspaceFiles({ originalFiles: files, editedFiles, deletedFiles }),
+    [files, editedFiles, deletedFiles],
+  )
+
+  const handleEditedFilesChange = useCallback((next: PackFileMap) => {
+    setEditedFiles(next)
+    setRevision(r => r + 1)
+  }, [])
+  const handleDeletedFilesChange = useCallback((next: Set<string>) => {
+    setDeletedFiles(next)
+    setRevision(r => r + 1)
+  }, [])
+
   const [fileCount, setFileCount] = useState(0)
   const [fileName, setFileName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -69,6 +92,8 @@ export default function App() {
     setError('')
     setResult(null)
     setEditedFiles({})
+    setDeletedFiles(new Set())
+    setRevision(r => r + 1)
   }, [])
 
   const clearFiles = useCallback(() => {
@@ -77,6 +102,8 @@ export default function App() {
     setFileName('')
     setResult(null)
     setEditedFiles({})
+    setDeletedFiles(new Set())
+    setRevision(r => r + 1)
   }, [])
 
   useEffect(() => {
@@ -95,15 +122,18 @@ export default function App() {
 
   const handleRun = useCallback(async () => {
     if (!workspaceFiles) { setError('Select a pack first'); return }
+    const runRevision = revisionRef.current
     setLoading(true)
     setError('')
     setResult(null)
+    setResultStale(false)
     setProgress('Running compatibility check...')
     const startTime = Date.now()
     checkStartRef.current = startTime
     try {
       const versionList = all ? undefined : selectedVersions.length ? selectedVersions : undefined
       const res = await runCheck({ mode, versions: versionList, all, strict, files: workspaceFiles, onProgress: setProgress })
+      if (revisionRef.current !== runRevision) setResultStale(true)
       setCheckDuration(Date.now() - checkStartRef.current)
       setResult(res)
     } catch (err: any) {
@@ -118,12 +148,15 @@ export default function App() {
     if (!workspaceFiles) { setError('Select a pack first'); return }
     const target = targetOverride ?? fixTarget
     if (!target) { setError('Choose a target version to port to'); return }
+    const runRevision = revisionRef.current
     setLoading(true)
     setError('')
     setFixPreview(null)
+    setPreviewStale(false)
     setProgress('Generating fix preview...')
     try {
       const preview = await runFixPreview({ files: workspaceFiles, targetVersion: target, sourceVersion: fixSource || undefined })
+      if (revisionRef.current !== runRevision) setPreviewStale(true)
       setFixPreview(preview)
       setProgress('')
     } catch (err: any) {
@@ -146,10 +179,16 @@ export default function App() {
   const handleFix = useCallback(async () => {
     if (!workspaceFiles) { setError('Select a pack first'); return }
     if (!fixTarget) { setError('Choose a target version to port to'); return }
+    const runRevision = revisionRef.current
     setLoading(true)
     setError('')
     setProgress(`Downloading ported pack to ${fixTarget}...`)
     try {
+      // A port is an irreversible download, so refuse when edits landed on top
+      // of the source we started with rather than shipping a stale pack.
+      if (revisionRef.current !== runRevision) {
+        throw new Error('Workspace changed during the run — re-run to download a current port.')
+      }
       const blob = await runFix({ files: workspaceFiles, targetVersion: fixTarget, sourceVersion: fixSource || undefined })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -181,7 +220,10 @@ export default function App() {
       <IdePage
         originalFiles={files}
         editedFiles={editedFiles}
-        onEditedFilesChange={setEditedFiles}
+        onEditedFilesChange={handleEditedFilesChange}
+        deletedFiles={deletedFiles}
+        onDeletedFilesChange={handleDeletedFilesChange}
+        revision={revision}
         fileCount={fileCount}
         fileName={fileName}
         onLoad={loadFiles}
@@ -201,6 +243,7 @@ export default function App() {
         error={error}
         progress={progress}
         result={result}
+        resultStale={resultStale}
         checkDuration={checkDuration}
         onRun={handleRun}
         onPortTo={handlePortTo}
@@ -209,6 +252,7 @@ export default function App() {
         fixSource={fixSource}
         onFixSourceChange={(v) => { setFixSource(v); setFixPreview(null) }}
         fixPreview={fixPreview}
+        previewStale={previewStale}
         onPreview={handleFixPreview}
         onDownload={handleFix}
       />

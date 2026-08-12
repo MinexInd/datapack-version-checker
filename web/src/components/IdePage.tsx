@@ -11,11 +11,23 @@ import { exportZip } from '../api'
 import { SpyglassService, type IdeMarker } from '../engine/spyglass-service'
 import { registerSpyglassMonaco } from '../ide/monaco-spyglass'
 import { readDroppedFiles } from '../ide/pack-io'
+import { buildWorkspaceFiles, computeContentHash } from '../workspace'
+import {
+  createIdbDraftStore,
+  createMemoryDraftStore,
+  DRAFT_DB,
+  DRAFT_SCHEMA_VERSION,
+  type DraftSnapshot,
+  type DraftStoreLike,
+} from '../ide/idb-draft'
 
 interface Props {
   originalFiles: PackFileMap | null
   editedFiles: PackFileMap
   onEditedFilesChange: (files: PackFileMap) => void
+  deletedFiles: Set<string>
+  onDeletedFilesChange: (next: Set<string>) => void
+  revision: number
   fileCount: number
   fileName: string
   onLoad: (entries: PackFileMap, name: string) => void
@@ -35,6 +47,7 @@ interface Props {
   error: string
   progress: string
   result: CheckResponse | null
+  resultStale: boolean
   checkDuration: number
   onRun: () => void
   onPortTo: (versionName: string) => void
@@ -43,6 +56,7 @@ interface Props {
   fixSource: string
   onFixSourceChange: (v: string) => void
   fixPreview: FixPreview | null
+  previewStale: boolean
   onPreview: () => void
   onDownload: () => void
 }
@@ -109,6 +123,9 @@ export default function IdePage({
   originalFiles,
   editedFiles,
   onEditedFilesChange,
+  deletedFiles,
+  onDeletedFilesChange,
+  revision,
   fileCount,
   fileName,
   onLoad,
@@ -120,11 +137,11 @@ export default function IdePage({
   versions, versionsLoading,
   selectedVersions, onSelectedVersionsChange,
   loading, error, progress,
-  result, checkDuration,
+  result, resultStale, checkDuration,
   onRun, onPortTo,
   fixTarget, onFixTargetChange,
   fixSource, onFixSourceChange,
-  fixPreview, onPreview, onDownload,
+  fixPreview, previewStale, onPreview, onDownload,
 }: Props) {
   const [openTabs, setOpenTabs] = useState<string[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
@@ -139,7 +156,21 @@ export default function IdePage({
   const [cursor, setCursor] = useState({ lineNumber: 1, column: 1 })
 
   // 1.2 — File operations: create/rename/delete
-  const [deletedFiles, setDeletedFiles] = useState<Set<string>>(new Set())
+  // deletedFiles is now a prop owned by App so check/fix/analyze/export all
+  // share the same buildWorkspaceFiles derivation. Local refs mirror the live
+  // workspace so draft persistence and restore run against current values.
+  const originalFilesRef = useRef(originalFiles)
+  originalFilesRef.current = originalFiles
+  const editedFilesRef = useRef(editedFiles)
+  editedFilesRef.current = editedFiles
+  const deletedFilesRef = useRef(deletedFiles)
+  deletedFilesRef.current = deletedFiles
+
+  // Draft persistence (Milestone 1): a stored draft can be restored after a
+  // reload, but only after confirmation when the source pack changed shape.
+  const draftStoreRef = useRef<DraftStoreLike | null>(null)
+  const draftPromptedRef = useRef<string | null>(null)
+  const [draftRestore, setDraftRestore] = useState<DraftSnapshot | null>(null)
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [newFileTarget, setNewFileTarget] = useState<string | null>(null) // null = root; string = folder path
   const [newFileName, setNewFileName] = useState('')
@@ -531,6 +562,9 @@ export default function IdePage({
   const handleLoad = useCallback(async (entries: PackFileMap, name: string) => {
     setOpenTabs([])
     setActivePath(null)
+    setDraftRestore(null)
+    draftPromptedRef.current = null
+
     await onLoad(entries, name)
     addLog('success', `loaded ${name} (${Object.keys(entries).length} files)`)
   }, [addLog, onLoad])
@@ -539,19 +573,128 @@ export default function IdePage({
     setOpenTabs([])
     setActivePath(null)
     onEditedFilesChange({})
-    setDeletedFiles(new Set())
+    onDeletedFilesChange(new Set())
     setRenamingPath(null)
     setNewFileTarget(null)
     setNewFileName('')
     onClear()
+    draftStoreRef.current?.clear().catch(() => {})
     addLog('info', 'pack cleared')
-  }, [addLog, onClear, onEditedFilesChange])
+  }, [addLog, onClear, onEditedFilesChange, onDeletedFilesChange])
 
   const handlePortTo = useCallback((versionName: string) => {
     setPanel('fix')
     addLog('run', `port to ${versionName} requested`)
     onPortTo(versionName)
   }, [addLog, onPortTo])
+
+  // --- Milestone 1: draft persistence -------------------------------------
+
+  const buildDraft = useCallback((): DraftSnapshot | null => {
+    const originals = originalFilesRef.current
+    if (!originals) return null
+    return {
+      schemaVersion: DRAFT_SCHEMA_VERSION,
+      packName: fileName || 'pack',
+      contentHash: computeContentHash(originals),
+      editedFiles: editedFilesRef.current,
+      deletedFiles: [...deletedFilesRef.current],
+      openTabs,
+      activePath,
+      selectedVersion: selectedGameVersion,
+      sourceVersion: selectedGameVersion,
+      panel,
+      panelHeight,
+      panelCollapsed,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+  }, [openTabs, activePath, selectedGameVersion, panel, panelHeight, panelCollapsed, fileName])
+
+  // Keep a live handle to the latest buildDraft so the one-shot store-init
+  // effect can save the current workspace once IndexedDB is open, even if the
+  // user already typed before the async open resolved.
+  const buildDraftRef = useRef(buildDraft)
+  useEffect(() => { buildDraftRef.current = buildDraft })
+
+  // Debounced save so rapid typing doesn't hammer IndexedDB.
+  useEffect(() => {
+    const store = draftStoreRef.current
+    if (!originalFiles || !store) return
+    const timer = setTimeout(() => {
+      const draft = buildDraft()
+      if (draft) store.save(draft).catch(() => {})
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [originalFiles, editedFiles, deletedFiles, openTabs, activePath, selectedGameVersion, panel, panelHeight, panelCollapsed, buildDraft])
+
+  // On mount, open the store and offer the latest draft — but only when the
+  // live workspace is empty, so returning from the hub doesn't re-prompt for a
+  // draft you are already editing.
+  const maybePromptRestore = useCallback((store: DraftStoreLike) => {
+    const originals = originalFilesRef.current
+    if (!originals) return
+    // Edits already in memory: no prompt; make sure the latest work is saved.
+    if (Object.keys(editedFilesRef.current).length > 0 || deletedFilesRef.current.size > 0) {
+      const d = buildDraftRef.current()
+      if (d) store.save(d).catch(() => {})
+      return
+    }
+    const currentHash = computeContentHash(originals)
+    if (draftPromptedRef.current === currentHash) return
+    store.load().then(d => {
+      if (!d) return
+      draftPromptedRef.current = currentHash
+      setDraftRestore(d)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    createIdbDraftStore(DRAFT_DB)
+      .then(store => {
+        if (cancelled) return
+        draftStoreRef.current = store
+        maybePromptRestore(store)
+      })
+      .catch(() => {
+        if (cancelled) return
+        draftStoreRef.current = createMemoryDraftStore()
+      })
+    return () => { cancelled = true }
+  }, [maybePromptRestore])
+
+  // Re-check when a pack is loaded into an otherwise-empty workspace (fresh
+  // page load path, since the store may not have been open at mount time).
+  useEffect(() => {
+    if (!originalFiles) return
+    const store = draftStoreRef.current
+    if (!store) return
+    maybePromptRestore(store)
+  }, [originalFiles, maybePromptRestore])
+
+  const handleRestoreDraft = useCallback(() => {
+    const d = draftRestore
+    if (!d) return
+    onEditedFilesChange(d.editedFiles)
+    onDeletedFilesChange(new Set(d.deletedFiles))
+    setOpenTabs(d.openTabs)
+    setActivePath(d.activePath)
+    if (d.selectedVersion) setSelectedGameVersion(d.selectedVersion)
+    if (d.panel === 'analysis' || d.panel === 'fix' || d.panel === 'problems' || d.panel === 'output') {
+      setPanel(d.panel)
+    }
+    setPanelHeight(d.panelHeight)
+    setPanelCollapsed(d.panelCollapsed)
+    setDraftRestore(null)
+    addLog('success', `draft for "${d.packName}" restored`)
+  }, [draftRestore, onEditedFilesChange, onDeletedFilesChange, addLog])
+
+  const handleDiscardDraft = useCallback(() => {
+    setDraftRestore(null)
+    draftStoreRef.current?.clear().catch(() => {})
+    addLog('info', 'stored draft discarded')
+  }, [addLog])
 
   // --- 1.6 MC version selector -------------------------------------------
   const sortedVersions = useMemo(() => {
@@ -566,20 +709,31 @@ export default function IdePage({
   }, [selectedGameVersion])
 
   // --- 1.7 Analyze Datapack ----------------------------------------------
-  const mergedFiles = useMemo<PackFileMap | null>(() => {
-    if (!originalFiles) return null
-    const merged = { ...originalFiles, ...editedFiles }
-    for (const d of deletedFiles) delete merged[d]
-    return merged
-  }, [originalFiles, editedFiles, deletedFiles])
+  // Single derivation shared with App's check/fix; every analyze run stamps
+  // the revision it started from so a superseded or stale result is ignored.
+  const mergedFiles = useMemo<PackFileMap | null>(
+    () => buildWorkspaceFiles({ originalFiles, editedFiles, deletedFiles }),
+    [originalFiles, editedFiles, deletedFiles],
+  )
+  const analyzeGenRef = useRef(0)
+  const revisionRef = useRef(revision)
+  useEffect(() => { revisionRef.current = revision }, [revision])
 
   const handleAnalyzeAll = useCallback(async () => {
     if (!serviceRef.current || !mergedFiles) return
+    const gen = ++analyzeGenRef.current
+    const runRevision = revisionRef.current
     setPanel('problems')
     setAnalyzeAllMode(true)
     addLog('run', 'analyzing full datapack…')
     try {
       const results = await serviceRef.current.analyzeAll(mergedFiles)
+      // A newer run or a workspace edit while this was in flight means these
+      // markers no longer match the live tree — drop them, don't overwrite.
+      if (gen !== analyzeGenRef.current || revisionRef.current !== runRevision) {
+        addLog('info', 'analyze result skipped (workspace changed during run)')
+        return
+      }
       setProblems(results)
       addLog('success', `analyze complete — ${results.length} problem${results.length !== 1 ? 's' : ''}`)
     } catch (err) {
@@ -594,7 +748,8 @@ export default function IdePage({
     setOpenTabs([])
     setActivePath(null)
     onEditedFilesChange({})
-    setDeletedFiles(new Set())
+    onDeletedFilesChange(new Set())
+    draftStoreRef.current?.clear().catch(() => {})
     setAnalyzeAllMode(false)
     setProblems([])
     setJump(null)
@@ -670,17 +825,15 @@ export default function IdePage({
 
     // Dropped paths that were previously deleted come back on merge.
     const droppedKeys = new Set(Object.keys(incoming))
-    setDeletedFiles(prev => {
-      const next = new Set(prev)
-      let changed = false
-      for (const d of next) {
-        if (droppedKeys.has(d)) { next.delete(d); changed = true }
-      }
-      return changed ? next : prev
-    })
+    const restored = new Set(deletedFiles)
+    let changed = false
+    for (const d of restored) {
+      if (droppedKeys.has(d)) { restored.delete(d); changed = true }
+    }
+    if (changed) onDeletedFilesChange(restored)
 
     addLog('success', `merged ${Object.keys(incoming).length} file(s)`)
-  }, [originalFiles, editedFiles, mergedFiles, onLoad, onEditedFilesChange, addLog])
+  }, [originalFiles, editedFiles, deletedFiles, mergedFiles, onLoad, onEditedFilesChange, onDeletedFilesChange, addLog])
 
   // --- 1.12 Export pack as zip -------------------------------------------
   const handleExport = useCallback(async () => {
@@ -805,7 +958,7 @@ export default function IdePage({
     // If the file was deleted from originalFiles only, add to deletedFiles too.
     if (originalFiles?.[oldPath] !== undefined && editedFiles[oldPath] === undefined) {
       // The original content was moved — mark old as "deleted" so tree hides it
-      setDeletedFiles(prev => new Set(prev).add(oldPath))
+      onDeletedFilesChange(new Set(deletedFiles).add(oldPath))
     }
     // Update tabs
     setOpenTabs(prev => prev.map(p => p === oldPath ? newPath : p))
@@ -813,7 +966,7 @@ export default function IdePage({
       setActivePath(newPath)
     }
     addLog('info', `renamed ${oldPath} → ${newPath}`)
-  }, [originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, addLog])
+  }, [originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, onDeletedFilesChange, addLog])
 
   // --- 2b.5 File move via drag onto folder --------------------------------
   const handleDragStart = useCallback((path: string) => {
@@ -861,7 +1014,7 @@ export default function IdePage({
     onEditedFilesChange(newEdited)
     // Track deletion for originalFiles-only files
     if (originalFiles?.[oldPath] !== undefined && editedFiles[oldPath] === undefined) {
-      setDeletedFiles(prev => new Set(prev).add(oldPath))
+      onDeletedFilesChange(new Set(deletedFiles).add(oldPath))
     }
     // Update tabs
     setOpenTabs(prev => prev.map(p => p === oldPath ? newPath : p))
@@ -869,7 +1022,7 @@ export default function IdePage({
       setActivePath(newPath)
     }
     addLog('info', `moved ${oldPath} → ${newPath}`)
-  }, [dragPath, originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, addLog])
+  }, [dragPath, originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, onDeletedFilesChange, addLog])
 
   const handleDeleteFile = useCallback((path: string) => {
     if (!window.confirm(`Delete "${path.split('/').pop()}"?`)) return
@@ -879,7 +1032,7 @@ export default function IdePage({
     onEditedFilesChange(newEdited)
     // Track deletion for originalFiles-only files
     if (originalFiles?.[path] !== undefined && editedFiles[path] === undefined) {
-      setDeletedFiles(prev => new Set(prev).add(path))
+      onDeletedFilesChange(new Set(deletedFiles).add(path))
     }
     // Close tab if open
     setOpenTabs(prev => {
@@ -888,7 +1041,7 @@ export default function IdePage({
       return next
     })
     addLog('info', `deleted ${path}`)
-  }, [originalFiles, editedFiles, activePath, onEditedFilesChange, addLog])
+  }, [originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, onDeletedFilesChange, addLog])
 
   function renderTree(node: TreeNode, depth: number): ReactNode {
     return node.children.map(child => {
@@ -995,6 +1148,20 @@ export default function IdePage({
       onDragOver={handleDragOver}
       onDrop={handleMergeDrop}
     >
+      {draftRestore && (
+        <div className="ide-draft-banner" role="alert">
+          <div className="ide-draft-banner-text">
+            <strong>Restore unsaved work?</strong>{' '}
+            {draftRestore.contentHash !== computeContentHash(originalFiles ?? {})
+              ? 'The source pack changed since this draft was saved.'
+              : `A saved draft for "${draftRestore.packName}" is available.`}
+          </div>
+          <div className="ide-draft-banner-actions">
+            <button type="button" onClick={handleRestoreDraft}>Restore</button>
+            <button type="button" className="secondary" onClick={handleDiscardDraft}>Discard</button>
+          </div>
+        </div>
+      )}
       <div className="ide-topbar">
         <button type="button" className="ide-back" onClick={onBack} title="Back to the desk">
           ‹ Desk
@@ -1323,7 +1490,12 @@ export default function IdePage({
                     </div>
                   )}
                   {result && (
-                    <Results result={result.result} mode={result.mode} duration={checkDuration} onPortTo={handlePortTo} />
+                    <>
+                      {resultStale && (
+                        <div className="ide-stale">Workspace changed after this check started — results are stale. Run the check again.</div>
+                      )}
+                      <Results result={result.result} mode={result.mode} duration={checkDuration} onPortTo={handlePortTo} />
+                    </>
                   )}
                   {!result && !loading && originalFiles && (
                     <div className="ide-analysis-empty">
@@ -1356,6 +1528,9 @@ export default function IdePage({
 
               {panel === 'fix' && (
                 <div className="ide-panel-scroll">
+                  {previewStale && (
+                    <div className="ide-stale">Workspace changed after this preview — regenerate before downloading.</div>
+                  )}
                   <FixPanel
                     versions={versions}
                     fixTarget={fixTarget}
