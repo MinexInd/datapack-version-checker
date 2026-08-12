@@ -6,6 +6,7 @@ import CheckPanel from './CheckPanel'
 import FixPanel from './FixPanel'
 import Results from './Results'
 import type { PackFileMap, Mode, McmetaVersion, CheckResponse, FixPreview } from '../api'
+import { exportZip } from '../api'
 import { SpyglassService, type IdeMarker } from '../engine/spyglass-service'
 import { registerSpyglassMonaco } from '../ide/monaco-spyglass'
 
@@ -588,6 +589,40 @@ export default function IdePage({
     addLog('info', 'reloading Spyglass…')
   }, [addLog])
 
+  // --- 1.12 Export pack as zip -------------------------------------------
+  const handleExport = useCallback(async () => {
+    if (!originalFiles) return
+    const merged = { ...originalFiles, ...editedFiles }
+    for (const d of deletedFiles) delete merged[d]
+    const safeName = (fileName || 'datapack').replace(/\.zip$/i, '')
+    const filename = `${safeName}_edited.zip`
+    try {
+      const blob = await exportZip(merged)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      addLog('success', `exported ${filename}`)
+    } catch (err) {
+      addLog('error', `export failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }, [originalFiles, editedFiles, deletedFiles, fileName, addLog])
+
+  // 1.12 — Ctrl+S / Cmd+S to export the pack.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 's') return
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+      e.preventDefault()
+      handleExport()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [handleExport])
+
   // --- 1.2 File operations: create / rename / delete --------------------
 
   /** Collect all unique folder paths from the merged file set. */
@@ -849,6 +884,13 @@ export default function IdePage({
           disabled={!originalFiles}
           title="Reload Spyglass from scratch"
         >Reload</button>
+        <button
+          type="button"
+          className="ide-topbar-btn"
+          onClick={handleExport}
+          disabled={!originalFiles}
+          title="Export pack as zip (Ctrl+S)"
+        >Export</button>
 
         <span className="ide-status">
           {fileName ? `${fileName} — ${fileCount} files` : 'no pack loaded'}

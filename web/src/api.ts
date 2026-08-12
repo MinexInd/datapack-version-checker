@@ -262,3 +262,13 @@ export async function runFix(req: FixRequest): Promise<Blob> {
 
   return await zip.generateAsync({ type: 'blob' })
 }
+
+/** Zip up an arbitrary file map and return it as a download blob.
+ *  Used by the IDE "Export" button to save the current pack (1.12). */
+export async function exportZip(files: Record<string, string>): Promise<Blob> {
+  const zip = new JSZip()
+  for (const [path, content] of Object.entries(files)) {
+    zip.file(path, content)
+  }
+  return await zip.generateAsync({ type: 'blob' })
+}
