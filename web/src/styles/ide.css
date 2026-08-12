@@ -1518,3 +1518,334 @@
   color: var(--ink-faint);
   font-size: var(--t-chip);
 }
+
+/* ---------- 3.5 pack.mcmeta form ---------- */
+
+/* The form owns the editor pane the same way Monaco does: full height, its own
+   scroll, well background so it reads as one surface with the shell. */
+.mcmeta-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--well);
+}
+
+.mcmeta-form-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.mcmeta-form-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.mcmeta-form-name {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.mcmeta-badge {
+  padding: 1px 7px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--docket);
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Ghost button — matches the .btn-ghost pattern but uses IDE tokens so it
+   stays legible on the dark form surface. */
+.mcmeta-btn-ghost {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick);
+}
+
+.mcmeta-btn-ghost:hover {
+  color: var(--ink);
+  background: var(--docket);
+  border-color: var(--stamp-edge);
+}
+
+.mcmeta-form-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s4) var(--s5) var(--s6);
+}
+
+/* Each field group: label above, hairline rule below, generous spacing. */
+.mcmeta-section {
+  padding-bottom: var(--s4);
+  margin-bottom: var(--s4);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.mcmeta-section:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+.mcmeta-section-label {
+  margin-bottom: var(--s2);
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.mcmeta-row {
+  display: flex;
+  align-items: center;
+}
+
+.mcmeta-row-custom {
+  margin-top: var(--s2);
+  gap: var(--s2);
+}
+
+.mcmeta-inline-label {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-ghost);
+  user-select: none;
+}
+
+/* Selects and inputs share one control vocabulary: dark fill, hairline edge,
+   ink text, stamp focus ring. */
+.mcmeta-select,
+.mcmeta-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--docket);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  outline: none;
+  appearance: auto;
+  transition: border-color var(--dur-quick) var(--ease-quick),
+    box-shadow var(--dur-quick) var(--ease-quick);
+}
+
+.mcmeta-input {
+  font-family: var(--font-sans);
+}
+
+.mcmeta-input-custom {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  max-width: 160px;
+}
+
+.mcmeta-select:focus,
+.mcmeta-input:focus {
+  border-color: var(--stamp-edge);
+  box-shadow: 0 0 0 3px var(--stamp-wash);
+}
+
+.mcmeta-select:disabled,
+.mcmeta-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--ground-deep);
+  color: var(--ink-ghost);
+}
+
+.mcmeta-hint {
+  margin-top: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--ink-ghost);
+  letter-spacing: 0.02em;
+}
+
+/* Segmented control for the supported-formats mode. */
+.mcmeta-segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--ground-deep);
+}
+
+.mcmeta-seg {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick);
+}
+
+.mcmeta-seg:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.mcmeta-seg.active {
+  background: var(--stamp-wash);
+  color: var(--stamp);
+}
+
+.mcmeta-seg:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mcmeta-range {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.mcmeta-range .mcmeta-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mcmeta-range-sep {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-ghost);
+}
+
+/* Error banner — the only place the error severity colour appears in the form.
+   Inputs below are rendered disabled so nothing can be written until the JSON
+   is fixed in the editor. */
+.mcmeta-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3);
+  margin-bottom: var(--s4);
+  border: 1px solid var(--sev-error-edge);
+  border-radius: var(--r-sm);
+  background: var(--sev-error-wash);
+}
+
+.mcmeta-error-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-pill);
+  background: var(--sev-error);
+  color: var(--well);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.mcmeta-error-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mcmeta-error-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--sev-error);
+}
+
+.mcmeta-error-detail {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+.mcmeta-error .mcmeta-btn-ghost {
+  margin-left: 0;
+  flex-shrink: 0;
+  border-color: var(--sev-error-edge);
+  color: var(--sev-error);
+}
+
+.mcmeta-error .mcmeta-btn-ghost:hover {
+  background: var(--sev-error-wash);
+  border-color: var(--sev-error);
+}
+
+/* Thin bar shown above Monaco when the user has opted into the raw JSON view
+   for pack.mcmeta — the only way back to the form from there. */
+.ide-form-toggle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 4px var(--s4);
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ide-form-toggle-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.ide-form-toggle-btn {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-form-toggle-btn:hover {
+  color: var(--ink);
+  background: var(--docket);
+  border-color: var(--stamp-edge);
+}

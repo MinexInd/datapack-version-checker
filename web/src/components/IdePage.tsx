@@ -5,6 +5,7 @@ import PackSelector from './PackSelector'
 import CheckPanel from './CheckPanel'
 import FixPanel from './FixPanel'
 import Results from './Results'
+import McmetaEditor from './editors/McmetaEditor'
 import type { PackFileMap, Mode, McmetaVersion, CheckResponse, FixPreview } from '../api'
 import { exportZip } from '../api'
 import { SpyglassService, type IdeMarker } from '../engine/spyglass-service'
@@ -169,6 +170,11 @@ export default function IdePage({
 
   // Jump target from the Problems panel: reveal a position in the editor.
   const [jump, setJump] = useState<{ path: string; lineNumber: number; column: number } | null>(null)
+
+  // 3.5 — pack.mcmeta GUI: toggles the root pack.mcmeta between the form and
+  // the raw Monaco JSON view. Lifted here so Monaco's existing wiring (the
+  // <Editor> below) is never duplicated or remounted unexpectedly.
+  const [mcmetaView, setMcmetaView] = useState<'form' | 'json'>('form')
 
   // 2b.4 — Drag-and-drop merge state
   const [isDragging, setIsDragging] = useState(false)
@@ -473,6 +479,12 @@ export default function IdePage({
     if (editedFiles[activePath] !== undefined) return editedFiles[activePath]
     return originalFiles?.[activePath] ?? ''
   }, [activePath, editedFiles, originalFiles])
+
+  // 3.5 — Opening the root pack.mcmeta always starts in the form view; the
+  // JSON view is an explicit opt-in the user toggles into.
+  useEffect(() => {
+    if (activePath === 'pack.mcmeta') setMcmetaView('form')
+  }, [activePath])
 
   const openFile = useCallback((path: string) => {
     setOpenTabs(prev => (prev.includes(path) ? prev : [...prev, path]))
@@ -1170,35 +1182,55 @@ export default function IdePage({
           </div>
 
           <div className="ide-editor">
-            {activePath ? (
-              <Editor
-                key={`${activePath}::${spyglassReady ? 'ready' : 'init'}`}
-                path={`file:///pack/${activePath}`}
-                beforeMount={beforeMount}
-                onMount={handleMount}
-                language={langFor(activePath)}
-                value={activeContent}
-                onChange={(value) => handleEdited(activePath, value)}
-                theme="minex-dark"
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 13,
-                  tabSize: 4,
-                  insertSpaces: true,
-                  wordWrap: 'off',
-                  renderWhitespace: 'boundary',
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  padding: { top: 8, bottom: 8 },
-                  'semanticHighlighting.enabled': true,
-                }}
-              />
-            ) : (
+            {!activePath ? (
               <div className="ide-editor-empty">
                 {originalFiles
                   ? 'No file open — pick one from the explorer.'
                   : 'Load a datapack or resource pack to start editing.'}
               </div>
+            ) : activePath === 'pack.mcmeta' && mcmetaView === 'form' ? (
+              <McmetaEditor
+                content={activeContent}
+                onChange={(next) => handleEdited('pack.mcmeta', next)}
+                versions={versions}
+                mode={mode}
+                onShowJson={() => setMcmetaView('json')}
+              />
+            ) : (
+              <>
+                {activePath === 'pack.mcmeta' && mcmetaView === 'json' && (
+                  <div className="ide-form-toggle">
+                    <span className="ide-form-toggle-label">Editing raw JSON</span>
+                    <button
+                      type="button"
+                      className="ide-form-toggle-btn"
+                      onClick={() => setMcmetaView('form')}
+                    >Show Form</button>
+                  </div>
+                )}
+                <Editor
+                  key={`${activePath}::${spyglassReady ? 'ready' : 'init'}`}
+                  path={`file:///pack/${activePath}`}
+                  beforeMount={beforeMount}
+                  onMount={handleMount}
+                  language={langFor(activePath)}
+                  value={activeContent}
+                  onChange={(value) => handleEdited(activePath, value)}
+                  theme="minex-dark"
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 13,
+                    tabSize: 4,
+                    insertSpaces: true,
+                    wordWrap: 'off',
+                    renderWhitespace: 'boundary',
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    padding: { top: 8, bottom: 8 },
+                    'semanticHighlighting.enabled': true,
+                  }}
+                />
+              </>
             )}
           </div>
 

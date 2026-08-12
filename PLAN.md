@@ -109,7 +109,7 @@ User feedback (2026-08-11): "export datapack to save it, create new file, edit n
 | 3.2 | Loot table editor | Probability editor with simulation preview |
 | 3.3 | Predicate builder | Visual condition builder (checkboxes, dropdowns) |
 | 3.4 | Advancement graph | Node-based editor (nodes + edges) |
-| 3.5 | pack.mcmeta GUI | Form editor for pack format, description, version |
+| 3.5 | pack.mcmeta GUI | ~~Form editor for pack format, description, version~~ DONE |
 
 ---
 
