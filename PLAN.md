@@ -96,8 +96,8 @@ User feedback (2026-08-11): "export datapack to save it, create new file, edit n
 | 2b.1 | Create new file | New file button/tree action: pick folder, name, extension (.mcfunction/.json/.mcmeta/.nbt), optional template (empty function, basic JSON, pack.mcmeta); opens in editor immediately |
 | 2b.2 | Rename file (incl. extension) | Inline rename in tree; changes extension too (tab URI/language re-guess, Spyglass doc reload); cross-reference update (function calls in other files) flagged as optional follow-up |
 | 2b.3 | Delete file | Tree action with confirm; removes from editedFiles/workspace + Spyglass; updates analysis if run |
-| 2b.4 | Drag & drop more files | Drop additional .zip/.mcmeta files/folders onto the IDE to merge into the open pack (not replace); conflicts resolved by file-level overwrite prompt |
-| 2b.5 | Export/move pack files | Move file between folders in the tree (drag onto folder row); keep open tabs |
+| 2b.4 | Drag & drop more files | ~~Drop additional .zip/.mcmeta files/folders onto the IDE to merge into the open pack (not replace); conflicts resolved by file-level overwrite prompt~~ DONE |
+| 2b.5 | Export/move pack files | ~~Move file between folders in the tree (drag onto folder row); keep open tabs~~ DONE |
 
 ---
 

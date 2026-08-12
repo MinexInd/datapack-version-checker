@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react'
-import JSZip from 'jszip'
 import type { PackFileMap } from '../api'
+import { normalizePackFiles, readZipFile, readDirectoryEntry } from '../ide/pack-io'
 
 interface Props {
   files: PackFileMap | null
@@ -8,23 +8,6 @@ interface Props {
   fileName: string
   onLoad: (entries: PackFileMap, name: string) => void
   onClear: () => void
-}
-
-// Folder and zipped uploads usually nest every path under the chosen folder
-// name (e.g. "pack/pack.mcmeta"). The engine expects pack-relative keys, so we
-// locate pack.mcmeta and trim its parent prefix off every entry.
-function normalizePackFiles(files: PackFileMap): PackFileMap {
-  const pmKey = Object.keys(files).find(k => {
-    const seg = k.split('/')
-    return seg[seg.length - 1] === 'pack.mcmeta' && !k.includes('/data/')
-  })
-  if (!pmKey || pmKey === 'pack.mcmeta') return files
-  const root = pmKey.slice(0, pmKey.length - 'pack.mcmeta'.length)
-  const out: PackFileMap = {}
-  for (const [k, v] of Object.entries(files)) {
-    out[k.startsWith(root) ? k.slice(root.length) : k] = v
-  }
-  return out
 }
 
 export default function PackSelector({ files, fileCount, fileName, onLoad, onClear }: Props) {
@@ -45,18 +28,7 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
   }, [onLoad])
 
   const handleZip = useCallback(async (file: File) => {
-    const zip = await JSZip.loadAsync(file)
-    const entries: PackFileMap = {}
-    const promises: Promise<void>[] = []
-    zip.forEach((rel, entry) => {
-      if (entry.dir) return
-      const name = rel.replace(/\\/g, '/')
-      if (name.startsWith('.') || name.startsWith('__MACOSX')) return
-      promises.push(
-        entry.async('string').then(content => { entries[name] = content })
-      )
-    })
-    await Promise.all(promises)
+    const entries = await readZipFile(file)
     await onLoad(normalizePackFiles(entries), file.name)
   }, [onLoad])
 
@@ -144,36 +116,4 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
       <input ref={zipRef} type="file" accept=".zip" onChange={handleZipInput} style={{ display: 'none' }} />
     </div>
   )
-}
-
-async function readDirectoryEntry(entry: any): Promise<PackFileMap> {
-  const files: PackFileMap = {}
-  const reader = entry.createReader()
-
-  const readAllEntries = () => new Promise<any[]>((resolve, reject) => {
-    const all: any[] = []
-    const readBatch = () => {
-      reader.readEntries((batch: any[]) => {
-        if (batch.length === 0) resolve(all)
-        else { all.push(...batch); readBatch() }
-      }, (err: any) => reject(err))
-    }
-    readBatch()
-  })
-
-  const entries = await readAllEntries()
-  for (const e of entries) {
-    if (e.isDirectory) {
-      const sub = await readDirectoryEntry(e)
-      for (const [k, v] of Object.entries(sub)) {
-        files[e.name + '/' + k] = v as string
-      }
-    } else {
-      const file = await new Promise<File>((resolve, reject) => e.file(resolve, reject))
-      if (!file.name.startsWith('.')) {
-        files[file.name] = await file.text()
-      }
-    }
-  }
-  return files
 }

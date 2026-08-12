@@ -546,6 +546,31 @@
   color: var(--stamp);
 }
 
+/* --- 2b.5 Drag-to-move --- */
+
+.ide-file.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.ide-file:not(.dragging) {
+  cursor: grab;
+}
+
+.ide-folder.drop-target {
+  background: var(--stamp-wash);
+  outline: 1.5px dashed var(--stamp);
+  outline-offset: -1.5px;
+}
+
+.ide-folder.drop-target .ide-folder-name {
+  color: var(--stamp);
+}
+
+.ide-folder.drop-target .ide-folder-icon {
+  filter: none;
+}
+
 /* PackSelector living in a 260px column: strip the card chrome and shrink the
    dropzone so it does not push a scrollbar the moment the view opens. */
 .ide-loader {
@@ -1453,4 +1478,43 @@
     margin-inline: calc(var(--s3) * -1);
     padding-inline: var(--s3);
   }
+}
+
+/* ---------- 2b.4 Drag-and-drop merge overlay ---------- */
+
+.ide-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.ide-drop-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s6) var(--s8);
+  border: 2px dashed var(--stamp);
+  border-radius: var(--r-lg);
+  background: var(--docket);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-mono);
+  pointer-events: none;
+}
+
+.ide-drop-icon {
+  font-size: 2rem;
+  color: var(--stamp);
+  line-height: 1;
+}
+
+.ide-drop-hint {
+  color: var(--ink-faint);
+  font-size: var(--t-chip);
 }

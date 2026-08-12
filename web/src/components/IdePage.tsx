@@ -9,6 +9,7 @@ import type { PackFileMap, Mode, McmetaVersion, CheckResponse, FixPreview } from
 import { exportZip } from '../api'
 import { SpyglassService, type IdeMarker } from '../engine/spyglass-service'
 import { registerSpyglassMonaco } from '../ide/monaco-spyglass'
+import { readDroppedFiles } from '../ide/pack-io'
 
 interface Props {
   originalFiles: PackFileMap | null
@@ -144,6 +145,10 @@ export default function IdePage({
   const newFileInputRef = useRef<HTMLInputElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
 
+  // 2b.5 — Drag-to-move state
+  const [dragPath, setDragPath] = useState<string | null>(null)
+  const [dropFolderPath, setDropFolderPath] = useState<string | null>(null)
+
   const serviceRef = useRef<SpyglassService | null>(null)
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null)
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null)
@@ -164,6 +169,10 @@ export default function IdePage({
 
   // Jump target from the Problems panel: reveal a position in the editor.
   const [jump, setJump] = useState<{ path: string; lineNumber: number; column: number } | null>(null)
+
+  // 2b.4 — Drag-and-drop merge state
+  const [isDragging, setIsDragging] = useState(false)
+  const dragCounterRef = useRef(0)
 
   const stamp = () => new Date().toLocaleTimeString([], { hour12: false })
   const addLog = useCallback((kind: LogEntry['kind'], message: string) => {
@@ -589,6 +598,78 @@ export default function IdePage({
     addLog('info', 'reloading Spyglass…')
   }, [addLog])
 
+  // --- 2b.4 Drag-and-drop merge -------------------------------------------
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return
+    dragCounterRef.current++
+    if (dragCounterRef.current === 1) setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    dragCounterRef.current--
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0
+      setIsDragging(false)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+  }, [])
+
+  const handleMergeDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current = 0
+    setIsDragging(false)
+
+    // If no pack loaded, fall back to initial load
+    if (!originalFiles) {
+      const incoming = await readDroppedFiles(e.dataTransfer)
+      if (incoming) {
+        const name = Object.keys(incoming).find(k => k.endsWith('pack.mcmeta'))
+          ?.replace(/\/?pack\.mcmeta$/, '') || 'dropped-pack'
+        await onLoad(incoming, name)
+      }
+      return
+    }
+
+    const incoming = await readDroppedFiles(e.dataTransfer)
+    if (!incoming) {
+      addLog('error', 'Drop a .zip or a folder')
+      return
+    }
+
+    const current = mergedFiles ?? { ...originalFiles, ...editedFiles }
+    const conflicts = Object.keys(incoming).filter(k => k in current)
+
+    if (conflicts.length > 0) {
+      const preview = conflicts.slice(0, 6).map(p => `\u2022 ${p}`).join('\n')
+      const more = conflicts.length > 6 ? `\n\u2022 …and ${conflicts.length - 6} more` : ''
+      const ok = window.confirm(
+        `${conflicts.length} file(s) already exist:\n${preview}${more}\n\nOverwrite these files?`
+      )
+      if (!ok) {
+        addLog('info', 'merge cancelled')
+        return
+      }
+    }
+
+    onEditedFilesChange({ ...editedFiles, ...incoming })
+
+    // Dropped paths that were previously deleted come back on merge.
+    const droppedKeys = new Set(Object.keys(incoming))
+    setDeletedFiles(prev => {
+      const next = new Set(prev)
+      let changed = false
+      for (const d of next) {
+        if (droppedKeys.has(d)) { next.delete(d); changed = true }
+      }
+      return changed ? next : prev
+    })
+
+    addLog('success', `merged ${Object.keys(incoming).length} file(s)`)
+  }, [originalFiles, editedFiles, mergedFiles, onLoad, onEditedFilesChange, addLog])
+
   // --- 1.12 Export pack as zip -------------------------------------------
   const handleExport = useCallback(async () => {
     if (!originalFiles) return
@@ -722,6 +803,62 @@ export default function IdePage({
     addLog('info', `renamed ${oldPath} → ${newPath}`)
   }, [originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, addLog])
 
+  // --- 2b.5 File move via drag onto folder --------------------------------
+  const handleDragStart = useCallback((path: string) => {
+    setDragPath(path)
+  }, [])
+
+  const handleDragEnd = useCallback(() => {
+    setDragPath(null)
+    setDropFolderPath(null)
+  }, [])
+
+  const handleFolderDragOver = useCallback((e: React.DragEvent, folderPath: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropFolderPath(folderPath)
+  }, [])
+
+  const handleFolderDragLeave = useCallback((e: React.DragEvent) => {
+    e.stopPropagation()
+    setDropFolderPath(null)
+  }, [])
+
+  const handleMoveFile = useCallback((folderPath: string) => {
+    const oldPath = dragPath
+    if (!oldPath) return
+    setDragPath(null)
+    setDropFolderPath(null)
+
+    const fileName = oldPath.split('/').pop()!
+    const newPath = folderPath ? `${folderPath}/${fileName}` : fileName
+    if (newPath === oldPath) {
+      addLog('info', 'file is already in that folder')
+      return
+    }
+    const all = { ...originalFiles, ...editedFiles }
+    if (all[newPath] !== undefined || deletedFiles.has(newPath)) {
+      addLog('error', `File "${newPath}" already exists`)
+      return
+    }
+    // Move content — editedFiles takes priority (unsaved edits preserved)
+    const content = editedFiles[oldPath] ?? originalFiles?.[oldPath] ?? ''
+    const newEdited = { ...editedFiles }
+    delete newEdited[oldPath]
+    newEdited[newPath] = content
+    onEditedFilesChange(newEdited)
+    // Track deletion for originalFiles-only files
+    if (originalFiles?.[oldPath] !== undefined && editedFiles[oldPath] === undefined) {
+      setDeletedFiles(prev => new Set(prev).add(oldPath))
+    }
+    // Update tabs
+    setOpenTabs(prev => prev.map(p => p === oldPath ? newPath : p))
+    if (activePath === oldPath) {
+      setActivePath(newPath)
+    }
+    addLog('info', `moved ${oldPath} → ${newPath}`)
+  }, [dragPath, originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, addLog])
+
   const handleDeleteFile = useCallback((path: string) => {
     if (!window.confirm(`Delete "${path.split('/').pop()}"?`)) return
     // Remove from editedFiles
@@ -745,16 +882,20 @@ export default function IdePage({
     return node.children.map(child => {
       if (child.isDir) {
         const isCollapsed = collapsed.has(child.path)
+        const isDropTarget = dragPath !== null && dropFolderPath === child.path
         return (
           <div key={child.path}>
             <button
               type="button"
-              className={`ide-tree-row ide-folder${isCollapsed ? ' collapsed' : ''}`}
+              className={`ide-tree-row ide-folder${isCollapsed ? ' collapsed' : ''}${isDropTarget ? ' drop-target' : ''}`}
               style={{ paddingLeft: depth * 14 + 6 }}
               onClick={() => toggleFolder(child.path)}
+              onDragOver={e => handleFolderDragOver(e, child.path)}
+              onDragLeave={handleFolderDragLeave}
+              onDrop={() => handleMoveFile(child.path)}
             >
               <span className="ide-caret">{isCollapsed ? '▶' : '▼'}</span>
-              <span className="ide-folder-icon">📁</span>
+              <span className="ide-folder-icon">{isDropTarget ? '📂' : '📁'}</span>
               <span className="ide-folder-name">{child.name}</span>
             </button>
             {!isCollapsed && renderTree(child, depth + 1)}
@@ -764,6 +905,7 @@ export default function IdePage({
       const isActive = activePath === child.path
       const isEdited = editedFiles[child.path] !== undefined
       const isRenaming = renamingPath === child.path
+      const isBeingDragged = dragPath === child.path
       const fileName = child.name
 
       if (isRenaming) {
@@ -797,8 +939,11 @@ export default function IdePage({
         <button
           key={child.path}
           type="button"
-          className={`ide-tree-row ide-file${isActive ? ' active' : ''}`}
+          className={`ide-tree-row ide-file${isActive ? ' active' : ''}${isBeingDragged ? ' dragging' : ''}`}
           style={{ paddingLeft: depth * 14 + 24 }}
+          draggable
+          onDragStart={() => handleDragStart(child.path)}
+          onDragEnd={handleDragEnd}
           onClick={() => openFile(child.path)}
           onDoubleClick={() => setRenamingPath(child.path)}
           title={child.path}
@@ -831,7 +976,13 @@ export default function IdePage({
   const hasUnsaved = Object.keys(editedFiles).length > 0
 
   return (
-    <div className="ide">
+    <div
+      className="ide"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleMergeDrop}
+    >
       <div className="ide-topbar">
         <button type="button" className="ide-back" onClick={onBack} title="Back to the desk">
           ‹ Desk
@@ -1289,6 +1440,16 @@ export default function IdePage({
           </div>
         </div>
       </div>
+
+      {isDragging && (
+        <div className="ide-drop-overlay" role="region" aria-label="Drop files to merge">
+          <div className="ide-drop-card">
+            <span className="ide-drop-icon">+</span>
+            <span>Drop to merge into open pack</span>
+            <span className="ide-drop-hint">Conflicts will ask before overwriting</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
