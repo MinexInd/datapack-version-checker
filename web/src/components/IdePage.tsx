@@ -135,6 +135,14 @@ export default function IdePage({
   // Slim status bar: cursor position follows the editor.
   const [cursor, setCursor] = useState({ lineNumber: 1, column: 1 })
 
+  // 1.2 — File operations: create/rename/delete
+  const [deletedFiles, setDeletedFiles] = useState<Set<string>>(new Set())
+  const [renamingPath, setRenamingPath] = useState<string | null>(null)
+  const [newFileTarget, setNewFileTarget] = useState<string | null>(null) // null = root; string = folder path
+  const [newFileName, setNewFileName] = useState('')
+  const newFileInputRef = useRef<HTMLInputElement | null>(null)
+  const renameInputRef = useRef<HTMLInputElement | null>(null)
+
   const serviceRef = useRef<SpyglassService | null>(null)
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null)
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null)
@@ -438,9 +446,16 @@ export default function IdePage({
     setJump({ path, lineNumber, column })
   }, [])
 
+  // 1.2 — Build tree from merged set (original + edited) minus deleted.
+  // New files appear, renamed files move, deleted files vanish.
   const tree = useMemo(
-    () => (originalFiles ? buildTree(Object.keys(originalFiles)) : null),
-    [originalFiles],
+    () => {
+      if (!originalFiles) return null
+      const merged = { ...originalFiles, ...editedFiles }
+      for (const d of deletedFiles) delete merged[d]
+      return buildTree(Object.keys(merged))
+    },
+    [originalFiles, editedFiles, deletedFiles],
   )
 
   const activeContent = useMemo(() => {
@@ -502,6 +517,10 @@ export default function IdePage({
     setOpenTabs([])
     setActivePath(null)
     onEditedFilesChange({})
+    setDeletedFiles(new Set())
+    setRenamingPath(null)
+    setNewFileTarget(null)
+    setNewFileName('')
     onClear()
     addLog('info', 'pack cleared')
   }, [addLog, onClear, onEditedFilesChange])
@@ -527,9 +546,10 @@ export default function IdePage({
   // --- 1.7 Analyze Datapack ----------------------------------------------
   const mergedFiles = useMemo<PackFileMap | null>(() => {
     if (!originalFiles) return null
-    if (Object.keys(editedFiles).length === 0) return originalFiles
-    return { ...originalFiles, ...editedFiles }
-  }, [originalFiles, editedFiles])
+    const merged = { ...originalFiles, ...editedFiles }
+    for (const d of deletedFiles) delete merged[d]
+    return merged
+  }, [originalFiles, editedFiles, deletedFiles])
 
   const handleAnalyzeAll = useCallback(async () => {
     if (!serviceRef.current || !mergedFiles) return
@@ -552,6 +572,7 @@ export default function IdePage({
     setOpenTabs([])
     setActivePath(null)
     onEditedFilesChange({})
+    setDeletedFiles(new Set())
     setAnalyzeAllMode(false)
     setProblems([])
     setJump(null)
@@ -566,6 +587,124 @@ export default function IdePage({
     setReloadKey(k => k + 1)
     addLog('info', 'reloading Spyglass…')
   }, [addLog])
+
+  // --- 1.2 File operations: create / rename / delete --------------------
+
+  /** Collect all unique folder paths from the merged file set. */
+  const folderPaths = useMemo(() => {
+    if (!originalFiles) return []
+    const folders = new Set<string>()
+    for (const p of Object.keys({ ...originalFiles, ...editedFiles })) {
+      const parts = p.split('/')
+      let acc = ''
+      for (let i = 0; i < parts.length - 1; i++) {
+        acc = acc ? acc + '/' + parts[i] : parts[i]
+        folders.add(acc)
+      }
+    }
+    return [...folders].sort()
+  }, [originalFiles, editedFiles])
+
+  /** Open the new-file input after the DOM updates. */
+  useEffect(() => {
+    if (newFileTarget !== null) {
+      // Defer so the input is mounted
+      queueMicrotask(() => newFileInputRef.current?.focus())
+    }
+  }, [newFileTarget])
+
+  /** Focus the rename input when a file enters rename mode. */
+  useEffect(() => {
+    if (renamingPath !== null) {
+      queueMicrotask(() => renameInputRef.current?.focus())
+    }
+  }, [renamingPath])
+
+  const handleCreateFile = useCallback(() => {
+    const raw = newFileName.trim()
+    if (!raw) return
+    // Validate: no slashes, non-empty name
+    if (raw.includes('/') || raw.includes('\\')) {
+      addLog('error', 'File name must not contain path separators')
+      return
+    }
+    const folder = newFileTarget ?? ''
+    const path = folder ? `${folder}/${raw}` : raw
+    // Ensure uniqueness across merged set
+    const all = { ...originalFiles, ...editedFiles }
+    if (all[path] !== undefined || deletedFiles.has(path)) {
+      addLog('error', `File "${path}" already exists`)
+      return
+    }
+    // Determine content from extension
+    const ext = raw.split('.').pop()?.toLowerCase()
+    let content = ''
+    if (ext === 'mcmeta') {
+      content = JSON.stringify({ pack: { pack_format: 1, description: '' } }, null, 2)
+    } else if (ext === 'json') {
+      content = '{}'
+    }
+    onEditedFilesChange({ ...editedFiles, [path]: content })
+    setNewFileTarget(null)
+    setNewFileName('')
+    openFile(path)
+    addLog('success', `created ${path}`)
+  }, [newFileName, newFileTarget, originalFiles, editedFiles, deletedFiles, onEditedFilesChange, openFile, addLog])
+
+  const handleRenameCommit = useCallback((oldPath: string, newName: string) => {
+    setRenamingPath(null)
+    const raw = newName.trim()
+    if (!raw || raw === oldPath.split('/').pop()) return // no change or empty
+    if (raw.includes('/') || raw.includes('\\')) {
+      addLog('error', 'File name must not contain path separators')
+      return
+    }
+    const dir = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/')) : ''
+    const newPath = dir ? `${dir}/${raw}` : raw
+    const all = { ...originalFiles, ...editedFiles }
+    if ((all[newPath] !== undefined && newPath !== oldPath) || deletedFiles.has(newPath)) {
+      addLog('error', `File "${newPath}" already exists`)
+      return
+    }
+    // Move the editedFiles entry (or create one if the file was only in originalFiles)
+    const content = editedFiles[oldPath] ?? originalFiles?.[oldPath] ?? ''
+    const newEdited = { ...editedFiles }
+    delete newEdited[oldPath]
+    newEdited[newPath] = content
+    onEditedFilesChange(newEdited)
+    // If old file was only in originalFiles and hasn't been edited, we still
+    // need to add it to editedFiles (which the line above does with the new key).
+    // If the file was deleted from originalFiles only, add to deletedFiles too.
+    if (originalFiles?.[oldPath] !== undefined && editedFiles[oldPath] === undefined) {
+      // The original content was moved — mark old as "deleted" so tree hides it
+      setDeletedFiles(prev => new Set(prev).add(oldPath))
+    }
+    // Update tabs
+    setOpenTabs(prev => prev.map(p => p === oldPath ? newPath : p))
+    if (activePath === oldPath) {
+      setActivePath(newPath)
+    }
+    addLog('info', `renamed ${oldPath} → ${newPath}`)
+  }, [originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, addLog])
+
+  const handleDeleteFile = useCallback((path: string) => {
+    if (!window.confirm(`Delete "${path.split('/').pop()}"?`)) return
+    // Remove from editedFiles
+    const newEdited = { ...editedFiles }
+    delete newEdited[path]
+    onEditedFilesChange(newEdited)
+    // Track deletion for originalFiles-only files
+    if (originalFiles?.[path] !== undefined && editedFiles[path] === undefined) {
+      setDeletedFiles(prev => new Set(prev).add(path))
+    }
+    // Close tab if open
+    setOpenTabs(prev => {
+      const next = prev.filter(p => p !== path)
+      if (activePath === path) setActivePath(next[next.length - 1] ?? null)
+      return next
+    })
+    addLog('info', `deleted ${path}`)
+  }, [originalFiles, editedFiles, activePath, onEditedFilesChange, addLog])
 
   function renderTree(node: TreeNode, depth: number): ReactNode {
     return node.children.map(child => {
@@ -589,6 +728,36 @@ export default function IdePage({
       }
       const isActive = activePath === child.path
       const isEdited = editedFiles[child.path] !== undefined
+      const isRenaming = renamingPath === child.path
+      const fileName = child.name
+
+      if (isRenaming) {
+        return (
+          <div
+            key={child.path}
+            className="ide-tree-row ide-file renaming"
+            style={{ paddingLeft: depth * 14 + 24 }}
+          >
+            <span className="ide-file-icon">{'·'}</span>
+            <input
+              ref={renameInputRef}
+              className="ide-rename-input"
+              type="text"
+              defaultValue={fileName}
+              aria-label={`Rename ${fileName}`}
+              autoFocus
+              onClick={e => e.stopPropagation()}
+              onKeyDown={e => {
+                e.stopPropagation()
+                if (e.key === 'Enter') handleRenameCommit(child.path, e.currentTarget.value)
+                if (e.key === 'Escape') setRenamingPath(null)
+              }}
+              onBlur={e => handleRenameCommit(child.path, e.target.value)}
+            />
+          </div>
+        )
+      }
+
       return (
         <button
           key={child.path}
@@ -596,10 +765,29 @@ export default function IdePage({
           className={`ide-tree-row ide-file${isActive ? ' active' : ''}`}
           style={{ paddingLeft: depth * 14 + 24 }}
           onClick={() => openFile(child.path)}
+          onDoubleClick={() => setRenamingPath(child.path)}
           title={child.path}
         >
           <span className="ide-file-icon">{isEdited ? '●' : '·'}</span>
-          <span className="ide-file-name">{child.name}</span>
+          <span className="ide-file-name">{fileName}</span>
+          <span className="ide-file-actions">
+            <span
+              className="ide-file-action"
+              role="button"
+              tabIndex={-1}
+              title="Rename"
+              aria-label={`Rename ${fileName}`}
+              onClick={e => { e.stopPropagation(); setRenamingPath(child.path) }}
+            >✎</span>
+            <span
+              className="ide-file-action"
+              role="button"
+              tabIndex={-1}
+              title="Delete"
+              aria-label={`Delete ${fileName}`}
+              onClick={e => { e.stopPropagation(); handleDeleteFile(child.path) }}
+            >✕</span>
+          </span>
         </button>
       )
     })
@@ -702,6 +890,61 @@ export default function IdePage({
                 <div className="ide-tree">
                   {tree.children.length > 0 ? renderTree(tree, 0) : (
                     <div className="ide-tree-empty">Empty pack</div>
+                  )}
+                  {/* New file row */}
+                  {newFileTarget !== null ? (
+                    <div className="ide-tree-newfile">
+                      <span className="ide-file-icon">{'·'}</span>
+                      <select
+                        className="ide-newfile-folder"
+                        value={newFileTarget}
+                        aria-label="Target folder"
+                        onChange={e => setNewFileTarget(e.target.value)}
+                      >
+                        <option value="">Root</option>
+                        {folderPaths.map(fp => (
+                          <option key={fp} value={fp}>{fp}</option>
+                        ))}
+                      </select>
+                      <input
+                        ref={newFileInputRef}
+                        className="ide-newfile-input"
+                        type="text"
+                        placeholder="name.ext"
+                        aria-label="New file name"
+                        value={newFileName}
+                        onChange={e => setNewFileName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleCreateFile()
+                          if (e.key === 'Escape') { setNewFileTarget(null); setNewFileName('') }
+                        }}
+                      />
+                      <span className="ide-file-actions visible">
+                        <span
+                          className="ide-file-action"
+                          role="button"
+                          tabIndex={-1}
+                          title="Create"
+                          aria-label="Create file"
+                          onClick={handleCreateFile}
+                        >✓</span>
+                        <span
+                          className="ide-file-action"
+                          role="button"
+                          tabIndex={-1}
+                          title="Cancel"
+                          aria-label="Cancel"
+                          onClick={() => { setNewFileTarget(null); setNewFileName('') }}
+                        >✕</span>
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ide-tree-newfile-btn"
+                      onClick={() => { setNewFileTarget(''); setNewFileName('') }}
+                      title="Create a new file"
+                    >+ New file</button>
                   )}
                 </div>
               )}

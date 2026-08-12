@@ -398,6 +398,136 @@
   color: var(--ink-ghost);
 }
 
+/* --- File action buttons (rename / delete) — visible on hover --- */
+
+.ide-file-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-quick);
+}
+
+.ide-file-actions.visible {
+  opacity: 1;
+}
+
+.ide-file:hover > .ide-file-actions,
+.ide-file:focus-within > .ide-file-actions,
+.ide-tree-row:hover > .ide-file-actions {
+  opacity: 1;
+}
+
+.ide-file-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  color: var(--ink-ghost);
+  font-size: 0.68rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick);
+}
+
+.ide-file-action:hover {
+  color: var(--ink);
+  background: var(--docket-raised, var(--docket));
+}
+
+/* --- Inline rename input --- */
+
+.ide-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--stamp-edge);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.735rem;
+  line-height: 1;
+  outline: none;
+}
+
+.ide-file.renaming {
+  cursor: default;
+  background: var(--docket);
+}
+
+/* --- New file button and creation row --- */
+
+.ide-tree-newfile-btn {
+  display: block;
+  width: 100%;
+  padding: 3px var(--s3);
+  border: 0;
+  background: transparent;
+  color: var(--ink-ghost);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick);
+}
+
+.ide-tree-newfile-btn:hover {
+  color: var(--ink-dim);
+  background: var(--docket);
+}
+
+.ide-tree-newfile {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px var(--s3);
+  background: var(--docket);
+}
+
+.ide-newfile-folder {
+  height: 20px;
+  padding: 0 14px 0 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  outline: none;
+  appearance: auto;
+  cursor: pointer;
+  max-width: 100px;
+  min-width: 50px;
+}
+
+.ide-newfile-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1;
+  outline: none;
+  transition: border-color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-newfile-input:focus {
+  border-color: var(--stamp-edge);
+}
+
 .ide-file-name {
   min-width: 0;
   overflow: hidden;
