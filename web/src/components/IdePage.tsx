@@ -6,7 +6,10 @@ import CheckPanel from './CheckPanel'
 import FixPanel from './FixPanel'
 import Results from './Results'
 import McmetaEditor from './editors/McmetaEditor'
+import McdocEditor from './editors/McdocEditor'
 import type { PackFileMap, Mode, McmetaVersion, CheckResponse, FixPreview } from '../api'
+import { fetchRecipeIds, fetchRecipePreset } from '../ide/presets'
+import type { JsonValue, SimplifiedMcdocType } from '../ide/mcdoc-edit'
 import { exportZip } from '../api'
 import { SpyglassService, type IdeMarker } from '../engine/spyglass-service'
 import { registerSpyglassMonaco } from '../ide/monaco-spyglass'
@@ -115,6 +118,14 @@ function pathFromUri(uri: { path: string }): string {
   return raw.startsWith('/pack/') ? raw.slice('/pack/'.length) : raw
 }
 
+// Recipe files live at data/<namespace>/recipe/<name>.json. Real packs nest
+// arbitrarily deep under the category (data/x/recipe/blocks/bulk/...), and the
+// engine's fileKindFromPath only recognizes the `minecraft` namespace, so we
+// use a broader gate here: any namespace, any depth under recipe/.
+function isRecipePath(path: string): boolean {
+  return /^data\/[^/]+\/recipe\/.+\.json$/.test(path)
+}
+
 // Monaco 0.56 dropped editor.getTheme() from the standalone API, so the
 // readonly flag below replaces that guard (defineTheme itself is idempotent).
 let minexDarkDefined = false
@@ -206,6 +217,22 @@ export default function IdePage({
   // the raw Monaco JSON view. Lifted here so Monaco's existing wiring (the
   // <Editor> below) is never duplicated or remounted unexpectedly.
   const [mcmetaView, setMcmetaView] = useState<'form' | 'json'>('form')
+
+  // 3.1 — Recipe GUI: same form/json toggle pattern as pack.mcmeta, but for
+  // data/<ns>/recipe/*.json. The resolved mcdoc type is async (Spyglass needs
+  // to settle), so we track it plus a resolving/ready flag. While resolving we
+  // pass null to McdocEditor, which shows its own "Resolving type…" state; if
+  // the type comes back null we fall back to Monaco instead of the form.
+  const [recipeView, setRecipeView] = useState<'form' | 'json'>('form')
+  const [recipeType, setRecipeType] = useState<SimplifiedMcdocType | null>(null)
+  const [recipeTypeState, setRecipeTypeState] = useState<'idle' | 'resolving' | 'ready'>('idle')
+
+  // 3.1 — Vanilla recipe preset picker: the ID list for the current version is
+  // fetched lazily when a recipe file is open. presetSelected is the dropdown's
+  // current value (reset on file switch so it never echoes a stale choice).
+  const [presetIds, setPresetIds] = useState<string[]>([])
+  const [presetLoading, setPresetLoading] = useState(false)
+  const [presetSelected, setPresetSelected] = useState('')
 
   // 2b.4 — Drag-and-drop merge state
   const [isDragging, setIsDragging] = useState(false)
@@ -511,11 +538,81 @@ export default function IdePage({
     return originalFiles?.[activePath] ?? ''
   }, [activePath, editedFiles, originalFiles])
 
+  // Dispatch flags for the recipe visual editor. recipeFormActive is true while
+  // the type is still resolving (McdocEditor shows its own spinner via type=null)
+  // and once a real type has resolved; it goes false only when the type resolved
+  // to null (fall back to Monaco) or the user toggled to the raw JSON view.
+  const isRecipe = !!activePath && isRecipePath(activePath)
+  const recipeFormActive =
+    isRecipe && recipeView === 'form' &&
+    (recipeTypeState === 'resolving' || recipeType !== null)
+
   // 3.5 — Opening the root pack.mcmeta always starts in the form view; the
   // JSON view is an explicit opt-in the user toggles into.
   useEffect(() => {
     if (activePath === 'pack.mcmeta') setMcmetaView('form')
   }, [activePath])
+
+  // 3.1 — Opening a recipe file always starts in the form view, and any
+  // lingering preset selection is cleared so the dropdown reflects "no choice".
+  useEffect(() => {
+    if (activePath && isRecipePath(activePath)) {
+      setRecipeView('form')
+      setPresetSelected('')
+    }
+  }, [activePath])
+
+  // The checker attaches a per-recipe-type struct (shaped carries pattern+key,
+  // shapeless carries ingredients) chosen from the "type" value at parse time.
+  // The schema must therefore re-resolve when that discriminator changes —
+  // e.g. a preset load switches shaped -> shapeless and the old struct would
+  // otherwise keep rendering pattern/key against the new content.
+  const recipeDiscriminator = useMemo(() => {
+    if (!activePath || !isRecipePath(activePath)) return null
+    try {
+      const v = JSON.parse(activeContent) as { type?: unknown }
+      return typeof v?.type === 'string' ? v.type : null
+    } catch {
+      return null
+    }
+  }, [activePath, activeContent])
+
+  // 3.1 — Resolve the mcdoc root type for the open recipe file. Re-runs when
+  // the file, the view, Spyglass readiness, or the recipe type discriminator
+  // changes. A cancelled flag drops stale resolves when the user flips away
+  // mid-flight.
+  useEffect(() => {
+    if (!activePath || !isRecipePath(activePath) || recipeView !== 'form' || !spyglassReady) {
+      setRecipeTypeState('idle')
+      setRecipeType(null)
+      return
+    }
+    let cancelled = false
+    setRecipeTypeState('resolving')
+    setRecipeType(null)
+    const svc = serviceRef.current
+    if (!svc) return
+    ;(async () => {
+      // The service's own content sync is debounced 100ms, so push the current
+      // text first. The mcdoc schema also loads lazily on the first bind — a
+      // parse that lands mid-load yields a typeDef-less node, so re-parse
+      // until the checker attaches one.
+      for (let attempt = 0; attempt < 6 && !cancelled; attempt++) {
+        await svc.updateFile(activePath, activeContent)
+        const t = await svc.getSimplifiedRootType(activePath)
+        if (cancelled) return
+        if (t !== null) {
+          setRecipeType(t)
+          setRecipeTypeState('ready')
+          return
+        }
+        await new Promise(r => setTimeout(r, 400))
+      }
+      setRecipeType(null)
+      setRecipeTypeState('ready')
+    })()
+    return () => { cancelled = true }
+  }, [activePath, recipeView, spyglassReady, recipeDiscriminator])
 
   const openFile = useCallback((path: string) => {
     setOpenTabs(prev => (prev.includes(path) ? prev : [...prev, path]))
@@ -707,6 +804,50 @@ export default function IdePage({
     setProblems([])
     setSelectedGameVersion(newVersion)
   }, [selectedGameVersion])
+
+  // The preset CDN tags its summary branches with the version ID (e.g.
+  // "26.3-snapshot-7-summary"), not the display name ("26.3 Snapshot 7").
+  // 'Auto' maps to the latest known version from the selector list.
+  const recipePresetVersion = useMemo(() => {
+    if (selectedGameVersion === 'Auto') return sortedVersions[0]?.id ?? ''
+    return sortedVersions.find(v => v.name === selectedGameVersion)?.id ?? selectedGameVersion
+  }, [selectedGameVersion, sortedVersions])
+
+  // 3.1 — Lazily fetch the vanilla recipe ID list for the current version
+  // whenever a recipe file is opened or the version changes. Failures surface
+  // as an empty list (the dropdown shows "No presets available"), never an
+  // error wall.
+  useEffect(() => {
+    if (!activePath || !isRecipePath(activePath) || !recipePresetVersion) {
+      setPresetIds([])
+      setPresetLoading(false)
+      return
+    }
+    let cancelled = false
+    setPresetLoading(true)
+    fetchRecipeIds(recipePresetVersion).then(ids => {
+      if (cancelled) return
+      setPresetIds(ids)
+      setPresetLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [activePath, recipePresetVersion])
+
+  // 3.1 — Load a vanilla preset: replace the file content with the preset's
+  // pretty-printed JSON through the same path as any other edit, then snap back
+  // to the form view so the new structure is visible immediately.
+  const handleLoadRecipePreset = useCallback(async (id: string) => {
+    if (!id || !activePath) return
+    setPresetSelected(id)
+    const preset = await fetchRecipePreset(recipePresetVersion, id)
+    if (!preset) {
+      // Fetch failed — don't leave the dropdown claiming a loaded preset.
+      setPresetSelected('')
+      return
+    }
+    handleEdited(activePath, JSON.stringify(preset as JsonValue, null, 2))
+    setRecipeView('form')
+  }, [activePath, recipePresetVersion, handleEdited])
 
   // --- 1.7 Analyze Datapack ----------------------------------------------
   // Single derivation shared with App's check/fix; every analyze run stamps
@@ -1355,6 +1496,74 @@ export default function IdePage({
                   ? 'No file open — pick one from the explorer.'
                   : 'Load a datapack or resource pack to start editing.'}
               </div>
+            ) : isRecipe ? (
+              <>
+                <div className="ide-recipe-bar">
+                  <span className="ide-recipe-bar-label">Load preset</span>
+                  <select
+                    className="ide-recipe-select"
+                    value={presetSelected}
+                    disabled={presetLoading || presetIds.length === 0}
+                    onChange={e => handleLoadRecipePreset(e.target.value)}
+                    aria-label="Load a vanilla recipe preset"
+                  >
+                    <option value="">
+                      {presetLoading
+                        ? 'Loading presets…'
+                        : presetIds.length === 0
+                          ? 'No presets available'
+                          : 'Choose a vanilla recipe…'}
+                    </option>
+                    {presetIds.map(id => (
+                      <option key={id} value={id}>{id}</option>
+                    ))}
+                  </select>
+                </div>
+                {recipeFormActive ? (
+                  <McdocEditor
+                    content={activeContent}
+                    type={recipeType}
+                    version={recipePresetVersion}
+                    onChange={(next) => handleEdited(activePath, next)}
+                    onShowJson={() => setRecipeView('json')}
+                  />
+                ) : (
+                  <>
+                    {recipeView === 'json' && (
+                      <div className="ide-form-toggle">
+                        <span className="ide-form-toggle-label">Editing raw JSON</span>
+                        <button
+                          type="button"
+                          className="ide-form-toggle-btn"
+                          onClick={() => setRecipeView('form')}
+                        >Show Form</button>
+                      </div>
+                    )}
+                    <Editor
+                      key={`${activePath}::${spyglassReady ? 'ready' : 'init'}`}
+                      path={`file:///pack/${activePath}`}
+                      beforeMount={beforeMount}
+                      onMount={handleMount}
+                      language={langFor(activePath)}
+                      value={activeContent}
+                      onChange={(value) => handleEdited(activePath, value)}
+                      theme="minex-dark"
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        tabSize: 4,
+                        insertSpaces: true,
+                        wordWrap: 'off',
+                        renderWhitespace: 'boundary',
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        padding: { top: 8, bottom: 8 },
+                        'semanticHighlighting.enabled': true,
+                      }}
+                    />
+                  </>
+                )}
+              </>
             ) : activePath === 'pack.mcmeta' && mcmetaView === 'form' ? (
               <McmetaEditor
                 content={activeContent}

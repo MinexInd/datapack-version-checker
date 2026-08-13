@@ -1850,6 +1850,51 @@
   border-color: var(--stamp-edge);
 }
 
+/* 3.1 — Recipe preset bar: a slim toolbar above the recipe editor (form or raw
+   JSON) holding the vanilla preset picker. Mirrors .ide-form-toggle for
+   placement and the .ide-version-select treatment for the dropdown. */
+.ide-recipe-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 4px var(--s4);
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ide-recipe-bar-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.ide-recipe-select {
+  height: 22px;
+  padding: 0 18px 0 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  outline: none;
+  cursor: pointer;
+  appearance: auto;
+  transition: border-color var(--dur-quick) var(--ease-quick);
+}
+
+.ide-recipe-select:focus {
+  border-color: var(--stamp-edge);
+}
+
+.ide-recipe-select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Draft restore + stale-result banners (Milestone 1) */
 .ide-draft-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;background:var(--warn-bg,#3a3120);border-bottom:1px solid var(--warn-border,#5b4c26);color:var(--text,#e8e8e8);font-size:13px;}
 .ide-draft-banner-text{line-height:1.4;}
@@ -1857,3 +1902,431 @@
 .ide-draft-banner-actions button{padding:4px 12px;border-radius:4px;border:1px solid var(--accent,#4a90d9);background:var(--accent,#4a90d9);color:#fff;cursor:pointer;font-size:13px;}
 .ide-draft-banner-actions button.secondary{background:transparent;border-color:var(--border,#3a3a3a);color:var(--text,#e8e8e8);}
 .ide-stale{padding:8px 14px;margin:8px 12px;border:1px solid var(--warn-border,#8a6d1f);border-left:3px solid var(--warn-border,#8a6d1f);border-radius:4px;background:var(--warn-bg,#2c2a1e);color:var(--warn-text,#e0c14f);font-size:13px;}
+
+/* ---------- 3.1 Generic mcdoc form ---------- */
+
+/* Same full-height, own-scroll, well-surface ownership as the pack.mcmeta
+   form — both are drop-in replacements for Monaco in the editor pane. */
+.mcdoc-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--well);
+}
+
+.mcdoc-form-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.mcdoc-form-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.mcdoc-form-name {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+/* Ghost button reuses the mcmeta ghost vocabulary so the two forms read as one
+   family. */
+.mcdoc-btn-ghost {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick);
+}
+
+.mcdoc-btn-ghost:hover {
+  color: var(--ink);
+  background: var(--docket);
+  border-color: var(--stamp-edge);
+}
+
+.mcdoc-form-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s4) var(--s5) var(--s6);
+}
+
+/* Subtle "still working" state when the bridge hasn't resolved a type yet. */
+.mcdoc-resolving {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s5) 0;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--ink-ghost);
+}
+
+.mcdoc-resolving-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--ink-ghost);
+  animation: mcdoc-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mcdoc-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+/* Error banner — mirrors the mcmeta error banner. */
+.mcdoc-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3);
+  margin-bottom: var(--s4);
+  border: 1px solid var(--sev-error-edge);
+  border-radius: var(--r-sm);
+  background: var(--sev-error-wash);
+}
+
+.mcdoc-error-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-pill);
+  background: var(--sev-error);
+  color: var(--well);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.mcdoc-error-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mcdoc-error-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--sev-error);
+}
+
+.mcdoc-error-detail {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+.mcdoc-error .mcdoc-btn-ghost {
+  margin-left: 0;
+  flex-shrink: 0;
+  border-color: var(--sev-error-edge);
+  color: var(--sev-error);
+}
+
+.mcdoc-error .mcdoc-btn-ghost:hover {
+  background: var(--sev-error-wash);
+  border-color: var(--sev-error);
+}
+
+/* Struct: required group, then optional group, each a hairline section. */
+.mcdoc-struct {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.mcdoc-group {
+  padding-bottom: var(--s4);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.mcdoc-group:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.mcdoc-group-label {
+  margin-bottom: var(--s3);
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.mcdoc-field {
+  margin-bottom: var(--s3);
+}
+
+.mcdoc-field:last-child {
+  margin-bottom: 0;
+}
+
+.mcdoc-field-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s1);
+}
+
+.mcdoc-field-label {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+
+.mcdoc-field-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* Small square icon buttons for add/remove/move. */
+.mcdoc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--docket);
+  color: var(--ink-dim);
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick);
+}
+
+.mcdoc-icon-btn:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--docket-raised, var(--docket));
+  border-color: var(--stamp-edge);
+}
+
+.mcdoc-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* since/until version badges. */
+.mcdoc-badges {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.mcdoc-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--docket);
+  color: var(--ink-ghost);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mcdoc-badge-since {
+  color: var(--sev-ok, #3fb950);
+  border-color: var(--sev-ok-edge, rgba(63, 185, 80, 0.4));
+}
+
+.mcdoc-badge-until {
+  color: var(--sev-warn, #dbba38);
+  border-color: var(--sev-warn-edge, rgba(219, 186, 56, 0.4));
+}
+
+.mcdoc-badge-schema {
+  color: var(--ink-faint);
+}
+
+.mcdoc-muted {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-ghost);
+  font-style: italic;
+}
+
+/* Controls share the mcmeta control vocabulary: dark fill, hairline edge,
+   ink text, stamp focus ring. */
+.mcdoc-select,
+.mcdoc-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--docket);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  outline: none;
+  appearance: auto;
+  transition: border-color var(--dur-quick) var(--ease-quick),
+    box-shadow var(--dur-quick) var(--ease-quick);
+}
+
+.mcdoc-input {
+  font-family: var(--font-sans);
+}
+
+.mcdoc-input:focus,
+.mcdoc-select:focus {
+  border-color: var(--stamp-edge);
+  box-shadow: 0 0 0 3px var(--stamp-wash);
+}
+
+.mcdoc-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--stamp, #4a90d9);
+  cursor: pointer;
+}
+
+/* Literal values are read-only chips. */
+.mcdoc-literal-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--ground-deep);
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+/* Union: dropdown above the selected member's fields. */
+.mcdoc-union {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.mcdoc-union .mcdoc-select {
+  max-width: 320px;
+}
+
+/* List rows: controls on the left, the item's fields to the right. */
+.mcdoc-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.mcdoc-list-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s2);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-sm);
+  background: var(--ground-deep);
+}
+
+.mcdoc-list-controls {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.mcdoc-list-row > :last-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mcdoc-add {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border: 1px dashed var(--hairline);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick);
+}
+
+.mcdoc-add:hover {
+  color: var(--ink);
+  border-color: var(--stamp-edge);
+  background: var(--docket);
+}
+
+/* Tuple: fixed rows indexed by position. */
+.mcdoc-tuple {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.mcdoc-tuple-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.mcdoc-tuple-idx {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-ghost);
+}
+
+/* Map: editable key + remove + value. */
+.mcdoc-map {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.mcdoc-map-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.mcdoc-map-key {
+  flex: 0 0 160px;
+  max-width: 160px;
+  font-family: var(--font-mono);
+}
+
+.mcdoc-map-row > :last-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}

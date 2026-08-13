@@ -1,228 +1,242 @@
-# MinexStudio IDE — Implementation Plan
+# MinexStudio — Product and Engineering Roadmap
 
-**Generated:** 2026-08-10  
-**Status:** Phase 0 ✓, Phase 1.1 ✓, 1.9-1.11 + 1.6-1.8 queued — next: 1.2 file ops, then Spyglass version/analyze, then UI redesign  
-**Branch:** `master` (D:\dataapck version solution\datapack-version-checker)
+**Last reviewed:** 2026-08-12  
+**Product:** MinexStudio, a browser-first IDE for Minecraft datapacks and resource packs  
+**Repository:** `datapack-version-checker`  
+**Delivery model:** vertical milestones; each milestone ends with a usable, tested release
 
----
+## 1. Product direction
 
-## Executive Summary
+MinexStudio combines the existing compatibility checker with a VS Code-like browser IDE. A creator should be able to load a pack, understand its real compatibility, edit files with Minecraft-aware tooling, apply safe porting fixes, and export a playable pack without a backend or account.
 
-Build a browser-based IDE for Minecraft datapacks — "VS Code for Datapacks" — that runs entirely in the browser with zero backend. The IDE integrates the existing checker engine (`checkCompatibilityContentBased`) as an Analysis panel, adds a Monaco-based code editor with file explorer, and progressively adds SpyglassMC LSP, visual editors, Git, and extensions.
+### Primary user journey
 
-**Vision:** A creator opens MinexStudio, sees a Diagnostics Desk, opens the Datapack Editor case, loads a pack, edits files with full IDE support, runs version checks, reads findings as triaged issue cards, auto-fixes, and re-runs — all in the browser.
+1. Open a `.zip` or folder and identify the pack type and metadata.
+2. Browse the normalized pack tree and open a file in the editor.
+3. Edit with Monaco, Spyglass completions, hover, semantic colors, and diagnostics.
+4. Run a compatibility check or whole-pack analysis and jump from a problem to its source.
+5. Preview conservative fixes, apply or reject them, and re-run analysis.
+6. Export the merged original-plus-edits as a new zip.
 
----
+### Product principles
 
-## Current Checkpoint (2026-08-10)
+- **Browser-first:** no required server, login, or upload of pack contents.
+- **Safe editing:** preserve user text where possible; never silently discard files or commands.
+- **Evidence over guesses:** diagnostics come from real command trees, registries, mcdoc schemas, and explicit source/version labels.
+- **Progressive disclosure:** Monaco remains the fallback for every file; visual forms are additive.
+- **Offline-tolerant:** cached vanilla data and drafts should make repeat work resilient to transient network failure.
+- **Observable actions:** long-running work reports progress, timing, errors, and cache state in Output.
 
-### Completed
-- DESIGN.md / PRODUCT.md recovered from git history (local only, in `.gitignore`)
-- Global AGENTS.md: GitNexus mandatory, AI file rules, todo discipline
-- GitNexus indexed at `D:\dataapck version solution\datapack-version-checker`
-- CSS token bug fixed (33 missing tokens defined in `tokens.css`)
-- Architecture mapped via GitNexus:
-  - `App.tsx` — view router (`hub` | `checker`), all state lives here
-  - `HubPage` — tool cases, `onOpenDatapackEditor` → `setView('checker')`
-  - `PackSelector` — file upload (zip/folder), dropzone
-  - `CheckPanel` — mode, versions, checkboxes, run button
-  - `FixPanel` — target/source, preview/download
-  - `Results` — issue display
-  - `web/src/engine/engine.ts` — `checkCompatibilityContentBased` (main orchestrator)
-  - `web/src/api.ts` — `runCheck`, `runFix`, `runFixPreview`, `fetchVersions`
-- Monaco Editor installed: `@monaco-editor/react@4.7.0`, `monaco-editor@0.56.0`
+## 2. Current baseline (verified 2026-08-12)
 
-### Missing
-- IDE shell (`IdePage.tsx`)
-- Monaco integration (editor, tabs, syntax highlighting)
-- File explorer reusing `PackSelector`
-- Analysis panel (reuse `CheckPanel` + `Results`)
-- Fix panel (reuse `FixPanel`)
-- IDE view routing in `App.tsx`
+### Implemented
 
----
+- React/Vite web app with Hub and IDE routing (`App.tsx`, `HubPage`, `IdePage`).
+- Zip/folder loading, normalized paths, merged edited workspace, drop-to-merge, and drag-to-move.
+- Nested file explorer with create, rename, delete, tabs, Monaco editing, language detection, and dark theme.
+- Spyglass integration for parsing, semantic highlighting, markers, completions, hover, and definitions.
+- Analysis, Problems, Fix, and Output panels; resizable/collapsible VS Code-style bottom panel.
+- Auto/manual Minecraft version selection, reset/reload, whole-pack analyze, and problem navigation.
+- `pack.mcmeta` form editor with JSON toggle and debounced write-back.
+- Export of the current merged workspace to zip and Ctrl+S shortcut.
+- Checker engine for commands, registries, mcdoc structure, technical changes, dependency analysis, and conservative fixes.
+- Vitest coverage for engine lanes, parser mapping, Spyglass service, cache fallbacks, tar, diff, and pack I/O helpers.
 
-## Phase 0 — Foundation (MVP) — Target: This Week
+### Known gaps
 
-| ID | Task | Description | Acceptance Criteria |
-|----|------|-------------|---------------------|
-| 0.1 | Create `IdePage.tsx` | Three-pane layout: explorer (left) / editor + tabs (center) / bottom panels (Analysis/Fix/Output) | Layout renders without errors |
-| 0.2 | Monaco integration | Install `@monaco-editor/react`, render editor with `.mcfunction`/`.json` syntax highlighting, tabs, dark theme | File opens → Monaco shows syntax-highlighted content |
-| 0.3 | File explorer | Reuse `PackSelector` logic → render loaded pack as nested tree; click → opens in editor | Click file in tree → opens in Monaco |
-| 0.4 | Analysis panel | Embed `CheckPanel` + `Results` as "Analysis" bottom tab | Run check → see results in bottom panel |
-| 0.5 | Fix panel | Embed `FixPanel` as "Fix" bottom tab | Preview fix → download zip |
-| 0.6 | Output panel | Timestamped log (run/fix errors/downloads) | Log shows timestamped events |
-| 0.7 | IDE routing | Add `view === 'ide'` to `App.tsx`; `HubPage` `onOpenDatapackEditor` → `setView('ide')` | Hub → Datapack Editor opens IDE |
+- Draft persistence and restore are not yet a complete workspace contract.
+- Analysis/fix APIs need a single explicit workspace snapshot and cancellation/progress policy.
+- Visual mcdoc editing is designed but not implemented beyond `pack.mcmeta`.
+- Create/rename/delete need stronger reference-awareness, undo/recovery, and unsaved-change UX.
+- Browser production behavior for CORS/COEP, cache eviction, and large packs needs validation.
+- There is no stable end-to-end browser test suite or performance budget enforcement.
 
-**Definition of Done:** Open a pack → see files in explorer → click → edit in Monaco → run check → see results → preview
+## 3. Architecture and contracts
 
----
+### Runtime layers
 
-## Phase 1 — Core Editing (Week 2)
+```text
+React shell (App/Hub/IdePage)
+  ├─ Workspace state: originalFiles, editedFiles, deletedFiles, metadata, draft status
+  ├─ IDE adapters: pack I/O, Monaco, SpyglassService, visual editors
+  └─ checker adapters: runCheck, analyze-all, fix preview/apply, exportZip
+Engine (pure TypeScript)
+  ├─ parser/tokenizer/walker
+  ├─ command + registry + mcdoc validation
+  ├─ dependency/metrics analysis
+  └─ conservative fix planning and rewrites
+Data/cache layer
+  ├─ Spyglass/mcmeta/registry fetchers
+  ├─ IndexedDB cache and draft storage
+  └─ browser fallbacks and telemetry-free diagnostics
+```
 
-| ID | Task | Description |
-|----|------|-------------|
-| 1.1 | Sync edited content | Merge editedFiles + files when calling runCheck/runFix |
-| 1.2 | File tree with folders | Nest paths by /; show folder hierarchy; create/rename/delete |
-| 1.3 | pack.mcmeta validation | Warn if missing pack_format; auto-set version on create |
-| 1.4 | Auto-save to IndexedDB | Persist draft edits per pack; restore on reload |
-| 1.5 | Keyboard shortcuts | Ctrl+S save, Ctrl+Enter run, Escape close tab |
-| 1.6 | MC version selector for Spyglass | Dropdown in the explorer header: **Auto** (detect from pack.mcmeta, current behavior) or a manual pick from the loaded `versions` list. Selecting a version re-inits Spyglass with that `gameVersion`, so lint/completions/diagnostics target e.g. 1.21.5 even when the pack declares an older format |
-| 1.7 | Analyze Datapack button | Button next to the Spyglass badge, mirroring the VSCode extension's analyze command (Ctrl+Shift+P "Spyglass: analyze"). Parses **all** pack files in one pass and fills the Problems panel with every error/fatal across the whole datapack (not just the open file's markers) |
-| 1.8 | Reset version + reload Spyglass | Companion to 1.6: a reset icon that reverts Spyglass to Auto and re-inits from scratch (fresh tarball/cache read). Together 1.6+1.8 let a user re-load the same pack against a different MC version — the porting workflow: load pack → check errors on old version → reset/switch version → see what breaks on the new one |
-| 1.9 | VS Code-style layout | User feedback (2026-08-11): the Analysis/Fix/Problems/Output panel is static and covers ~45% of the screen, cramping the editor to 3 visible lines. Redesign like VS Code: compact bottom panel (~20% height) with drag-resize divider + collapse toggle; editor stays ~75% of viewport; add a slim bottom status bar (line/col, language, Spyglass status) |
-| 1.10 | Rich syntax highlighting | User feedback: current highlighting is near-monochrome (cyan commands, everything else white). Implement Spyglass semantic-token colors (spyglass-ide already produces tokens): commands purple, subcommands/keywords orange, objectives light blue, selectors green, numbers green, strings/JSON keys distinct — VS Code style |
-| 1.11 | Problems panel redesign | User feedback: current flat list has a heavy orange bar, all-orange message text, full file path on the right of every row. Redesign to VS Code Problems: group by file with collapsible headers (file icon + name + dir path + per-file count badge), neutral light-gray message text, warning/error icons only for severity, source label (`spyglassmc(1.21.11)`) + `[Ln x, Col y]` inline after the message, filter input in the toolbar, compact rows |
-| 1.12 | Export datapack (save) | Download the current pack (original + edited files merged) as a zip — "save" for the IDE. Reuses the existing fix-download plumbing; filename `{pack}_edited.zip` |
+### Workspace contract
 
----
+All actions operate on one immutable-at-call-time snapshot:
 
-## Phase 2 — Intelligence (Weeks 3-4)
+```ts
+type WorkspaceSnapshot = {
+  files: Record<string, string>
+  packName: string
+  mode: 'auto' | 'datapack' | 'resourcepack'
+  sourceVersion: string | 'Auto'
+  revision: number
+}
+```
 
-| ID | Task | Description |
-|----|------|-------------|
-| 2.1 | SpyglassMC LSP | Autocomplete, hover, diagnostics in Monaco via LSP client |
-| 2.2 | Go-to-definition | Jump to function definition (function mypack:foo) |
-| 2.3 | Rename refactor | Rename function updates all calls/tags/predicates |
-| 2.4 | Find references | Show all usages of a function/tag/predicate |
-| 2.5 | Inline diagnostics | Squiggly lines from checker results in Monaco gutter |
+Edits update a revisioned workspace. Checks, analyzes, fixes, and exports capture a snapshot; results carry the revision they used. A stale result must be visibly marked and must not overwrite newer edits.
 
-## Phase 2b — File & Pack Management (deferred, later phases)
+### Non-negotiable behavior
 
-User feedback (2026-08-11): "export datapack to save it, create new file, edit name, extension etc, drag n drop more files" — explicitly slated for later phases, not Phase 1.
+- Paths are normalized to forward-slash relative paths; duplicate/conflicting imports are resolved explicitly.
+- Every diagnostic includes file, line/column when available, severity, source, and game version.
+- Fix preview is non-mutating. Apply is an explicit action and records changed files.
+- Export includes original files plus edits minus deletions, with deterministic ordering and a clear filename.
+- Monaco is always available when a schema, network request, or visual editor fails.
 
-| ID | Task | Description |
-|----|------|-------------|
-| 2b.1 | Create new file | New file button/tree action: pick folder, name, extension (.mcfunction/.json/.mcmeta/.nbt), optional template (empty function, basic JSON, pack.mcmeta); opens in editor immediately |
-| 2b.2 | Rename file (incl. extension) | Inline rename in tree; changes extension too (tab URI/language re-guess, Spyglass doc reload); cross-reference update (function calls in other files) flagged as optional follow-up |
-| 2b.3 | Delete file | Tree action with confirm; removes from editedFiles/workspace + Spyglass; updates analysis if run |
-| 2b.4 | Drag & drop more files | ~~Drop additional .zip/.mcmeta files/folders onto the IDE to merge into the open pack (not replace); conflicts resolved by file-level overwrite prompt~~ DONE |
-| 2b.5 | Export/move pack files | ~~Move file between folders in the tree (drag onto folder row); keep open tabs~~ DONE |
+## 4. Delivery milestones
 
----
+### Milestone 0 — IDE foundation (complete)
 
-## Phase 3 — Visual Editors (Weeks 5-6)
+**Outcome:** load → browse → edit → analyze → fix preview → export.  
+**Evidence:** commits `8a216a9` through `27dc761`; build and existing Vitest suites remain green.
 
-| ID | Task | Description |
-|----|------|-------------|
-| 3.1 | Recipe editor | Drag-drop crafting grid (shaped/shapeless/smithing) |
-| 3.2 | Loot table editor | Probability editor with simulation preview |
-| 3.3 | Predicate builder | Visual condition builder (checkboxes, dropdowns) |
-| 3.4 | Advancement graph | Node-based editor (nodes + edges) |
-| 3.5 | pack.mcmeta GUI | ~~Form editor for pack format, description, version~~ DONE |
+### Milestone 1 — Reliable editing workspace (next)
 
----
+**Goal:** make editing durable and predictable before adding more intelligence.
 
-## Phase 4 — Project Tools (Weeks 7-8)
+1. **Workspace synchronization and revisioning**
+   - Centralize `workspaceFiles` derivation and pass snapshots to check/fix/analyze/export.
+   - Mark stale results; prevent race conditions when edits occur during a run.
+   - Add cancellation for superseded Spyglass/check operations.
+2. **Draft persistence**
+   - IndexedDB schema keyed by pack identity plus content hash.
+   - Persist edits, deletions, open tabs, active file, selected version, panel state, and timestamps.
+   - Restore only with user confirmation when source content changed; provide discard/clear-draft action.
+3. **File lifecycle safety**
+   - Confirm destructive deletes; add undo for local operations.
+   - Detect likely function/tag references on rename/delete and show affected files.
+   - Validate names, extensions, path traversal, duplicate paths, and empty folders.
+4. **Metadata validation**
+   - Surface missing/invalid `pack.mcmeta`, pack type, and unsupported format ranges as Problems.
+   - New-file templates must generate valid metadata when requested.
+5. **Keyboard and accessibility contract**
+   - Ctrl+S export/save, Ctrl+Enter analyze, Escape close/clear, keyboard tree navigation, focus-visible states, and accessible labels.
 
-| ID | Task | Description |
-|----|------|-------------|
-| 4.1 | Function call graph | tick -> spawn -> boss visualization |
-| 4.2 | Dependency graph | Circular detection, unused files, dead code |
-| 4.3 | Scoreboard/Storage inspector | Live view of objectives, storage data |
-| 4.4 | Performance analyzer | Tick cost, execute depth, entity scans, scoreboard ops |
-| 4.5 | Vanilla datapack browser | Search recipes, loot tables, tags, functions |
+**Acceptance gate:** reload restores a draft; edits made during a run cannot be lost; rename/delete/export produce deterministic workspace output; keyboard-only smoke test passes.
 
----
+### Milestone 2 — Diagnostics and porting workflow
 
-## Phase 5 — Platform (Weeks 9+)
+**Goal:** make compatibility work explainable at pack scale.
 
-| ID | Task | Description |
-|----|------|-------------|
-| 5.1 | Git integration | isomorphic-git: commit, history, diff, push, branches |
-| 5.2 | Extension API | File types, validators, templates, commands, panels, themes |
-| 5.3 | Templates marketplace | Boss, Minigame, Library, Magic, Skyblock, RPG |
-| 5.4 | COOP/COEP headers | SharedArrayBuffer for Spyglass on GitHub Pages |
+- Manual version selector with Auto detection, reset/re-init, and explicit version shown in every result.
+- Whole-pack Spyglass analyze with progress, cancellation, cache hit/miss reporting, and grouped Problems.
+- Problems UX: file grouping, filtering, severity counts, source/version labels, line/column navigation, and “open in Monaco” fallback.
+- Checker result model unifies parser, command, registry, structural, dependency, and technical-change findings.
+- Fix preview shows per-file diff, reason, confidence, skipped/manual items, and rollback-safe apply.
+- Re-run analysis automatically after apply; preserve a before/after summary.
 
----
+**Acceptance gate:** a fixture pack with cross-file references yields stable grouped findings; every finding navigates correctly; preview never changes workspace; apply + re-run reaches the expected result.
 
-## Phase 6 — Desktop App (Tauri) — Deferred, decide later
+### Milestone 3 — Visual mcdoc editing
 
-**Decision (2026-08-11):** Stay web-first. Fix browser IDE bugs now; Tauri is a plan, not active work.
+**Goal:** provide schema-driven forms without creating separate editors for every JSON format.
 
-### Rationale
-- Monaco is the same editor engine VSCode uses; `@spyglassmc/core` in the webview is the same engine the Spyglass VSCode extension's LSP server wraps. A desktop shell adds no editing features — only native I/O and packaging.
-- Tauri (Rust shell + existing React/Monaco/Spyglass frontend) gives Windows + macOS + Linux from one codebase, small binaries (~10 MB vs Electron ~150 MB), native filesystem (open datapack folders directly), real networking (no CORS/COEP), disk cache, installers per OS.
-- Rust earns its keep in the shell only (fs, networking, bundling). A full native Rust editor (egui/slint/iced) is a trap: reimplementing Monaco-level editing is years of work for a worse result.
-- Electron alternative: Node backend could run the real `@spyglassmc/language-server` over LSP, but core already runs in the webview — little gained, much heavier.
+#### 3.1 Generic framework (first visual-editor release)
 
-### Phase 6 Tasks (when started)
-| ID | Task | Description |
-|----|------|-------------|
-| 6.1 | Tauri scaffold | `npm create tauri-app` in `web/`; point Vite build at Tauri's dist; `tauri.conf.json` window/identifier |
-| 6.2 | Native filesystem | Replace zip-upload with folder open via Tauri `dialog` + `fs` plugin; read pack.mcmeta, walk datapack dirs |
-| 6.3 | Network bypass | Serve Spyglass data through Rust `http` plugin or Tauri-side fetch — removes CORS/COEP preflight issues (api.spyglassmc.com returns 502 on OPTIONS) |
-| 6.4 | Disk cache | Swap IDB cache for filesystem cache under app-data |
-| 6.5 | Cross-OS | Windows + macOS .dmg + Linux AppImage builds; GitHub Actions matrix |
-| 6.6 | Optional LSP | Run `@spyglassmc/language-server` in Rust child process (Node bundled) for true LSP features |
+- `SpyglassService.getSimplifiedRootType(path)` returns a pure `SimplifiedMcdocType` tree: struct, union, list, tuple, enum, primitive, literal, or map, with `since`/`until` and registry-id hints.
+- `web/src/ide/mcdoc-edit.ts` provides dependency-free path edits, schema defaults, union migration, subtree serialization, and JSON-pointer-safe operations.
+- `McdocEditor.tsx` recursively renders fields with optional add/remove, list reorder/duplicate, enum/registry selectors, version-gated hints, invalid-JSON state, and Monaco JSON toggle.
+- Write-back replaces only the edited AST range when possible; whole-document serialization is the explicit fallback.
+- `IdePage` dispatches recipe JSON to the form, keeps Monaco for unsupported/failed files, and loads presets from the versioned vanilla data source.
 
-### Do NOT do first
-- Native Rust editor UI rewrite (egui/iced/slint) — no Monaco-equivalent widget exists in the Rust ecosystem; ROI negative.
+#### 3.2–3.4 Enable formats
 
----
+Unlock loot tables, predicates, and advancements only after each format has parser/round-trip fixtures and schema coverage. Keep the generic renderer unchanged unless a format-specific widget materially improves safety or comprehension.
 
-## Technical Debt / Infrastructure (Ongoing)
+#### 3.5 Metadata form (complete)
 
-| Task | Description |
-|------|-------------|
-| CSS token bug fixed | 33 missing tokens defined in tokens.css |
-| DESIGN.md/PRODUCT.md | Restored locally (untracked, in .gitignore) |
-| | GitNexus re-index after each phase (npx gitnexus analyze) |
-| | Add test coverage for IdePage, editor sync, fix preview |
-| | CI: lint, typecheck, test on PR |
+Maintain the existing `pack.mcmeta` form and JSON toggle as the reference implementation for debounce, invalid input, and write-back behavior.
 
----
+**Acceptance gate:** no-op form load is byte-stable; edits produce valid JSON; union changes preserve intended values; version-gated fields hide/show correctly; unsupported schemas fall back to Monaco.
 
-## Architecture Notes
+### Milestone 4 — Project intelligence
 
-### Current State (from GitNexus)
-App.tsx (view router, all state)
-  +-- HubPage.tsx (tool cases)
-  +-- Checker view (PackSelector + CheckPanel/FixPanel + Results)
-        +-- web/src/engine/engine.ts -> checkCompatibilityContentBased()
-        +-- web/src/api.ts (runCheck, runFix, runFixPreview)
-        +-- web/src/engine/analyzer.ts, walker.ts, fixer.ts, etc.
+**Goal:** help users understand behavior beyond individual files.
 
-### IDE Integration Points
-- PackSelector -> File explorer (reuse file loading logic)
-- CheckPanel + Results -> Analysis panel (bottom tab)
-- FixPanel -> Fix panel (bottom tab)
-- Monaco editor -> new component, reads/writes editedFiles
-- State stays in App.tsx (lifted for reuse)
+- Function/tag/predicate call graph with unresolved and circular references.
+- Dependency graph with orphan, dead-code, and broken-reference views.
+- Scoreboard objectives and storage inspector derived from static analysis.
+- Performance heuristics: tick entrypoints, execute depth, entity scans, and high-cost command patterns.
+- Vanilla browser for recipes, loot, tags, and registries with insert/copy-to-workspace actions.
 
----
+**Acceptance gate:** graphs are deterministic for fixtures, every edge can navigate to source, and analysis never blocks editing on large packs.
 
-## Definition of Done -- Phase 0 (MVP)
+### Milestone 5 — Collaboration and extensibility
 
-- [x] Open pack -> file tree in explorer
-- [x] Click file -> opens in Monaco with syntax highlighting
-- [x] Edit file -> changes tracked in editedFiles
-- [x] Run check -> Analysis panel shows Results
-- [x] Port to version -> Fix panel shows preview -> Download zip
-- [x] Output log shows timestamped events
-- [x] Hub -> Datapack Editor opens IDE view
-- [x] Build passes, deploys to gh-pages
-- [x] SpyglassMC integration: semantic highlighting, inline diagnostics, autocomplete, hover, go-to-definition
+**Goal:** make the tool useful in team and ecosystem workflows.
 
----
+- isomorphic-git repository state, commits, diffs, history, branches, and push/pull only after browser storage/security review.
+- Extension API for file types, validators, templates, commands, panels, and themes with versioned capability boundaries.
+- Template marketplace with signed/validated manifests and offline-safe installation.
+- COOP/COEP deployment checks and SharedArrayBuffer capability diagnostics.
 
-## Definition of Done -- Phase 1 (Core Editing, in progress)
+**Acceptance gate:** an extension cannot mutate files outside the workspace contract; Git operations are recoverable; deployment smoke tests pass on GitHub Pages.
 
-- [ ] 1.1 Sync edited content into runCheck/runFix -- DONE in App.tsx workspaceFiles merge (verified 2026-08-11)
-- [ ] 1.2 File tree: folders done; create/rename/delete + tree shows edited-only files
-- [ ] 1.3 pack.mcmeta validation (warn missing pack_format; auto-set on create)
-- [ ] 1.4 IndexedDB auto-save + restore on reload
-- [ ] 1.5 Shortcuts: Ctrl+Enter + Escape done; Ctrl+S lands with 1.4
-- [ ] 1.6 MC version selector (Auto + manual) re-init Spyglass on change
-- [ ] 1.7 Analyze Datapack button -> Problems panel shows ALL pack errors
-- [ ] 1.8 Reset version + reload Spyglass (porting workflow enabler)
-- [ ] 1.9 VS Code-style layout: bottom panel ~20% + drag-resize + collapse + status bar
-- [ ] 1.10 Rich syntax highlighting via Spyglass semantic tokens (VS Code colors)
-- [ ] 1.11 Problems panel redesign (group by file, filter, neutral text, compact rows)
-- [ ] 1.12 Export datapack as zip (save)
+### Milestone 6 — Desktop shell (deferred)
 
----
+Use Tauri only when native folder access, disk cache, or packaging is a demonstrated blocker for the web product. Reuse the React/Monaco/Spyglass frontend; do not rewrite the editor in Rust.
 
-## Next Action
+## 5. Testing, quality, and release gates
 
-Start Phase 0.1-0.3: Create IdePage.tsx with three-pane layout, Monaco, and file explorer. Wire into App.tsx as view === ide.
+### Required checks for every milestone
+
+- `npm run build` for the web app.
+- Root TypeScript build/typecheck and all Vitest suites.
+- GitNexus impact analysis before changing any function/class/method; warn on HIGH/CRITICAL blast radius.
+- GitNexus `detect_changes()` before commit; compare with `master` for regression reviews.
+- Update fixtures and tests with every new engine or workspace contract.
+
+### Test layers
+
+- Pure unit tests: path normalization, workspace merge, revision/stale-result rules, mcdoc mutations, serializers, diffing.
+- Engine integration tests: real Spyglass parser, command trees, registries, mcdoc schemas, cache failures, and version selection.
+- Component tests: tree operations, panel resizing/collapse, Problems navigation, form/JSON toggle, draft restore prompts.
+- Browser smoke tests: load zip, edit, analyze, preview, apply, export, reload draft, and fallback when network is unavailable.
+- Performance fixtures: small/medium/large packs with budgets for initial load, first diagnostic, analyze-all, and export.
+
+### Release checklist
+
+- No data loss in the workspace journey.
+- No uncaught errors in the browser console during smoke tests.
+- All async operations show loading/progress and recoverable errors.
+- Cache and network failures degrade to usable local behavior.
+- Accessibility pass for keyboard navigation, focus, labels, and contrast.
+- Documentation updated for user-visible behavior and known limitations.
+
+## 6. Risks and mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Spyglass/CDN unavailable or changes shape | Version-pin adapters, cache successful responses, expose fallback state, keep Monaco/checker independent. |
+| Large packs freeze the browser | Incremental parsing, debounced updates, worker boundary when profiling justifies it, progress/cancellation. |
+| Visual editor corrupts JSON or loses comments/order | AST-range write-back, golden byte-stability tests, Monaco fallback, explicit whole-document fallback. |
+| Async results overwrite newer edits | Revisioned snapshots, stale-result checks, cancellation, visible result provenance. |
+| Git/extension features expand security surface | Defer until contracts, permissions, validation, and recovery UX are specified and tested. |
+
+## 7. Decision log and assumptions
+
+- Web-first remains the default; Tauri is deferred.
+- One generic mcdoc renderer is preferred over bespoke recipe/loot/predicate/advancement editors.
+- Monaco is the universal fallback and raw JSON escape hatch.
+- Browser storage is local and privacy-preserving; no pack contents are sent to a backend.
+- Dates and “weeks” are planning estimates, not commitments; milestone gates determine sequencing.
+
+## 8. Immediate next actions
+
+1. Establish the revisioned `WorkspaceSnapshot` and make check/fix/analyze/export consume it.
+2. Add draft persistence with migration/versioning and restore/discard UX.
+3. Add unit and component tests for file lifecycle and stale-result behavior.
+4. Profile a large-pack analyze run and record baseline timings.
+5. Start Milestone 3.1 only after Milestone 1’s data-loss and async-race gates pass.

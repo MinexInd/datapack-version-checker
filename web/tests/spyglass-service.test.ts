@@ -49,4 +49,60 @@ describe('spyglass service (IDE lane)', () => {
     expect(service.getFile('data/demo/functions/never.function')).toBeUndefined()
     await service.close()
   }, 120_000)
+
+  it('getSimplifiedRootType resolves the recipe schema for a recipe file', async () => {
+    const service = new SpyglassService(DB)
+    const pack = {
+      ...PACK,
+      'data/demo/recipe/test.json': JSON.stringify({
+        type: 'minecraft:crafting_shaped',
+        pattern: ['###'],
+        key: { '#': { item: 'minecraft:iron_ingot' } },
+        result: { item: 'minecraft:iron_block', count: 1 },
+      }),
+    }
+    await service.init(pack, '1.21')
+    await service.openFile('data/demo/recipe/test.json', pack['data/demo/recipe/test.json'])
+
+    const type = await service.getSimplifiedRootType('data/demo/recipe/test.json')
+    expect(type).not.toBeNull()
+    expect(type!.kind).toBe('struct')
+    if (type!.kind !== 'struct') return
+    const keys = type!.fields.map(f => f.key)
+    expect(keys).toContain('type')
+    expect(keys).toContain('pattern')
+    expect(keys).toContain('result')
+    // The recipe "key" map must survive as a map-typed field, and its value
+    // (Ingredient — a union of struct/list) must convert to options, not
+    // degrade to 'unknown'.
+    const keyField = type!.fields.find(f => f.key === 'key' || f.type.kind === 'map')
+    expect(keyField).toBeDefined()
+    expect(keyField!.type.kind).toBe('map')
+    if (keyField!.type.kind !== 'map') return
+    expect(keyField!.type.value.kind).toBe('union')
+    if (keyField!.type.value.kind !== 'union') return
+    expect(keyField!.type.value.options.length).toBeGreaterThanOrEqual(2)
+
+    // The "result" field is a union of ItemResult (until 1.20.5) and
+    // ItemStackTemplate (since 1.20.5) — both must convert to struct options
+    // with their fields intact.
+    const resultField = type!.fields.find(f => f.key === 'result')
+    expect(resultField).toBeDefined()
+    expect(resultField!.type.kind).toBe('union')
+    if (resultField!.type.kind !== 'union') return
+    expect(resultField!.type.options.map(o => o.kind)).toEqual(['struct', 'struct'])
+    const itemStack = resultField!.type.options[1]
+    if (itemStack.kind !== 'struct') return
+    expect(itemStack.fields.map(f => f.key)).toContain('id')
+    expect(itemStack.fields.map(f => f.key)).toContain('count')
+
+    await service.close()
+  }, 120_000)
+
+  it('getSimplifiedRootType returns null for files without type info', async () => {
+    const service = new SpyglassService(DB)
+    await service.init(PACK, '1.21')
+    expect(await service.getSimplifiedRootType('data/demo/functions/never.function')).toBeNull()
+    await service.close()
+  }, 120_000)
 })

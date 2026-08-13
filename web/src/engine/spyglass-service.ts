@@ -1,8 +1,16 @@
-import { Service, Logger, FileNode } from '@spyglassmc/core'
+import { Service, Logger, FileNode, CheckerContext } from '@spyglassmc/core'
 import { initialize as jeInitialize } from '@spyglassmc/java-edition'
+import { initialize as mcdocInitialize, runtime as mcdocRuntime } from '@spyglassmc/mcdoc'
+import type { McdocType } from '@spyglassmc/mcdoc'
+import type { JsonFileNode, JsonNode } from '@spyglassmc/json'
 import type { TextDocument } from 'vscode-languageserver-textdocument'
+import type { SimplifiedMcdocType } from '../ide/mcdoc-edit'
 import { createBrowserExternals, type CacheLike } from './browser-externals'
 import { createIdbCache } from './idb-cache'
+import { resolveDynamicTypes, spyglassTypeToEngine } from './type-bridge'
+
+const { McdocCheckerContext } = mcdocRuntime.checker
+type SimplifyContext = mcdocRuntime.checker.SimplifyContext<never>
 
 const PACK_ROOT = 'file:///pack/'
 const CACHE_DB = 'ide-spyglass-cache'
@@ -190,7 +198,11 @@ export class SpyglassService {
         externals,
         projectRoots: [PACK_ROOT],
         logger,
-        initializers: [jeInitialize],
+        // jeInitialize alone never registers the mcdoc language, so the
+        // vanilla-mcdoc dependency's .mcdoc files are not bound and every
+        // JSON file's dispatcher lookup fails (checker falls back to `any`).
+        // mcdocInitialize must be listed explicitly.
+        initializers: [jeInitialize, mcdocInitialize],
       },
     })
 
@@ -321,6 +333,35 @@ export class SpyglassService {
         uri: loc.uri,
         range: loc.range ?? { start: 0, end: 0 },
       }))
+  }
+
+  /** Resolve the mcdoc schema for a JSON file's root node. References and
+   *  dispatchers are already resolved and since/until filters applied by the
+   *  checker for the current game version. Returns null when the file is not
+   *  open or carries no type info (e.g. unknown resource category). */
+  async getSimplifiedRootType(path: string): Promise<SimplifiedMcdocType | null> {
+    await this.settled()
+    const file = this.getFile(path)
+    if (!file || !this.service) return null
+    // Core FileNode wraps the language's file node, which wraps the root
+    // JsonNode: file -> json:file -> json:object.
+    const jsonFile = file.node.children[0] as JsonFileNode | undefined
+    const root = jsonFile?.children[0] as JsonNode | undefined
+    if (!root?.typeDef) return null
+    // The checker's simplify is shallow: struct pair-field types keep raw
+    // references/dispatchers. Resolve them via the checker's own simplify,
+    // which queries the project symbol table (needs a checker context).
+    const checkerCtx = CheckerContext.create(this.service.project, { doc: file.doc })
+    const mcdocCtx = McdocCheckerContext.create<never>(checkerCtx, {})
+    const simplifyCtx: SimplifyContext = {
+      node: {
+        entryNode: { parent: undefined, runtimeKey: undefined },
+        node: { originalNode: undefined as never, inferredType: undefined as never },
+      },
+      ctx: mcdocCtx,
+    }
+    const resolved = resolveDynamicTypes(root.typeDef as unknown as McdocType, simplifyCtx)
+    return spyglassTypeToEngine(resolved)
   }
 
   /** Open every file in the pack, wait for all parses to settle, then
