@@ -3,11 +3,13 @@ import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react'
 import type { languages as MonacoLanguages } from 'monaco-editor'
 import PackSelector from './PackSelector'
 import CheckPanel from './CheckPanel'
-import FixPanel from './FixPanel'
 import Results from './Results'
 import McmetaEditor from './editors/McmetaEditor'
 import McdocEditor from './editors/McdocEditor'
 import type { PackFileMap, Mode, McmetaVersion, CheckResponse, FixPreview } from '../api'
+import { toFixPreviewV2, type FixPreviewV2, type FixFileChange } from '../../../src/fix-preview'
+import { applyFixPreview } from '../../../src/fix-apply'
+import { computeLineDiff } from '../ide/fix-diff'
 import { fetchRecipeIds, fetchRecipePreset } from '../ide/presets'
 import type { JsonValue, SimplifiedMcdocType } from '../ide/mcdoc-edit'
 import { exportZip } from '../api'
@@ -131,6 +133,231 @@ function isRecipePath(path: string): boolean {
 // Monaco 0.56 dropped editor.getTheme() from the standalone API, so the
 // readonly flag below replaces that guard (defineTheme itself is idempotent).
 let minexDarkDefined = false
+
+function FixFileDiffCard({
+  change,
+  isExpanded,
+  onToggle,
+}: {
+  change: FixFileChange
+  isExpanded: boolean
+  onToggle: () => void
+}) {
+  const diff = useMemo(
+    () => computeLineDiff(change.before, change.after),
+    [change.before, change.after]
+  )
+
+  const gutterWidth = Math.max(String(diff.rows.length).length, 2)
+
+  return (
+    <div className={`fix-file${isExpanded ? ' expanded' : ''}`}>
+      <div
+        className="fix-file-header clickable"
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        onClick={onToggle}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onToggle()
+          }
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          flexWrap: 'wrap',
+          cursor: 'pointer',
+          padding: '6px 10px',
+        }}
+      >
+        <span className="fix-file-icon" style={{ fontSize: '0.75rem' }}>{isExpanded ? '▼' : '▶'}</span>
+        <span className="fix-file-path" style={{ fontWeight: 600, fontFamily: 'monospace', fontSize: '0.85rem' }}>{change.file}</span>
+        <span
+          className={`fix-confidence-badge conf-${change.confidence}`}
+          style={{
+            fontSize: '0.68rem',
+            padding: '2px 7px',
+            borderRadius: '4px',
+            textTransform: 'uppercase',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            background:
+              change.confidence === 'high'
+                ? 'rgba(34, 197, 94, 0.16)'
+                : change.confidence === 'low'
+                ? 'rgba(239, 68, 68, 0.16)'
+                : 'rgba(59, 130, 246, 0.16)',
+            color:
+              change.confidence === 'high'
+                ? '#22c55e'
+                : change.confidence === 'low'
+                ? '#ef4444'
+                : '#3b82f6',
+            border: `1px solid ${
+              change.confidence === 'high'
+                ? 'rgba(34, 197, 94, 0.35)'
+                : change.confidence === 'low'
+                ? 'rgba(239, 68, 68, 0.35)'
+                : 'rgba(59, 130, 246, 0.35)'
+            }`,
+          }}
+        >
+          {change.confidence} confidence
+        </span>
+        {change.reason && (
+          <span
+            className="fix-reason-text"
+            style={{
+              fontSize: '0.75rem',
+              color: 'var(--ink-dim, #94a3b8)',
+              marginLeft: 'auto',
+              maxWidth: '380px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={change.reason}
+          >
+            {change.reason}
+          </span>
+        )}
+        {!change.skipped && (
+          <span className="diff-stat" style={{ fontSize: '0.72rem', fontFamily: 'monospace', marginLeft: change.reason ? undefined : 'auto' }}>
+            <span className="add" style={{ color: '#22c55e', fontWeight: 600 }}>+{diff.additions}</span>
+            <span className="sep" style={{ margin: '0 2px', opacity: 0.4 }}>/</span>
+            <span className="del" style={{ color: '#ef4444', fontWeight: 600 }}>−{diff.deletions}</span>
+          </span>
+        )}
+        {change.skipped && (
+          <span style={{ fontSize: '0.72rem', color: '#f59e0b', fontWeight: 600, marginLeft: change.reason ? undefined : 'auto' }}>
+            Skipped
+          </span>
+        )}
+      </div>
+
+      {isExpanded && (
+        <div className="fix-diff-area" style={{ marginTop: '4px', padding: '0 4px 6px' }}>
+          {change.skipped ? (
+            <div
+              className="fix-skipped-banner"
+              style={{
+                padding: '8px 12px',
+                background: 'rgba(245, 158, 11, 0.1)',
+                color: '#f59e0b',
+                borderRadius: '4px',
+                fontSize: '0.8rem',
+                border: '1px solid rgba(245, 158, 11, 0.25)',
+              }}
+            >
+              ⚠️ Skipped: {change.skipReason || 'Registry or format not supported in target version.'}
+            </div>
+          ) : diff.rows.length === 0 ? (
+            <div className="diff-empty" style={{ padding: '8px 12px', fontSize: '0.8rem', color: 'var(--ink-dim, #94a3b8)' }}>
+              No line content differences.
+            </div>
+          ) : (
+            <div className="diff-panel" style={{ borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--hairline-soft, #1e293b)' }}>
+              <div
+                className="diff-view"
+                style={{
+                  maxHeight: '280px',
+                  overflowY: 'auto',
+                  overflowX: 'auto',
+                  fontFamily: 'Consolas, Monaco, monospace',
+                  fontSize: '12px',
+                  background: 'var(--bg-inset, #0b0f17)',
+                  padding: '4px 0',
+                }}
+              >
+                {diff.rows.map((row, idx) => {
+                  const lineNum = row.kind === 'added' ? row.outLine : row.srcLine
+                  const numStr = lineNum != null ? String(lineNum).padStart(gutterWidth, ' ') : ' '.repeat(gutterWidth)
+                  const op = row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' '
+                  const bg =
+                    row.kind === 'added'
+                      ? 'rgba(34, 197, 94, 0.15)'
+                      : row.kind === 'removed'
+                      ? 'rgba(239, 68, 68, 0.15)'
+                      : 'transparent'
+                  const color =
+                    row.kind === 'added'
+                      ? '#4ade80'
+                      : row.kind === 'removed'
+                      ? '#f87171'
+                      : 'inherit'
+
+                  if (row.kind === 'gap') {
+                    return (
+                      <div
+                        key={idx}
+                        className="diff-line gap"
+                        style={{
+                          opacity: 0.6,
+                          padding: '2px 8px',
+                          fontStyle: 'italic',
+                          background: 'rgba(255, 255, 255, 0.02)',
+                        }}
+                      >
+                        <span className="diff-text">{row.text}</span>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`diff-line ${row.kind}`}
+                      style={{
+                        display: 'flex',
+                        background: bg,
+                        color,
+                        padding: '1px 8px',
+                        lineHeight: '1.45',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      <span
+                        className="diff-ln"
+                        style={{
+                          opacity: 0.45,
+                          userSelect: 'none',
+                          marginRight: '8px',
+                          minWidth: `${gutterWidth}ch`,
+                          textAlign: 'right',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {numStr}
+                      </span>
+                      <span
+                        className="diff-op"
+                        style={{
+                          userSelect: 'none',
+                          marginRight: '8px',
+                          fontWeight: 'bold',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {op}
+                      </span>
+                      <span className="diff-text" style={{ flex: 1 }}>
+                        {row.text}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function IdePage({
   originalFiles,
@@ -974,6 +1201,69 @@ export default function IdePage({
       setAnalyzeAllMode(false)
     }
   }, [mergedFiles, selectedVersions, addLog])
+
+  // --- M2 (slice C): Fix Preview V2, rollback-safe Apply & Undo ----------
+  const lastFixBackupRef = useRef<Record<string, string> | null>(null)
+  const [hasFixBackup, setHasFixBackup] = useState(false)
+  const [confirmingApply, setConfirmingApply] = useState(false)
+  const [expandedFixFiles, setExpandedFixFiles] = useState<Set<string>>(new Set())
+
+  const fixPreviewV2 = useMemo<FixPreviewV2 | null>(() => {
+    if (!fixPreview) return null
+    const workspace = mergedFiles || originalFiles || {}
+    return toFixPreviewV2(fixPreview, workspace)
+  }, [fixPreview, mergedFiles, originalFiles])
+
+  // Reset confirmation and auto-expand changed files whenever a new fix preview arrives
+  useEffect(() => {
+    setConfirmingApply(false)
+    if (fixPreviewV2 && fixPreviewV2.changes.length > 0) {
+      setExpandedFixFiles(new Set(fixPreviewV2.changes.map(c => c.file)))
+    } else {
+      setExpandedFixFiles(new Set())
+    }
+  }, [fixPreviewV2])
+
+  const handleApplyClick = useCallback(() => {
+    setConfirmingApply(true)
+  }, [])
+
+  const handleCancelApply = useCallback(() => {
+    setConfirmingApply(false)
+  }, [])
+
+  const handleConfirmApply = useCallback(() => {
+    if (!fixPreviewV2) return
+    const workspace = mergedFiles || originalFiles || {}
+    const { backup } = applyFixPreview(fixPreviewV2, workspace)
+    lastFixBackupRef.current = backup
+    setHasFixBackup(Object.keys(backup).length > 0)
+
+    const nextEdited = { ...editedFiles }
+    for (const change of fixPreviewV2.changes) {
+      if (!change.skipped) {
+        nextEdited[change.file] = change.after
+      }
+    }
+    onEditedFilesChange(nextEdited)
+    setConfirmingApply(false)
+    addLog('success', `Applied fix preview to ${Object.keys(backup).length} file(s)`)
+    onRun()
+  }, [fixPreviewV2, mergedFiles, originalFiles, editedFiles, onEditedFilesChange, addLog, onRun])
+
+  const handleUndoFix = useCallback(() => {
+    const backup = lastFixBackupRef.current
+    if (!backup) return
+    const nextEdited = { ...editedFiles }
+    for (const [file, content] of Object.entries(backup)) {
+      nextEdited[file] = content
+    }
+    onEditedFilesChange(nextEdited)
+    lastFixBackupRef.current = null
+    setHasFixBackup(false)
+    addLog('info', `Rolled back last fix (${Object.keys(backup).length} file(s) restored)`)
+    onRun()
+  }, [editedFiles, onEditedFilesChange, addLog, onRun])
 
   // --- 1.8 Reset / Reload ------------------------------------------------
   const handleReset = useCallback(() => {
@@ -1922,22 +2212,221 @@ export default function IdePage({
 
               {panel === 'fix' && (
                 <div className="ide-panel-scroll">
-                  {previewStale && (
-                    <div className="ide-stale">Workspace changed after this preview — regenerate before downloading.</div>
-                  )}
-                  <FixPanel
-                    versions={versions}
-                    fixTarget={fixTarget}
-                    onFixTargetChange={onFixTargetChange}
-                    fixSource={fixSource}
-                    onFixSourceChange={onFixSourceChange}
-                    fixPreview={fixPreview}
-                    onPreview={handlePreview}
-                    onDownload={handleDownload}
-                    loading={loading}
-                    hasFiles={!!originalFiles}
-                    originalFiles={originalFiles}
-                  />
+                  <div className="card animate-in-d3">
+                    <h2>Auto-Fix / Port <span className="sub">rewrites commands, fixes JSON, updates pack.mcmeta</span></h2>
+
+                    <div className="grid-2">
+                      <div className="field">
+                        <label>Target version</label>
+                        <select value={fixTarget} onChange={e => { onFixTargetChange(e.target.value) }}>
+                          <option value="">— select target —</option>
+                          {versions.map(v => (
+                            <option key={v.id} value={v.name}>{v.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="field">
+                        <label>Source version (optional)</label>
+                        <select value={fixSource} onChange={e => { onFixSourceChange(e.target.value) }}>
+                          <option value="">— auto-detect —</option>
+                          {versions.map(v => (
+                            <option key={v.id} value={v.name}>{v.name}</option>
+                          ))}
+                        </select>
+                        <div className="hint">Auto-detected from the pack.mcmeta load range if left blank.</div>
+                      </div>
+                    </div>
+
+                    <div className="fix-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '12px' }}>
+                      {!originalFiles && <span className="run-hint">Upload a pack first</span>}
+                      <button
+                        className="btn btn-primary"
+                        onClick={handlePreview}
+                        disabled={loading || !originalFiles || !fixTarget}
+                        aria-busy={loading}
+                      >
+                        {loading ? <><span className="spinner" /> Generating…</> : 'Preview Changes'}
+                      </button>
+
+                      {fixPreviewV2 && fixPreviewV2.changes.length > 0 && (
+                        confirmingApply ? (
+                          <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+                            <button
+                              className="btn btn-primary"
+                              style={{ background: 'var(--sev-warn, #f59e0b)', borderColor: 'var(--sev-warn, #f59e0b)', color: '#000', fontWeight: 600 }}
+                              onClick={handleConfirmApply}
+                              disabled={loading}
+                            >
+                              ⚠️ Confirm Apply
+                            </button>
+                            <button
+                              className="btn btn-ghost"
+                              onClick={handleCancelApply}
+                              disabled={loading}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            className="btn btn-primary"
+                            onClick={handleApplyClick}
+                            disabled={loading}
+                          >
+                            Apply Fixes to Workspace
+                          </button>
+                        )
+                      )}
+
+                      <button
+                        className="btn btn-ghost"
+                        onClick={handleUndoFix}
+                        disabled={loading || !hasFixBackup}
+                        title={hasFixBackup ? 'Rollback the last applied fix' : 'No previous fix to rollback'}
+                      >
+                        ↩ Undo last fix
+                      </button>
+
+                      {fixPreview && (
+                        <button
+                          className="btn btn-success btn-lg"
+                          onClick={handleDownload}
+                          disabled={loading}
+                          aria-busy={loading}
+                          style={{ marginLeft: 'auto' }}
+                        >
+                          {loading ? <><span className="spinner" /> Downloading…</> : '⬇ Download Ported .zip'}
+                        </button>
+                      )}
+                    </div>
+
+                    {previewStale && (
+                      <div className="ide-stale" style={{ marginTop: '12px' }}>
+                        Workspace changed after this preview — regenerate before applying or downloading.
+                      </div>
+                    )}
+
+                    {fixPreviewV2 && (
+                      <div className="porting-plan" style={{ marginTop: 16 }}>
+                        <div className="plan-header">
+                          <span className={`plan-direction ${fixPreview?.plan?.direction === 'forward' ? 'fwd' : 'bwd'}`}>
+                            {fixPreview?.plan?.direction === 'forward' ? 'Upgrade' : 'Backport'}
+                          </span>
+                          <span className="plan-versions">
+                            {fixPreview?.plan?.sourceVersion || 'Current'} → {fixPreviewV2.version || fixTarget}
+                          </span>
+                          <span className="plan-file-count">
+                            {fixPreviewV2.changes.length} file{fixPreviewV2.changes.length !== 1 ? 's' : ''} changed
+                          </span>
+                        </div>
+
+                        <div className="stats" style={{ marginBottom: 14, marginTop: 14 }}>
+                          <div className="stat blue">
+                            <div className="num">{fixPreviewV2.changes.length}</div>
+                            <div className="label">Files changed</div>
+                          </div>
+                          <div className="stat blue">
+                            <div className="num">{fixPreview?.summary?.totalPatches ?? fixPreviewV2.changes.length}</div>
+                            <div className="label">Total patches</div>
+                          </div>
+                          {Boolean(fixPreview?.plan?.summary?.commandRewrites && fixPreview.plan.summary.commandRewrites > 0) && (
+                            <div className="stat green">
+                              <div className="num">{fixPreview?.plan?.summary?.commandRewrites}</div>
+                              <div className="label">Command rewrites</div>
+                            </div>
+                          )}
+                          {Boolean(fixPreview?.plan?.summary?.jsonFixes && fixPreview.plan.summary.jsonFixes > 0) && (
+                            <div className="stat purple">
+                              <div className="num">{fixPreview?.plan?.summary?.jsonFixes}</div>
+                              <div className="label">JSON fixes</div>
+                            </div>
+                          )}
+                          {Boolean(fixPreview?.plan?.summary?.manualAttention && fixPreview.plan.summary.manualAttention > 0) && (
+                            <div className="stat red">
+                              <div className="num">{fixPreview?.plan?.summary?.manualAttention}</div>
+                              <div className="label">Manual</div>
+                            </div>
+                          )}
+                        </div>
+
+                        {fixPreview?.summary?.errors && fixPreview.summary.errors.length > 0 && (
+                          <div className="error" style={{ marginBottom: 14 }}>
+                            <span>!</span>
+                            <span>{fixPreview.summary.errors.join('; ')}</span>
+                          </div>
+                        )}
+
+                        {fixPreviewV2.skipped.length > 0 && (
+                          <div
+                            className="fix-skipped-summary"
+                            style={{
+                              padding: '10px 14px',
+                              background: 'rgba(245, 158, 11, 0.1)',
+                              border: '1px solid rgba(245, 158, 11, 0.25)',
+                              borderRadius: 'var(--r-sm, 4px)',
+                              marginBottom: 14,
+                              fontSize: '0.82rem',
+                            }}
+                          >
+                            <strong style={{ color: '#f59e0b' }}>⚠️ {fixPreviewV2.skipped.length} file(s) skipped:</strong>
+                            <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
+                              {fixPreviewV2.skipped.map((s, idx) => (
+                                <li key={idx} style={{ color: 'var(--ink-dim, #cbd5e1)' }}>
+                                  <code>{s.file}</code> — {s.reason}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {fixPreviewV2.changes.length > 0 ? (
+                          <>
+                            <div className="fix-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span className="fix-toolbar-title">Changed files ({fixPreviewV2.changes.length})</span>
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => setExpandedFixFiles(new Set(fixPreviewV2.changes.map(c => c.file)))}
+                              >
+                                Expand all
+                              </button>
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => setExpandedFixFiles(new Set())}
+                              >
+                                Collapse all
+                              </button>
+                            </div>
+
+                            <div className="scl-box fix-file-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {fixPreviewV2.changes.map((change) => {
+                                const isExpanded = expandedFixFiles.has(change.file)
+                                return (
+                                  <FixFileDiffCard
+                                    key={change.file}
+                                    change={change}
+                                    isExpanded={isExpanded}
+                                    onToggle={() => {
+                                      setExpandedFixFiles(prev => {
+                                        const next = new Set(prev)
+                                        if (next.has(change.file)) next.delete(change.file)
+                                        else next.add(change.file)
+                                        return next
+                                      })
+                                    }}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="empty-ok">
+                            <span className="ok-icon">✓</span>
+                            <p>No changes needed — the pack is already compatible with <b>{fixTarget}</b>.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
