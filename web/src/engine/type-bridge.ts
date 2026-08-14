@@ -48,6 +48,7 @@ function resolveDispatcher(
   typeDef: Extract<mcdoc.McdocType, { kind: 'dispatcher' }>,
   ctx: mcdoc.runtime.checker.SimplifyContext<never>,
   depth: number,
+  budget: NodeBudget = { remaining: NODE_BUDGET },
 ): SpyglassType {
   const registry = typeDef.registry
   const dispatcherQuery = ctx.ctx.symbols.query(ctx.ctx.doc, 'mcdoc/dispatcher', registry)
@@ -66,7 +67,7 @@ function resolveDispatcher(
         // %fallback: iterate all members in the dispatcher's symbol map
         for (const [, value] of Object.entries(members)) {
           if (hasValidTypeDef(value.data)) {
-            resolvedMembers.push(resolveDynamicTypes(value.data.typeDef, ctx, depth + 1))
+            resolvedMembers.push(resolveDynamicTypes(value.data.typeDef, ctx, depth + 1, new Set(), budget))
           }
         }
         break // %fallback is terminal per the runtime's resolveIndices
@@ -77,7 +78,7 @@ function resolveDispatcher(
         : index.value
       const member = members[lookupKey]
       if (member && hasValidTypeDef(member.data)) {
-        resolvedMembers.push(resolveDynamicTypes(member.data.typeDef, ctx, depth + 1))
+        resolvedMembers.push(resolveDynamicTypes(member.data.typeDef, ctx, depth + 1, new Set(), budget))
       } else {
         // Member missing or typeDef is null — contribute unknown
         resolvedMembers.push({ kind: 'any' } as SpyglassType)
@@ -89,7 +90,7 @@ function resolveDispatcher(
       // editor the full set of options to branch on.
       for (const [, value] of Object.entries(members)) {
         if (hasValidTypeDef(value.data)) {
-          resolvedMembers.push(resolveDynamicTypes(value.data.typeDef, ctx, depth + 1))
+          resolvedMembers.push(resolveDynamicTypes(value.data.typeDef, ctx, depth + 1, new Set(), budget))
         }
       }
       break // one round of all-variants is sufficient
@@ -127,6 +128,21 @@ function dynamicKindKey(typeDef: mcdoc.McdocType): string | undefined {
 }
 
 /**
+ * Maximum nodes we will expand when resolving + converting a mcdoc type for the
+ * visual editor. Loot tables are the largest schema in the game (deeply nested
+ * pools → entries → functions/conditions unions with 50+ variants each), and
+ * without a hard node budget the resolve + convert produces a 10k+ node object
+ * that McdocEditor then tries to render synchronously — freezing the page.
+ * Past the budget we degrade the rest of the subtree to `unknown` so the tree
+ * stays bounded and the form stays responsive.
+ */
+const NODE_BUDGET = 8000
+
+export interface NodeBudget {
+  remaining: number
+}
+
+/**
  * Resolve references, dispatchers, and other dynamic kinds inside an attached
  * typeDef. The checker's simplify is shallow: struct pair-field types keep
  * raw `reference`/`dispatcher` kinds, so the editor would otherwise see
@@ -144,14 +160,20 @@ function dynamicKindKey(typeDef: mcdoc.McdocType): string | undefined {
  * paths + dispatcher registries on the current call stack and short-circuit
  * to the raw type when we re-enter one — this preserves structural info for
  * the caller (it can still see it's a union) without recursing.
+ *
+ * Node budget: `budget.remaining` is decremented on every resolved node. When
+ * it hits zero we stop expanding and return `any`, bounding total work.
  */
 export function resolveDynamicTypes(
   typeDef: mcdoc.McdocType,
   ctx: mcdoc.runtime.checker.SimplifyContext<never>,
   depth = 0,
   visited: Set<string> = new Set(),
+  budget: NodeBudget = { remaining: NODE_BUDGET },
 ): SpyglassType {
   if (depth > 30) return typeDef as SpyglassType
+  if (budget.remaining <= 0) return { kind: 'any' } as SpyglassType
+  budget.remaining--
 
   // Cycle detection: if this exact reference/dispatcher is already being
   // resolved higher in the stack, return the raw type (preserving its kind
@@ -180,7 +202,7 @@ export function resolveDynamicTypes(
         )
         // Resolve each spread field's type
         for (const spread of spreads) {
-          const resolvedSpread = resolveDynamicTypes(spread.type, ctx, depth + 1)
+          const resolvedSpread = resolveDynamicTypes(spread.type, ctx, depth + 1, nextVisited, budget)
           if (resolvedSpread.kind === 'union') {
             // Union of variant structs from a dispatcher — merge pair fields
             // (like "type" discriminator) into each variant struct, then return
@@ -190,7 +212,7 @@ export function resolveDynamicTypes(
                 const mergedFields = [
                   ...pairFields.map(f => ({
                     ...f,
-                    type: resolveDynamicTypes(f.type, ctx, depth + 1),
+                    type: resolveDynamicTypes(f.type, ctx, depth + 1, nextVisited, budget),
                   })),
                   ...member.fields,
                 ]
@@ -210,7 +232,7 @@ export function resolveDynamicTypes(
             const mergedFields = [
               ...pairFields.map(f => ({
                 ...f,
-                type: resolveDynamicTypes(f.type, ctx, depth + 1),
+                type: resolveDynamicTypes(f.type, ctx, depth + 1, nextVisited, budget),
               })),
               ...resolvedSpread.fields,
             ]
@@ -224,27 +246,27 @@ export function resolveDynamicTypes(
         ...typeDef,
         fields: typeDef.fields
           .filter((f): f is Extract<typeof f, { kind: 'pair' }> => f.kind === 'pair')
-          .map(f => ({ ...f, type: resolveDynamicTypes(f.type, ctx, depth + 1) })),
+          .map(f => ({ ...f, type: resolveDynamicTypes(f.type, ctx, depth + 1, nextVisited, budget) })),
       } as SpyglassType
     }
     case 'union':
       return {
         ...typeDef,
-        members: typeDef.members.map(m => resolveDynamicTypes(m, ctx, depth + 1)),
+        members: typeDef.members.map(m => resolveDynamicTypes(m, ctx, depth + 1, nextVisited, budget)),
       } as SpyglassType
     case 'list':
-      return { ...typeDef, item: resolveDynamicTypes(typeDef.item, ctx, depth + 1) } as SpyglassType
+      return { ...typeDef, item: resolveDynamicTypes(typeDef.item, ctx, depth + 1, nextVisited, budget) } as SpyglassType
     case 'tuple':
-      return { ...typeDef, items: typeDef.items.map(i => resolveDynamicTypes(i, ctx, depth + 1)) } as SpyglassType
+      return { ...typeDef, items: typeDef.items.map(i => resolveDynamicTypes(i, ctx, depth + 1, nextVisited, budget)) } as SpyglassType
     case 'dispatcher': {
       // Try the runtime's simplify first — it has caching that prevents OOM
       // on recipe types. Fall back to our custom walk only when the runtime
       // crashes (null typeDef in resolveIndices — typeof null === 'object').
       try {
         const resolved = mcdocRuntime.checker.simplify(typeDef, ctx).typeDef
-        return resolveDynamicTypes(resolved, ctx, depth + 1)
+        return resolveDynamicTypes(resolved, ctx, depth + 1, nextVisited, budget)
       } catch {
-        return resolveDispatcher(typeDef, ctx, depth)
+        return resolveDispatcher(typeDef, ctx, depth, budget)
       }
     }
     case 'reference':
@@ -253,7 +275,7 @@ export function resolveDynamicTypes(
     case 'mapped': {
       try {
         const resolved = mcdocRuntime.checker.simplify(typeDef, ctx).typeDef
-        return resolveDynamicTypes(resolved, ctx, depth + 1)
+        return resolveDynamicTypes(resolved, ctx, depth + 1, nextVisited, budget)
       } catch {
         // simplify crashed — the resolved type likely contains a dispatcher
         // whose resolveIndices path hits a null typeDef (typeof null === 'object'
@@ -273,9 +295,9 @@ export function resolveDynamicTypes(
               const fieldInfo = td.fields?.map((f: any) => `${f.kind}:${f.key?.value?.value ?? f.desc ?? '?'}:${f.type?.kind ?? '?'}`)?.join(', ') ?? 'no-fields'
               console.warn(`[type-bridge] ref fallback: path=${refDef.path} kind=${td.kind} fields=[${fieldInfo}]`)
               if (data.typeDef.kind === 'dispatcher') {
-                return resolveDispatcher(data.typeDef, ctx, depth)
+                return resolveDispatcher(data.typeDef, ctx, depth, budget)
               }
-              return resolveDynamicTypes(data.typeDef, ctx, depth + 1)
+              return resolveDynamicTypes(data.typeDef, ctx, depth + 1, nextVisited, budget)
             }
             console.warn(`[type-bridge] ref fallback: path=${refDef.path} no typeDef in symbol data`)
           } catch (e: any) {
@@ -331,17 +353,27 @@ function attrRegistry(value: mcdoc.AttributeValue | undefined): string | undefin
   return undefined
 }
 
-export function spyglassTypeToEngine(type: SpyglassType): SimplifiedMcdocType {
+export function spyglassTypeToEngine(
+  type: SpyglassType,
+  budget: NodeBudget = { remaining: NODE_BUDGET },
+): SimplifiedMcdocType {
+  if (budget.remaining <= 0) return { kind: 'primitive', name: 'unknown' }
+  budget.remaining--
   if (type.kind === 'union') {
     const { since, until } = versionInfo(type.attributes)
     // An unresolvable reference/dispatcher simplifies to an empty union.
     if (type.members.length === 0) return { kind: 'primitive', name: 'unknown', since, until }
-    return { kind: 'union', options: type.members.map(spyglassTypeToEngine), since, until }
+    return { kind: 'union', options: type.members.map(m => spyglassTypeToEngine(m, budget)), since, until }
   }
-  return spyglassTypeNoUnionToEngine(type)
+  return spyglassTypeNoUnionToEngine(type, budget)
 }
 
-function spyglassTypeNoUnionToEngine(type: SpyglassTypeNoUnion): SimplifiedMcdocType {
+function spyglassTypeNoUnionToEngine(
+  type: SpyglassTypeNoUnion,
+  budget: NodeBudget,
+): SimplifiedMcdocType {
+  if (budget.remaining <= 0) return { kind: 'primitive', name: 'unknown' }
+  budget.remaining--
   const { since, until, registry } = versionInfo(type.attributes)
   switch (type.kind) {
     case 'struct': {
@@ -355,7 +387,7 @@ function spyglassTypeNoUnionToEngine(type: SpyglassTypeNoUnion): SimplifiedMcdoc
         const fa = versionInfo(f.attributes)
         return {
           kind: 'map',
-          value: spyglassTypeToEngine(f.type as SpyglassType),
+          value: spyglassTypeToEngine(f.type as SpyglassType, budget),
           since: fa.since ?? since,
           until: fa.until ?? until,
         }
@@ -368,7 +400,7 @@ function spyglassTypeNoUnionToEngine(type: SpyglassTypeNoUnion): SimplifiedMcdoc
           const key = typeof v.value === 'string' ? v.value : String(v.value)
           fields.push({
             key,
-            type: spyglassTypeToEngine(f.type as SpyglassType),
+            type: spyglassTypeToEngine(f.type as SpyglassType, budget),
             required: !f.optional,
             since: fa.since,
             until: fa.until,
@@ -380,7 +412,7 @@ function spyglassTypeNoUnionToEngine(type: SpyglassTypeNoUnion): SimplifiedMcdoc
             key: f.desc ?? 'key',
             type: {
               kind: 'map',
-              value: spyglassTypeToEngine(f.type as SpyglassType),
+              value: spyglassTypeToEngine(f.type as SpyglassType, budget),
               since: fa.since,
               until: fa.until,
             },
@@ -404,9 +436,9 @@ function spyglassTypeNoUnionToEngine(type: SpyglassTypeNoUnion): SimplifiedMcdoc
       return { kind: 'literal', value, since, until }
     }
     case 'list':
-      return { kind: 'list', item: spyglassTypeToEngine(type.item as SpyglassType), since, until }
+      return { kind: 'list', item: spyglassTypeToEngine(type.item as SpyglassType, budget), since, until }
     case 'tuple':
-      return { kind: 'tuple', items: type.items.map(i => spyglassTypeToEngine(i as SpyglassType)), since, until }
+      return { kind: 'tuple', items: type.items.map(i => spyglassTypeToEngine(i as SpyglassType, budget)), since, until }
     case 'string':
       return { kind: 'primitive', name: 'string', since, until, registry }
     case 'byte':

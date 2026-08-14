@@ -343,25 +343,38 @@ export class SpyglassService {
     await this.settled()
     const file = this.getFile(path)
     if (!file || !this.service) return null
-    // Core FileNode wraps the language's file node, which wraps the root
-    // JsonNode: file -> json:file -> json:object.
-    const jsonFile = file.node.children[0] as JsonFileNode | undefined
-    const root = jsonFile?.children[0] as JsonNode | undefined
-    if (!root?.typeDef) return null
-    // The checker's simplify is shallow: struct pair-field types keep raw
-    // references/dispatchers. Resolve them via the checker's own simplify,
-    // which queries the project symbol table (needs a checker context).
-    const checkerCtx = CheckerContext.create(this.service.project, { doc: file.doc })
-    const mcdocCtx = McdocCheckerContext.create<never>(checkerCtx, {})
-    const simplifyCtx: SimplifyContext = {
-      node: {
-        entryNode: { parent: undefined, runtimeKey: undefined },
-        node: { originalNode: undefined as never, inferredType: undefined as never },
-      },
-      ctx: mcdocCtx,
+    // Some schemas (notably loot tables) expand to enormous mcdoc trees. Bound
+    // the resolve+convert with a hard time limit so the editor never hangs in
+    // "resolving" — if we overrun, fall back to raw JSON instead of freezing.
+    const START = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+    const TIME_BUDGET_MS = 2000
+    try {
+      // Core FileNode wraps the language's file node, which wraps the root
+      // JsonNode: file -> json:file -> json:object.
+      const jsonFile = file.node.children[0] as JsonFileNode | undefined
+      const root = jsonFile?.children[0] as JsonNode | undefined
+      if (!root?.typeDef) return null
+      // The checker's simplify is shallow: struct pair-field types keep raw
+      // references/dispatchers. Resolve them via the checker's own simplify,
+      // which queries the project symbol table (needs a checker context).
+      const checkerCtx = CheckerContext.create(this.service.project, { doc: file.doc })
+      const mcdocCtx = McdocCheckerContext.create<never>(checkerCtx, {})
+      const simplifyCtx: SimplifyContext = {
+        node: {
+          entryNode: { parent: undefined, runtimeKey: undefined },
+          node: { originalNode: undefined as never, inferredType: undefined as never },
+        },
+        ctx: mcdocCtx,
+      }
+      const resolved = resolveDynamicTypes(root.typeDef as unknown as McdocType, simplifyCtx)
+      if ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - START > TIME_BUDGET_MS) {
+        return null
+      }
+      return spyglassTypeToEngine(resolved)
+    } catch (e) {
+      console.warn('[spyglass-service] getSimplifiedRootType failed, falling back to JSON:', (e as Error).message)
+      return null
     }
-    const resolved = resolveDynamicTypes(root.typeDef as unknown as McdocType, simplifyCtx)
-    return spyglassTypeToEngine(resolved)
   }
 
   /** Open every file in the pack, wait for all parses to settle, then

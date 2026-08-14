@@ -67,6 +67,30 @@ function VersionBadges({ since, until }: { since?: string; until?: string }) {
   )
 }
 
+/**
+ * Defensive backstop: the type-bridge already bounds resolution to NODE_BUDGET,
+ * but if a future schema still expands past this, rendering it as one giant form
+ * would freeze the tab. Count nodes and, past the threshold, refuse to render
+ * the form (offering raw JSON instead) rather than lock up the main thread.
+ */
+const MAX_RENDER_NODES = 15000
+function countTypeNodes(t: SimplifiedMcdocType, seen = new Set<object>()): number {
+  if (typeof t !== 'object' || t === null || seen.has(t)) return 0
+  seen.add(t)
+  let n = 1
+  if (t.kind === 'union') {
+    for (const o of t.options) n += countTypeNodes(o, seen)
+  } else if (t.kind === 'struct') {
+    for (const f of t.fields) n += countTypeNodes(f.type, seen)
+  } else if (t.kind === 'list' || t.kind === 'tuple') {
+    const items = (t as any).items ?? [(t as any).item]
+    for (const i of items) if (i) n += countTypeNodes(i, seen)
+  } else if (t.kind === 'map') {
+    n += countTypeNodes((t as any).value, seen)
+  }
+  return n
+}
+
 function pathsEqual(a: JsonPath | undefined, b: JsonPath | undefined): boolean {
   if (!a || !b) return false
   if (a.length !== b.length) return false
@@ -213,6 +237,30 @@ export default function McdocEditor({
             <div className="mcdoc-error-body">
               <div className="mcdoc-error-title">This file is not valid JSON</div>
               <div className="mcdoc-error-detail">{parsed.error}</div>
+            </div>
+            <button type="button" className="mcdoc-btn-ghost" onClick={onShowJson}>
+              Open in JSON view
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Defensive backstop against a schema so large it would freeze rendering.
+  if (countTypeNodes(type) > MAX_RENDER_NODES) {
+    return (
+      <div className="mcdoc-form">
+        <McdocHeader onShowJson={onShowJson} />
+        <div className="mcdoc-form-body">
+          <div className="mcdoc-error" role="alert">
+            <span className="mcdoc-error-icon">!</span>
+            <div className="mcdoc-error-body">
+              <div className="mcdoc-error-title">Schema too large to render as a form</div>
+              <div className="mcdoc-error-detail">
+                This file's type expands to {countTypeNodes(type).toLocaleString()} nodes, which would
+                freeze the editor. Edit it as JSON instead.
+              </div>
             </div>
             <button type="button" className="mcdoc-btn-ghost" onClick={onShowJson}>
               Open in JSON view
