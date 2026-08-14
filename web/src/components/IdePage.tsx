@@ -948,11 +948,16 @@ export default function IdePage({
     if (!serviceRef.current || !mergedFiles) return
     const gen = ++analyzeGenRef.current
     const runRevision = revisionRef.current
+    const targetVersion = selectedVersions[0] ?? 'Auto'
     setPanel('problems')
     setAnalyzeAllMode(true)
-    addLog('run', 'analyzing full datapack…')
+    addLog('run', `analyzing full datapack @ ${targetVersion}…`)
     try {
-      const results = await serviceRef.current.analyzeAll(mergedFiles)
+      const results = await serviceRef.current.analyzeAll(mergedFiles, (done, total) => {
+        if (done % 25 === 0 || done === total) {
+          addLog('info', `analyzed ${done}/${total} files`)
+        }
+      })
       // A newer run or a workspace edit while this was in flight means these
       // markers no longer match the live tree — drop them, don't overwrite.
       if (gen !== analyzeGenRef.current || revisionRef.current !== runRevision) {
@@ -960,12 +965,15 @@ export default function IdePage({
         return
       }
       setProblems(results)
-      addLog('success', `analyze complete — ${results.length} problem${results.length !== 1 ? 's' : ''}`)
+      const errors = results.filter(r => r.marker.severity === 'error').length
+      const warnings = results.filter(r => r.marker.severity === 'warning').length
+      const files = new Set(results.map(r => r.path)).size
+      addLog('success', `analyze @ ${targetVersion} complete — ${files} file(s) with findings: ${errors} error(s), ${warnings} warning(s)`)
     } catch (err) {
       addLog('error', `analyze failed: ${err instanceof Error ? err.message : String(err)}`)
       setAnalyzeAllMode(false)
     }
-  }, [mergedFiles, addLog])
+  }, [mergedFiles, selectedVersions, addLog])
 
   // --- 1.8 Reset / Reload ------------------------------------------------
   const handleReset = useCallback(() => {

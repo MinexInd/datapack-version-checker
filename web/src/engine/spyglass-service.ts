@@ -369,18 +369,27 @@ export class SpyglassService {
    *  button which needs whole-pack diagnostics in one pass. */
   async analyzeAll(
     files: Record<string, string>,
+    onProgress?: (done: number, total: number) => void,
   ): Promise<{ path: string; marker: IdeMarker }[]> {
     if (!this.service) return []
 
+    const paths = Object.keys(files)
+    const total = paths.length
     // Fire off opens for every file — they chain through parseChain so
     // they execute in order but we only await once at the end.
+    let done = 0
     await Promise.all(
-      Object.entries(files).map(([path, content]) => this.openFile(path, content)),
+      paths.map((path) =>
+        this.openFile(path, files[path]).then(() => {
+          done++
+          onProgress?.(done, total)
+        }),
+      ),
     )
     await this.settled()
 
     const results: { path: string; marker: IdeMarker }[] = []
-    for (const path of Object.keys(files)) {
+    for (const path of paths) {
       const file = this.getFile(path)
       if (!file) continue
       const errors = FileNode.getErrors(file.node)
