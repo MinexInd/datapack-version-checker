@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import type { PackFileMap, CheckResponse, McmetaVersion, Mode } from './api'
 import { runCheck, runFix, runFixPreview, fetchVersions } from './api'
 import type { FixPreview } from './api'
-import { buildWorkspaceFiles } from './workspace'
+import { buildWorkspaceFiles, createWorkspaceSnapshot, isResultStale } from './workspace'
 import HubPage from './components/HubPage'
 import IdePage from './components/IdePage'
 
@@ -33,6 +33,9 @@ export default function App() {
   useEffect(() => { revisionRef.current = revision }, [revision])
   const [resultStale, setResultStale] = useState(false)
   const [previewStale, setPreviewStale] = useState(false)
+  // Monotonic run counter so a superseded check/preview result (double-click
+  // race) is dropped instead of overwriting the newer run's output.
+  const runGenRef = useRef(0)
 
   const workspaceFiles = useMemo<PackFileMap | null>(
     () => buildWorkspaceFiles({ originalFiles: files, editedFiles, deletedFiles }),
@@ -122,7 +125,15 @@ export default function App() {
 
   const handleRun = useCallback(async () => {
     if (!workspaceFiles) { setError('Select a pack first'); return }
+    const gen = ++runGenRef.current
     const runRevision = revisionRef.current
+    const snapshot = createWorkspaceSnapshot(
+      { originalFiles: files, editedFiles, deletedFiles },
+      { packName: fileName, mode, sourceVersion: fixSource || 'Auto' },
+      runRevision,
+    )
+    const runFiles = snapshot ? snapshot.files : workspaceFiles
+    const runRev = snapshot ? snapshot.revision : runRevision
     setLoading(true)
     setError('')
     setResult(null)
@@ -132,8 +143,10 @@ export default function App() {
     checkStartRef.current = startTime
     try {
       const versionList = all ? undefined : selectedVersions.length ? selectedVersions : undefined
-      const res = await runCheck({ mode, versions: versionList, all, strict, files: workspaceFiles, onProgress: setProgress })
-      if (revisionRef.current !== runRevision) setResultStale(true)
+      const res = await runCheck({ mode, versions: versionList, all, strict, files: runFiles, revision: runRev, onProgress: setProgress })
+      // A newer run superseded this one — drop the result, don't overwrite.
+      if (gen !== runGenRef.current) return
+      if (isResultStale(revisionRef.current, res.revision ?? runRev)) setResultStale(true)
       setCheckDuration(Date.now() - checkStartRef.current)
       setResult(res)
     } catch (err: any) {
@@ -142,21 +155,31 @@ export default function App() {
       setLoading(false)
       setProgress('')
     }
-  }, [workspaceFiles, mode, all, strict, selectedVersions])
+  }, [workspaceFiles, files, editedFiles, deletedFiles, fileName, mode, all, strict, selectedVersions, fixSource])
 
   const handleFixPreview = useCallback(async (targetOverride?: string) => {
     if (!workspaceFiles) { setError('Select a pack first'); return }
     const target = targetOverride ?? fixTarget
     if (!target) { setError('Choose a target version to port to'); return }
+    const gen = ++runGenRef.current
     const runRevision = revisionRef.current
+    const snapshot = createWorkspaceSnapshot(
+      { originalFiles: files, editedFiles, deletedFiles },
+      { packName: fileName, mode, sourceVersion: fixSource || 'Auto' },
+      runRevision,
+    )
+    const runFiles = snapshot ? snapshot.files : workspaceFiles
+    const runRev = snapshot ? snapshot.revision : runRevision
     setLoading(true)
     setError('')
     setFixPreview(null)
     setPreviewStale(false)
     setProgress('Generating fix preview...')
     try {
-      const preview = await runFixPreview({ files: workspaceFiles, targetVersion: target, sourceVersion: fixSource || undefined })
-      if (revisionRef.current !== runRevision) setPreviewStale(true)
+      const preview = await runFixPreview({ files: runFiles, targetVersion: target, sourceVersion: fixSource || undefined, revision: runRev })
+      // A newer run superseded this one — drop the result, don't overwrite.
+      if (gen !== runGenRef.current) return
+      if (isResultStale(revisionRef.current, preview.revision ?? runRev)) setPreviewStale(true)
       setFixPreview(preview)
       setProgress('')
     } catch (err: any) {
@@ -165,7 +188,7 @@ export default function App() {
       setLoading(false)
       setProgress('')
     }
-  }, [workspaceFiles, fixTarget, fixSource])
+  }, [workspaceFiles, files, editedFiles, deletedFiles, fileName, mode, fixTarget, fixSource])
 
   /** "Port to X" from a result row: preselect the target and run the same
    *  preview flow as the Fix panel's button (only when a pack is loaded).
@@ -180,6 +203,13 @@ export default function App() {
     if (!workspaceFiles) { setError('Select a pack first'); return }
     if (!fixTarget) { setError('Choose a target version to port to'); return }
     const runRevision = revisionRef.current
+    const snapshot = createWorkspaceSnapshot(
+      { originalFiles: files, editedFiles, deletedFiles },
+      { packName: fileName, mode, sourceVersion: fixSource || 'Auto' },
+      runRevision,
+    )
+    const runFiles = snapshot ? snapshot.files : workspaceFiles
+    const runRev = snapshot ? snapshot.revision : runRevision
     setLoading(true)
     setError('')
     setProgress(`Downloading ported pack to ${fixTarget}...`)
@@ -189,7 +219,7 @@ export default function App() {
       if (revisionRef.current !== runRevision) {
         throw new Error('Workspace changed during the run — re-run to download a current port.')
       }
-      const blob = await runFix({ files: workspaceFiles, targetVersion: fixTarget, sourceVersion: fixSource || undefined })
+      const blob = await runFix({ files: runFiles, targetVersion: fixTarget, sourceVersion: fixSource || undefined, revision: runRev })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -203,7 +233,7 @@ export default function App() {
       setLoading(false)
       setProgress('')
     }
-  }, [workspaceFiles, fixTarget, fixSource])
+  }, [workspaceFiles, files, editedFiles, deletedFiles, fileName, mode, fixTarget, fixSource])
 
   const openEditor = useCallback(() => {
     history.pushState(null, '', 'datapack-editor')

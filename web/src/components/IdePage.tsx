@@ -979,8 +979,10 @@ export default function IdePage({
   // --- 1.12 Export pack as zip -------------------------------------------
   const handleExport = useCallback(async () => {
     if (!originalFiles) return
-    const merged = { ...originalFiles, ...editedFiles }
-    for (const d of deletedFiles) delete merged[d]
+    // Use the single source of truth so deletions are honored by export too
+    // (previously export ignored deletions while check/fix/analyze did not).
+    const merged = buildWorkspaceFiles({ originalFiles, editedFiles, deletedFiles })
+    if (!merged) return
     const safeName = (fileName || 'datapack').replace(/\.zip$/i, '')
     const filename = `${safeName}_edited.zip`
     try {

@@ -127,17 +127,23 @@ export interface CheckRequest {
   strict: boolean
   files: PackFileMap
   onProgress?: ProgressCallback
+  /** Workspace revision the files were captured at (provenance). */
+  revision?: number
 }
 
 export interface CheckResponse {
   result: CheckResult
   mode: string
+  /** Revision the check was run against, echoed back for staleness checks. */
+  revision?: number
 }
 
 export interface FixRequest {
   files: PackFileMap
   targetVersion: string
   sourceVersion?: string
+  /** Workspace revision the files were captured at (provenance). */
+  revision?: number
 }
 
 export interface FixFileDetail {
@@ -176,6 +182,8 @@ export interface FixPreview {
   plan: FixPlan
   isRp: boolean
   outputFiles?: PackFileMap
+  /** Revision the preview was generated against, echoed back for staleness checks. */
+  revision?: number
 }
 
 export async function fetchVersions(): Promise<McmetaVersion[]> {
@@ -210,7 +218,7 @@ export async function runCheck(req: CheckRequest): Promise<CheckResponse> {
     throw new Error(err.message || String(err))
   }
 
-  return { result, mode: detectedMode }
+  return { result, mode: detectedMode, revision: req.revision }
 }
 
 export async function runFixPreview(req: FixRequest): Promise<FixPreview> {
@@ -235,6 +243,7 @@ export async function runFixPreview(req: FixRequest): Promise<FixPreview> {
     plan: fixResult.plan,
     isRp,
     outputFiles: fixResult.files as PackFileMap,
+    revision: req.revision,
   }
 }
 
