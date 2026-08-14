@@ -15,6 +15,7 @@ import { SpyglassService, type IdeMarker } from '../engine/spyglass-service'
 import { registerSpyglassMonaco } from '../ide/monaco-spyglass'
 import { readDroppedFiles } from '../ide/pack-io'
 import { buildWorkspaceFiles, computeContentHash } from '../workspace'
+import { validatePackMetadata } from '../ide/metadata-validation'
 import {
   createIdbDraftStore,
   createMemoryDraftStore,
@@ -351,6 +352,11 @@ export default function IdePage({
     return () => { cancelled = true; clearTimeout(timer) }
   }, [spyglassReady, openTabs, activePath, editedFiles, originalFiles, analyzeAllMode])
 
+  const metadataProblems = useMemo(() => {
+    if (!originalFiles) return []
+    return validatePackMetadata(originalFiles, mode)
+  }, [originalFiles, mode])
+
   // Group problems by file, VS Code style: each file gets a collapsible
   // header (name + dir + count) with its markers indented beneath.
   const problemGroups = useMemo(() => {
@@ -372,8 +378,27 @@ export default function IdePage({
       }))
       .filter(g => g.markers.length > 0)
       .sort((a, b) => a.path.localeCompare(b.path))
+    if (metadataProblems.length > 0) {
+      const metadataMarkers: IdeMarker[] = metadataProblems.map(problem => ({
+        severity: problem.severity,
+        message: problem.message,
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 1,
+      }))
+      const filtered = problemFilter.trim().toLowerCase()
+      if (!filtered || metadataMarkers.some(marker => marker.message.toLowerCase().includes(filtered))) {
+        const metadataIndex = groups.findIndex(group => group.path === 'pack.mcmeta')
+        const existing = metadataIndex >= 0 ? groups.splice(metadataIndex, 1)[0].markers : []
+        groups.unshift({ path: 'pack.mcmeta', markers: [
+          ...(filtered ? metadataMarkers.filter(marker => marker.message.toLowerCase().includes(filtered)) : metadataMarkers),
+          ...existing,
+        ] })
+      }
+    }
     return groups
-  }, [problems, problemFilter])
+  }, [problems, problemFilter, metadataProblems])
 
   const beforeMount = useCallback<BeforeMount>((monacoInstance) => {
     // getLanguages() comes back untyped here: @monaco-editor/react derives Monaco
@@ -1063,7 +1088,9 @@ export default function IdePage({
     // Determine content from extension
     const ext = raw.split('.').pop()?.toLowerCase()
     let content = ''
-    if (ext === 'mcmeta') {
+    if (path.endsWith('pack.mcmeta')) {
+      content = JSON.stringify({ pack: { pack_format: 48, description: 'My Pack' } }, null, 2)
+    } else if (ext === 'mcmeta') {
       content = JSON.stringify({ pack: { pack_format: 1, description: '' } }, null, 2)
     } else if (ext === 'json') {
       content = '{}'
@@ -1808,7 +1835,7 @@ export default function IdePage({
                                   {marker.severity === 'error' ? '✕' : marker.severity === 'warning' ? '⚠' : marker.severity === 'info' ? 'ℹ' : '·'}
                                 </span>
                                 <span className="ide-problem-msg">{marker.message}</span>
-                                <span className="ide-problem-source">spyglassmc</span>
+                                <span className="ide-problem-source">{group.path === 'pack.mcmeta' ? 'metadata' : 'spyglassmc'}</span>
                                 <span className="ide-problem-loc">[Ln {marker.startLineNumber}, Col {marker.startColumn}]</span>
                               </button>
                             ))}
