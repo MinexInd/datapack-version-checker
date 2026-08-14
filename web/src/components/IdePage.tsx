@@ -1247,7 +1247,7 @@ export default function IdePage({
     }
     onEditedFilesChange(nextEdited)
     setConfirmingApply(false)
-    addLog('success', `Applied fix preview to ${Object.keys(backup).length} file(s)`)
+    addLog('success', `Applied fix preview: ${fixPreviewV2.summary}`)
     onRun()
   }, [fixPreviewV2, mergedFiles, originalFiles, editedFiles, onEditedFilesChange, addLog, onRun])
 
@@ -2443,6 +2443,24 @@ export default function IdePage({
                     </div>
                   ) : (
                     <div className="ide-problems">
+                      {(() => {
+                        let errs = 0
+                        let warns = 0
+                        for (const g of problemGroups) {
+                          for (const m of g.markers) {
+                            if (m.severity === 'error') errs++
+                            else if (m.severity === 'warning') warns++
+                          }
+                        }
+                        const ver = selectedVersions[0] ?? selectedGameVersion
+                        return (
+                          <div className="ide-problems-summary" aria-label="Problem summary">
+                            <span className="ide-problem-count sev-error">{errs} error{errs !== 1 ? 's' : ''}</span>
+                            <span className="ide-problem-count sev-warning">{warns} warning{warns !== 1 ? 's' : ''}</span>
+                            <span className="ide-problem-version">MC {ver}</span>
+                          </div>
+                        )
+                      })()}
                       {problemGroups.map(group => {
                         const isGroupCollapsed = problemsCollapsed.has(group.path)
                         const dir = group.path.includes('/')
@@ -2481,6 +2499,7 @@ export default function IdePage({
                                 </span>
                                 <span className="ide-problem-msg">{marker.message}</span>
                                 <span className="ide-problem-source">{group.path === 'pack.mcmeta' ? 'metadata' : 'spyglassmc'}</span>
+                                <span className="ide-problem-version-label">MC {selectedVersions[0] ?? selectedGameVersion}</span>
                                 <span className="ide-problem-loc">[Ln {marker.startLineNumber}, Col {marker.startColumn}]</span>
                               </button>
                             ))}

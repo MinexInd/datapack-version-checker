@@ -1273,12 +1273,44 @@
   color: var(--ink-faint);
 }
 
+.ide-problem-version-label {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--ink-faint);
+}
+
 .ide-problem-loc {
   flex-shrink: 0;
   font-family: var(--font-mono);
   font-size: 0.68rem;
   color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
+}
+
+.ide-problems-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--hairline-soft, #1e293b);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+}
+
+.ide-problem-count.sev-error {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.ide-problem-count.sev-warning {
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.ide-problem-version {
+  margin-left: auto;
+  color: var(--ink-faint);
 }
 
 /* ---------- Status bar ---------- */
