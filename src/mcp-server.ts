@@ -8,6 +8,7 @@ import { checkCompatibilityContentBased, checkResourcePack } from './engine.js'
 import { fixDatapack, fixResourcePack } from './fixer.js'
 import { fetchVersions } from './api.js'
 import { analyzePack } from './analyzer.js'
+import { analyzePackWithSpyglass, clearSpyglassCache } from './spyglass-analyze.js'
 import { setLogLevel } from './logger.js'
 
 setLogLevel('warn')
@@ -268,6 +269,57 @@ server.tool(
 
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+      }
+    } catch (err: any) {
+      return { content: [{ type: 'text' as const, text: `Error analyzing pack: ${err.message}` }], isError: true }
+    }
+  },
+)
+
+// ---------------------------------------------------------------------------
+// Tool: dpcheck_diagnostics
+// ---------------------------------------------------------------------------
+server.tool(
+  'dpcheck_diagnostics',
+  'Analyze a datapack using Spyglass core and return precise diagnostics (file, line, column, severity, message, source) for a specific Minecraft version. Version is required — do not infer from pack.mcmeta.',
+  {
+    path: z.string().describe('Path to the datapack directory'),
+    version: z.string().describe('Target Minecraft version to analyze against (e.g. "1.21.4")'),
+  },
+  async ({ path, version }) => {
+    try {
+      const dir = resolve(path)
+      if (!existsSync(dir)) {
+        return { content: [{ type: 'text' as const, text: `Error: Directory not found: ${dir}` }], isError: true }
+      }
+      if (!existsSync(`${dir}/pack.mcmeta`)) {
+        return { content: [{ type: 'text' as const, text: `Error: No pack.mcmeta found in ${dir}` }], isError: true }
+      }
+
+      const result = await analyzePackWithSpyglass(dir, version)
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            version: result.version,
+            fileCount: result.fileCount,
+            errorCount: result.errorCount,
+            warningCount: result.warningCount,
+            diagnostics: result.diagnostics.map(d => ({
+              file: d.file,
+              uri: d.uri,
+              line: d.line,
+              column: d.column,
+              endLine: d.endLine,
+              endColumn: d.endColumn,
+              severity: d.severity,
+              message: d.message,
+              source: d.source,
+              code: d.code,
+            })),
+          }, null, 2),
+        }],
       }
     } catch (err: any) {
       return { content: [{ type: 'text' as const, text: `Error analyzing pack: ${err.message}` }], isError: true }
