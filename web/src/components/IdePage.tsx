@@ -23,6 +23,7 @@ import {
   type DraftSnapshot,
   type DraftStoreLike,
 } from '../ide/idb-draft'
+import { findReferencesTo, isPathTraversal, validateFileName } from '../ide/file-lifecycle'
 
 interface Props {
   originalFiles: PackFileMap | null
@@ -187,6 +188,8 @@ export default function IdePage({
   const [newFileName, setNewFileName] = useState('')
   const newFileInputRef = useRef<HTMLInputElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  const [renameError, setRenameError] = useState<string | null>(null)
 
   // 2b.5 — Drag-to-move state
   const [dragPath, setDragPath] = useState<string | null>(null)
@@ -1047,9 +1050,13 @@ export default function IdePage({
   const handleCreateFile = useCallback(() => {
     const raw = newFileName.trim()
     if (!raw) return
-    // Validate: no slashes, non-empty name
-    if (raw.includes('/') || raw.includes('\\')) {
-      addLog('error', 'File name must not contain path separators')
+    const nameErr = validateFileName(raw)
+    if (nameErr) {
+      addLog('error', nameErr)
+      return
+    }
+    if (isPathTraversal(raw)) {
+      addLog('error', 'File name must not traverse paths')
       return
     }
     const folder = newFileTarget ?? ''
@@ -1077,17 +1084,23 @@ export default function IdePage({
 
   const handleRenameCommit = useCallback((oldPath: string, newName: string) => {
     setRenamingPath(null)
+    setRenameError(null)
     const raw = newName.trim()
     if (!raw || raw === oldPath.split('/').pop()) return // no change or empty
+    const nameErr = validateFileName(raw)
+    if (nameErr) {
+      setRenameError(nameErr)
+      return
+    }
     if (raw.includes('/') || raw.includes('\\')) {
-      addLog('error', 'File name must not contain path separators')
+      setRenameError('File name must not contain path separators')
       return
     }
     const dir = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/')) : ''
     const newPath = dir ? `${dir}/${raw}` : raw
     const all = { ...originalFiles, ...editedFiles }
     if ((all[newPath] !== undefined && newPath !== oldPath) || deletedFiles.has(newPath)) {
-      addLog('error', `File "${newPath}" already exists`)
+      setRenameError(`File "${newPath}" already exists`)
       return
     }
     // Move the editedFiles entry (or create one if the file was only in originalFiles)
@@ -1102,6 +1115,11 @@ export default function IdePage({
     if (originalFiles?.[oldPath] !== undefined && editedFiles[oldPath] === undefined) {
       // The original content was moved — mark old as "deleted" so tree hides it
       onDeletedFilesChange(new Set(deletedFiles).add(oldPath))
+    }
+    // Warn about references
+    const refs = findReferencesTo(oldPath, all)
+    if (refs.length > 0) {
+      addLog('info', `renamed ${oldPath} → ${newPath} — ${refs.length} reference(s) in: ${[...new Set(refs.map(r => r.file))].join(', ')}`)
     }
     // Update tabs
     setOpenTabs(prev => prev.map(p => p === oldPath ? newPath : p))
@@ -1168,7 +1186,18 @@ export default function IdePage({
   }, [dragPath, originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, onDeletedFilesChange, addLog])
 
   const handleDeleteFile = useCallback((path: string) => {
-    if (!window.confirm(`Delete "${path.split('/').pop()}"?`)) return
+    const all = { ...originalFiles, ...editedFiles }
+    const refs = findReferencesTo(path, all)
+    setPendingDelete(path)
+    if (refs.length > 0) {
+      addLog('info', `delete "${path}" — ${refs.length} reference(s) in: ${[...new Set(refs.map(r => r.file))].join(', ')}`)
+    }
+  }, [originalFiles, editedFiles, addLog])
+
+  const confirmDelete = useCallback(() => {
+    const path = pendingDelete
+    if (!path) return
+    setPendingDelete(null)
     // Remove from editedFiles
     const newEdited = { ...editedFiles }
     delete newEdited[path]
@@ -1184,7 +1213,12 @@ export default function IdePage({
       return next
     })
     addLog('info', `deleted ${path}`)
-  }, [originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, onDeletedFilesChange, addLog])
+  }, [pendingDelete, originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, onDeletedFilesChange, addLog])
+
+  const cancelDelete = useCallback(() => {
+    setPendingDelete(null)
+    addLog('info', 'delete cancelled')
+  }, [addLog])
 
   function renderTree(node: TreeNode, depth: number): ReactNode {
     return node.children.map(child => {
@@ -1239,6 +1273,7 @@ export default function IdePage({
               }}
               onBlur={e => handleRenameCommit(child.path, e.target.value)}
             />
+            {renameError && <span className="ide-rename-error">{renameError}</span>}
           </div>
         )
       }
@@ -1302,6 +1337,17 @@ export default function IdePage({
           <div className="ide-draft-banner-actions">
             <button type="button" onClick={handleRestoreDraft}>Restore</button>
             <button type="button" className="secondary" onClick={handleDiscardDraft}>Discard</button>
+          </div>
+        </div>
+      )}
+      {pendingDelete && (
+        <div className="ide-draft-banner" role="alert">
+          <div className="ide-draft-banner-text">
+            <strong>Delete "{pendingDelete.split('/').pop()}"?</strong> This action can be undone only by reloading the pack.
+          </div>
+          <div className="ide-draft-banner-actions">
+            <button type="button" onClick={confirmDelete}>Delete</button>
+            <button type="button" className="secondary" onClick={cancelDelete}>Keep</button>
           </div>
         </div>
       )}
