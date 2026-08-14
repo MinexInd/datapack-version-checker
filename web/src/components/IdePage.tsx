@@ -560,6 +560,21 @@ export default function IdePage({
     [originalFiles, editedFiles, deletedFiles],
   )
 
+  // M1.5 — flattened, depth-first, render-order list of currently visible
+  // tree rows (collapsed folders omit descendants). Used for ArrowUp/Down nav.
+  const visibleRows = useMemo(() => {
+    if (!tree) return [] as { path: string; kind: 'folder' | 'file' }[]
+    const out: { path: string; kind: 'folder' | 'file' }[] = []
+    const walk = (node: TreeNode) => {
+      for (const child of node.children) {
+        out.push({ path: child.path, kind: child.isDir ? 'folder' : 'file' })
+        if (child.isDir && !collapsed.has(child.path)) walk(child)
+      }
+    }
+    walk(tree)
+    return out
+  }, [tree, collapsed])
+
   const activeContent = useMemo(() => {
     if (!activePath) return ''
     if (editedFiles[activePath] !== undefined) return editedFiles[activePath]
@@ -668,6 +683,47 @@ export default function IdePage({
       return next
     })
   }, [])
+
+  // M1.5 — move keyboard focus between visible tree rows (ArrowUp/Down) and
+  // expand/collapse folders (ArrowRight/Left). Enter opens a file.
+  const handleTreeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (visibleRows.length === 0) return
+    const target = e.target as HTMLElement
+    const currentPath = target.getAttribute('data-tree-path')
+    const idx = currentPath ? visibleRows.findIndex(r => r.path === currentPath) : -1
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      const next = visibleRows[Math.min(idx + 1, visibleRows.length - 1)] ?? visibleRows[0]
+      document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(next.path)}"]`)?.focus()
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      const prev = visibleRows[Math.max(idx - 1, 0)] ?? visibleRows[visibleRows.length - 1]
+      document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(prev.path)}"]`)?.focus()
+    } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
+      const row = currentPath ? visibleRows[idx] : undefined
+      if (row?.kind === 'folder') {
+        if (collapsed.has(row.path)) {
+          e.preventDefault()
+          toggleFolder(row.path)
+        } else if (e.key === 'ArrowRight') {
+          // already expanded: move into first child
+          e.preventDefault()
+          const firstChild = visibleRows[idx + 1]
+          if (firstChild) document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(firstChild.path)}"]`)?.focus()
+        }
+      } else if (row?.kind === 'file' && e.key === 'Enter') {
+        e.preventDefault()
+        openFile(row.path)
+      }
+    } else if (e.key === 'ArrowLeft') {
+      const row = currentPath ? visibleRows[idx] : undefined
+      if (row?.kind === 'folder' && !collapsed.has(row.path)) {
+        e.preventDefault()
+        toggleFolder(row.path)
+      }
+    }
+  }, [visibleRows, collapsed, toggleFolder, openFile])
 
   const handleRun = useCallback(() => {
     addLog('run', 'compatibility check started')
@@ -1027,18 +1083,53 @@ export default function IdePage({
     }
   }, [originalFiles, editedFiles, deletedFiles, fileName, addLog])
 
-  // 1.12 — Ctrl+S / Cmd+S to export the pack.
+  // M1.5 — Global keyboard shortcuts: Ctrl/Cmd+S export, Ctrl+Shift+A run check,
+  // Escape closes the active tab or cancels the delete-confirm dialog.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.key !== 's') return
       const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
-      e.preventDefault()
-      handleExport()
+      const isEditableField =
+        tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable
+
+      // Ctrl/Cmd+S — export the pack. Never steal from text fields.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') {
+        if (isEditableField) return
+        e.preventDefault()
+        handleExport()
+        return
+      }
+
+      // Ctrl+Shift+A (or Ctrl+Enter) — run whole-pack analysis.
+      if (
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'a') ||
+        ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'Enter')
+      ) {
+        if (isEditableField) return
+        e.preventDefault()
+        handleRun()
+        return
+      }
+
+      // Escape — only act when no text field is focused (let fields keep their
+      // own Escape handling for newfile/rename inputs). Closes the active tab
+      // or cancels the pending delete confirmation.
+      if (e.key === 'Escape' && !isEditableField) {
+        if (pendingDelete) {
+          e.preventDefault()
+          setPendingDelete(null)
+          addLog('info', 'delete cancelled')
+          return
+        }
+        if (activePath) {
+          e.preventDefault()
+          closeTab(activePath)
+          return
+        }
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleExport])
+  }, [handleExport, handleRun, pendingDelete, activePath, closeTab, addLog])
 
   // --- 1.2 File operations: create / rename / delete --------------------
 
@@ -1256,6 +1347,9 @@ export default function IdePage({
           <div key={child.path}>
             <button
               type="button"
+              data-tree-path={child.path}
+              data-tree-kind="folder"
+              aria-expanded={!isCollapsed}
               className={`ide-tree-row ide-folder${isCollapsed ? ' collapsed' : ''}${isDropTarget ? ' drop-target' : ''}`}
               style={{ paddingLeft: depth * 14 + 6 }}
               onClick={() => toggleFolder(child.path)}
@@ -1309,6 +1403,9 @@ export default function IdePage({
         <button
           key={child.path}
           type="button"
+          data-tree-path={child.path}
+          data-tree-kind="file"
+          aria-selected={isActive}
           className={`ide-tree-row ide-file${isActive ? ' active' : ''}${isBeingDragged ? ' dragging' : ''}`}
           style={{ paddingLeft: depth * 14 + 24 }}
           draggable
@@ -1368,13 +1465,13 @@ export default function IdePage({
         </div>
       )}
       {pendingDelete && (
-        <div className="ide-draft-banner" role="alert">
+        <div className="ide-draft-banner" role="alertdialog" aria-label="Confirm delete">
           <div className="ide-draft-banner-text">
             <strong>Delete "{pendingDelete.split('/').pop()}"?</strong> This action can be undone only by reloading the pack.
           </div>
           <div className="ide-draft-banner-actions">
-            <button type="button" onClick={confirmDelete}>Delete</button>
-            <button type="button" className="secondary" onClick={cancelDelete}>Keep</button>
+            <button type="button" onClick={confirmDelete} autoFocus aria-label="Confirm delete">Delete</button>
+            <button type="button" className="secondary" onClick={cancelDelete} aria-label="Cancel delete">Keep</button>
           </div>
         </div>
       )}
@@ -1475,7 +1572,12 @@ export default function IdePage({
                 </span>
               </div>
               {tree && (
-                <div className="ide-tree">
+                <div
+                  className="ide-tree"
+                  role="tree"
+                  aria-label="Pack files"
+                  onKeyDown={handleTreeKeyDown}
+                >
                   {tree.children.length > 0 ? renderTree(tree, 0) : (
                     <div className="ide-tree-empty">Empty pack</div>
                   )}
@@ -1756,7 +1858,7 @@ export default function IdePage({
                   <div className="ide-runbar">
                     <span>
                       {progress && <><span className="spinner" /> {progress}</>}
-                      {!progress && !loading && (originalFiles ? <span className="kbd">Ctrl</span> : 'upload a pack first')}
+                      {!progress && !loading && (originalFiles ? <span className="kbd">Ctrl+Shift+A</span> : 'upload a pack first')}
                     </span>
                     <button className="btn btn-primary" onClick={handleRun} disabled={loading || !originalFiles} aria-busy={loading}>
                       {loading ? <><span className="spinner" /> Running…</> : '▶ Run Check'}
