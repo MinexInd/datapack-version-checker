@@ -59,7 +59,11 @@ interface CacheEntry {
   project: Project
 }
 
-const cache = new Map<CacheKey, CacheEntry>()
+const cache = new Map<string, CacheEntry>()
+
+function cacheKeyOf(packDir: string, version: string): string {
+  return `${packDir}::${version}`
+}
 
 export function clearSpyglassCache(): void {
   for (const entry of cache.values()) {
@@ -166,7 +170,7 @@ export async function analyzePackWithSpyglass(
   const packUri = uriFromPath(absPackDir)
 
   // Reuse cached project for this (dir, version) pair
-  const key: CacheKey = { packDir: absPackDir, version }
+  const key = cacheKeyOf(absPackDir, version)
   let entry = cache.get(key)
   if (!entry) {
     const externals = getNodeJsExternals()
