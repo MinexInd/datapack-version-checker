@@ -198,8 +198,13 @@ async function runParserForVersion(
       if (!managed) continue
 
       const { doc, node } = managed
+      // FileNode.getErrors covers checker/linter errors; parser errors are
+      // emitted earlier and live on the node directly. Collect both so the
+      // caller sees the full parse + check result set.
       const errors = FileNode.getErrors(node)
-      for (const err of errors) {
+      const parserErrors = (node as any).parserErrors ?? []
+      const allErrors = [...parserErrors, ...errors]
+      for (const err of allErrors) {
         const pos = doc.positionAt(err.range.start)
         issues.push({
           file: path,
