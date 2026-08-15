@@ -388,7 +388,7 @@ function downloadFile(filename: string, content: string, mime: string) {
 }
 
 function exportJson(result: CheckResult) {
-  downloadFile('dpcheck-report.json', JSON.stringify(result, null, 2), 'application/json')
+  downloadFile('minex-datapack-checker-report.json', JSON.stringify(result, null, 2), 'application/json')
 }
 
 function exportMarkdown(result: CheckResult) {
@@ -438,7 +438,7 @@ function exportMarkdown(result: CheckResult) {
     }
     lines.push(``)
   }
-  downloadFile('dpcheck-report.md', lines.join('\n'), 'text/markdown')
+  downloadFile('minex-datapack-checker-report.md', lines.join('\n'), 'text/markdown')
 }
 
 function AnalysisSection({ analysis }: { analysis: AnalysisResult }) {

@@ -1,7 +1,7 @@
 {
   "name": "datapack-version-checker",
   "version": "0.5.0",
-  "description": "CLI tool to check & auto-fix Minecraft datapack compatibility across versions — content + structural + registry deprecation + auto-porting",
+  "description": "Minex Datapack Checker — check & auto-fix Minecraft datapack compatibility across versions",
   "type": "module",
   "engines": {
     "node": ">=18"

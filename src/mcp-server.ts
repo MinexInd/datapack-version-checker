@@ -14,7 +14,7 @@ import { setLogLevel } from './logger.js'
 setLogLevel('warn')
 
 const server = new McpServer({
-  name: 'dpcheck',
+  name: 'minex-datapack-checker',
   version: '0.5.0',
 })
 

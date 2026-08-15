@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { getLogger } from './logger.js'
 
-const CACHE_DIR = join(tmpdir(), 'dpcheck-cache')
+const CACHE_DIR = join(tmpdir(), 'minex-datapack-checker-cache')
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000 // 24h
 
 const log = getLogger().child('cache')

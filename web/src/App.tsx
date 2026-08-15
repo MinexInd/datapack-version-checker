@@ -80,9 +80,9 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const redirect = sessionStorage.getItem('dpcheck-redirect')
+    const redirect = sessionStorage.getItem('minex-datapack-checker-redirect')
     if (redirect) {
-      sessionStorage.removeItem('dpcheck-redirect')
+      sessionStorage.removeItem('minex-datapack-checker-redirect')
       history.replaceState(null, '', redirect)
       setView(viewFromPath())
     }

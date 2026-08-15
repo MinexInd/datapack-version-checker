@@ -92,31 +92,31 @@ interface CliOptions {
 
 function printHelp() {
   console.log(`
-  dpcheck - Minecraft Datapack Version Checker (content-based)
+  minex-datapack-checker — Minecraft Datapack Version Checker (content-based)
 
   Determines compatibility from ACTUAL datapack content (commands, JSON) +
   community knowledge of version changes — NOT from pack.mcmeta (which is
   often wrong). Can also auto-fix/port datapacks between versions.
 
   USAGE:
-    dpcheck                              Check current directory
-    dpcheck --dir <path>                 Check a specific datapack directory
-    dpcheck --versions "1.21,1.20.4"     Check specific versions
-    dpcheck --all                        Check all versions including snapshots
-    dpcheck --json                       Output as JSON (for scripting)
-    dpcheck --refresh                    Re-download all cached version data
-    dpcheck --fix <target>               Port datapack to target version
-    dpcheck --fix <target> --from <ver>  Specify source version explicitly
-    dpcheck --fix <target> --output <dir>  Custom output directory
-    dpcheck --version                    Show version
-    dpcheck --help                       Show this help
-    dpcheck --dir <path> --mode resourcepack  Check a resource pack
-    dpcheck --mode auto                  Auto-detect pack type
-    dpcheck --verbose                    Show detailed progress and timing
-    dpcheck --diff                       Show before/after code diff for each fix
-    dpcheck --summary                    Separate content issues from outside-load-range
-    dpcheck --debug                      Show all debug messages (very verbose)
-    dpcheck serve                        Start GUI web server on localhost:3001
+    minex-datapack-checker                        Check current directory
+    minex-datapack-checker --dir <path>                 Check a specific datapack directory
+    minex-datapack-checker --versions "1.21,1.20.4"     Check specific versions
+    minex-datapack-checker --all                        Check all versions including snapshots
+    minex-datapack-checker --json                       Output as JSON (for scripting)
+    minex-datapack-checker --refresh                    Re-download all cached version data
+    minex-datapack-checker --fix <target>               Port datapack to target version
+    minex-datapack-checker --fix <target> --from <ver>  Specify source version explicitly
+    minex-datapack-checker --fix <target> --output <dir>  Custom output directory
+    minex-datapack-checker --version                    Show version
+    minex-datapack-checker --help                       Show this help
+    minex-datapack-checker --dir <path> --mode resourcepack  Check a resource pack
+    minex-datapack-checker --mode auto                  Auto-detect pack type
+    minex-datapack-checker --verbose                    Show detailed progress and timing
+    minex-datapack-checker --diff                       Show before/after code diff for each fix
+    minex-datapack-checker --summary                    Separate content issues from outside-load-range
+    minex-datapack-checker --debug                      Show all debug messages (very verbose)
+    minex-datapack-checker serve                        Start GUI web server on localhost:3001
 
   WHAT IT DOES:
     1. Scans all .mcfunction files and validates every command against each
@@ -134,12 +134,12 @@ function printHelp() {
        particles, fonts, shaders, atlases, and language files
 
   EXAMPLES:
-    dpcheck --dir ./my-datapack
-    dpcheck --versions "1.20.4,1.21,1.21.1"
-    dpcheck --all --json > report.json
-    dpcheck --dir ./my-datapack --fix 1.21
-    dpcheck --dir ./my-datapack --fix 1.20.4 --from-version 1.21 --output ./ported
-    dpcheck --dir ./my-resource-pack --mode resourcepack
+    minex-datapack-checker --dir ./my-datapack
+    minex-datapack-checker --versions "1.20.4,1.21,1.21.1"
+    minex-datapack-checker --all --json > report.json
+    minex-datapack-checker --dir ./my-datapack --fix 1.21
+    minex-datapack-checker --dir ./my-datapack --fix 1.20.4 --from-version 1.21 --output ./ported
+    minex-datapack-checker --dir ./my-resource-pack --mode resourcepack
 `)
 }
 
@@ -154,7 +154,7 @@ function parseArgs(): CliOptions {
   }
 
   if (args.includes('--version') || args.includes('-V')) {
-    console.log('dpcheck v0.5.0')
+    console.log('minex-datapack-checker v0.5.0')
     process.exit(0)
   }
 
@@ -353,8 +353,8 @@ function printFixSuggestions(
     console.log()
     console.log(`  ${C.bd}${C.c}To auto-fix, run:${C.R}`)
     const cmd = isRp
-      ? `dpcheck --dir ${dir} --fix ${targetVersion} --mode resourcepack`
-      : `dpcheck --dir ${dir} --fix ${targetVersion}`
+      ? `minex-datapack-checker --dir ${dir} --fix ${targetVersion} --mode resourcepack`
+      : `minex-datapack-checker --dir ${dir} --fix ${targetVersion}`
     console.log(`    ${C.g}$ ${cmd}${C.R}`)
 
     // Show what versions would be fixed

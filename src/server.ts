@@ -50,7 +50,7 @@ export function createApp() {
       return
     }
 
-    const tmpDir = join(tmpdir(), 'dpcheck-' + randomUUID())
+    const tmpDir = join(tmpdir(), 'minex-datapack-checker-' + randomUUID())
     try {
       log.time('server-check')
       mkdirSync(tmpDir, { recursive: true })
@@ -107,8 +107,8 @@ export function createApp() {
       return
     }
 
-    const tmpDir = join(tmpdir(), 'dpcheck-fix-' + randomUUID())
-    const outDir = join(tmpdir(), 'dpcheck-fix-out-' + randomUUID())
+    const tmpDir = join(tmpdir(), 'minex-datapack-checker-fix-' + randomUUID())
+    const outDir = join(tmpdir(), 'minex-datapack-checker-fix-out-' + randomUUID())
     try {
       log.time('server-fix')
       mkdirSync(tmpDir, { recursive: true })
@@ -172,8 +172,8 @@ export function createApp() {
       return
     }
 
-    const tmpDir = join(tmpdir(), 'dpcheck-preview-' + randomUUID())
-    const outDir = join(tmpdir(), 'dpcheck-preview-out-' + randomUUID())
+    const tmpDir = join(tmpdir(), 'minex-datapack-checker-preview-' + randomUUID())
+    const outDir = join(tmpdir(), 'minex-datapack-checker-preview-out-' + randomUUID())
     try {
       mkdirSync(tmpDir, { recursive: true })
       for (const [rel, content] of Object.entries(files as Record<string, string>)) {
