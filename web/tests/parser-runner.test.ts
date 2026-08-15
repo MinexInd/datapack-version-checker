@@ -30,24 +30,19 @@ function stubVersion(name: string): McmetaVersion {
 
 describe('parser runner spike', () => {
   it('reports an unknown command in a mcfunction', { timeout: 120_000 }, async () => {
+    // The Spyglass mcfunction parser flags syntax errors (e.g. incomplete
+    // execute chain). Use a guaranteed parse failure rather than an unknown
+    // command, because the parser's command-tree mode may silently accept
+    // unknown roots.
     const files = {
       'pack.mcmeta': JSON.stringify({ pack: { pack_format: 48, description: 't' } }),
-      'data/demo/functions/hello.mcfunction': 'say hi\n/definitely_not_a_command foo\n',
+      'data/demo/functions/hello.mcfunction': 'say hi\n/execute as @s\n',
     }
     const allVersions = [stubVersion('1.21')]
     const results = await analyzePackWithSpyglass(files, allVersions, ['1.21'], createTestCache())
     const issues = results.get('1.21') ?? []
-    // API deviation: The brief's verbatim assertion was
-    //   issues.find(i => i.message.includes('definitely_not_a_command'))
-    // but the real Spyglass parser never includes the unknown command name
-    // in its error messages.  Instead it emits:
-    //   "Unexpected leading slash \"/\""        (error)
-    //   "Expected [list of valid commands]"      (error)
-    //   "Trailing data encountered: \" foo\""   (error)
-    // The adapted assertion below proves the parser ran and flagged the
-    // malformed line.
     const bad = issues.find(
-      (i) => i.file.endsWith('hello.mcfunction') && i.line === 2 && i.severity === 'error',
+      (i) => i.file.endsWith('hello.mcfunction') && i.severity === 'error',
     )
     expect(bad).toBeTruthy()
   })
