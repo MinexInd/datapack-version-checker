@@ -21,8 +21,24 @@ const JDELIVR_BASE = 'https://cdn.jsdelivr.net/gh/misode/mcmeta'
  * requests are redirected there. The vanilla mcdoc tarball is bundled into the
  * build (web/public/vanilla-mcdoc.tar.gz) and served same-origin.
  */
+// Vanilla data/resourcepack tarballs are bundled same-origin for this release.
+// jsDelivr serves raw files, not tarballs, so it can't provide these; the
+// original API returns correct gzips but is intermittently down. Bundling the
+// current latest release covers the common "auto" case reliably. Other versions
+// fall back to the original API (correct per-version tarball when healthy).
+const BUNDLED_VERSION = '26.2'
+
 function resolveSpyglassRewrite(url: string): string | undefined {
   const prefix = `https://${SPYGLASS_HOST}`
+
+  // Versions list (no version suffix). The Spyglass API proxies mcmeta's
+  // summary/versions/data.json — a flat array of version objects — so serve it
+  // directly from raw.githubusercontent.com (CORS-enabled, serves branches
+  // reliably). jsDelivr 404s on cold branch-ref edges and the original API's
+  // /mcje/versions endpoint is intermittently down (502).
+  if (url === `${prefix}/mcje/versions`) {
+    return 'https://raw.githubusercontent.com/misode/mcmeta/summary/versions/data.json'
+  }
 
   // Vanilla mcdoc tarball → same-origin bundled asset
   if (url === `${prefix}/vanilla-mcdoc/tarball`) {
@@ -36,14 +52,16 @@ function resolveSpyglassRewrite(url: string): string | undefined {
   if (versionMatch) {
     const [, version, rest] = versionMatch
 
+    // Tarballs: bundle same-origin (jsDelivr can't serve tarballs). Only the
+    // bundled release is served locally; other versions fall back to the API.
     if (rest === 'vanilla-data/tarball') {
-      return `${JDELIVR_BASE}@${version}-data/pack.mcmeta`
+      return version === BUNDLED_VERSION ? '/vanilla-data.tar.gz' : undefined
     }
     if (rest === 'vanilla-assets-tiny/tarball') {
-      return `${JDELIVR_BASE}@${version}-assets-tiny/pack.mcmeta`
+      return version === BUNDLED_VERSION ? '/vanilla-assets-tiny.tar.gz' : undefined
     }
 
-    // Summary JSONs: block_states, commands, registries
+    // Summary JSONs: block_states, commands, registries → jsDelivr tags
     const summaryMap: Record<string, string> = {
       block_states: 'blocks',
       commands: 'commands',
