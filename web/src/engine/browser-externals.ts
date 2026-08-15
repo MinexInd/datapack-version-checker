@@ -10,17 +10,22 @@ import { gunzipBytes, parseTar } from './tar'
 /**
  * Rewrite Spyglass API requests through a local dev proxy.
  *
- * In the dev sandbox, the browser cannot reach api.spyglassmc.com directly
- * (Spyglass's 15s fetcher timeout fires) even though Node can. When the Vite
- * dev server is running, /api/spyglassmc proxies to the real host. In production
- * (a GH Pages static build) the proxy route is absent, so we catch the failure
- * and fall back to the direct, CORS-enabled fetch.
+ * The api.ts module now fetches versions/registries/commands from jsDelivr
+ * (CORS-enabled CDN). This proxy is only needed in the Vite dev sandbox for
+ * Spyglass core's internal fetches (vanilla tarballs, mcdoc symbols) which
+ * still go through api.spyglassmc.com and time out without the Vite proxy.
+ *
+ * In production (GH Pages), no proxy route exists, so we skip the rewrite
+ * entirely to avoid the 404→CORS failure chain.
  */
 const SPYGLASS_HOST = 'api.spyglassmc.com'
 const PROXY_PREFIX = '/api/spyglassmc'
 let fetchPatched = false
 function applyFetchProxy() {
   if (fetchPatched || typeof window === 'undefined' || typeof globalThis.fetch !== 'function') return
+  // Only apply in the Vite dev sandbox (localhost). In production (GH Pages)
+  // there is no proxy server, so rewriting would 404 and trigger CORS errors.
+  if (window.location.hostname !== 'localhost') return
   fetchPatched = true
   const original = globalThis.fetch
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {

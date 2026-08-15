@@ -2,7 +2,21 @@ import { createIdbCache, clearIdbCache, API_CACHE_DB } from './idb-cache'
 import type { CacheLike } from './idb-cache'
 import type { McmetaVersion, CommandTreeNode } from './types'
 
-const BASE = 'https://api.spyglassmc.com/mcje'
+/**
+ * Data source: misode/mcmeta via jsDelivr CDN.
+ * CORS-enabled (Access-Control-Allow-Origin: *), no server-side proxy needed.
+ * The SpyglassMC API (api.spyglassmc.com) has intermittent CORS issues —
+ * its BunnyCDN origin sometimes returns 502 without CORS headers, and
+ * OPTIONS preflight consistently fails. jsDelivr serves the same data
+ * directly from GitHub with proper CORS support.
+ */
+const VERSIONS_URL = 'https://cdn.jsdelivr.net/gh/misode/mcmeta@summary/versions/data.json'
+function registriesUrl(versionId: string): string {
+  return `https://cdn.jsdelivr.net/gh/misode/mcmeta@${versionId}-summary/registries/data.json`
+}
+function commandsUrl(versionId: string): string {
+  return `https://cdn.jsdelivr.net/gh/misode/mcmeta@${versionId}-summary/commands/data.json`
+}
 
 const nullCache: CacheLike = { get: async () => null, put: async () => {} }
 
@@ -70,19 +84,13 @@ async function doFetch<T>(url: string, label: string): Promise<T> {
 }
 
 export async function fetchVersions(): Promise<McmetaVersion[]> {
-  return doFetch<McmetaVersion[]>(`${BASE}/versions`, 'versions')
+  return doFetch<McmetaVersion[]>(VERSIONS_URL, 'versions')
 }
 
 export async function fetchCommandTree(versionId: string): Promise<CommandTreeNode> {
-  return doFetch<CommandTreeNode>(
-    `${BASE}/versions/${encodeURIComponent(versionId)}/commands`,
-    `command-tree:${versionId}`,
-  )
+  return doFetch<CommandTreeNode>(commandsUrl(versionId), `command-tree:${versionId}`)
 }
 
 export async function fetchRegistries(versionId: string): Promise<Record<string, string[]>> {
-  return doFetch<Record<string, string[]>>(
-    `${BASE}/versions/${encodeURIComponent(versionId)}/registries`,
-    `registries:${versionId}`,
-  )
+  return doFetch<Record<string, string[]>>(registriesUrl(versionId), `registries:${versionId}`)
 }
