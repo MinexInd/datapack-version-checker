@@ -48,6 +48,7 @@ function resolveDispatcher(
   typeDef: Extract<mcdoc.McdocType, { kind: 'dispatcher' }>,
   ctx: mcdoc.runtime.checker.SimplifyContext<never>,
   depth: number,
+  visited: Set<string>,
   budget: NodeBudget = { remaining: NODE_BUDGET },
 ): SpyglassType {
   const registry = typeDef.registry
@@ -67,7 +68,7 @@ function resolveDispatcher(
         // %fallback: iterate all members in the dispatcher's symbol map
         for (const [, value] of Object.entries(members)) {
           if (hasValidTypeDef(value.data)) {
-            resolvedMembers.push(resolveDynamicTypes(value.data.typeDef, ctx, depth + 1, new Set(), budget))
+            resolvedMembers.push(resolveDynamicTypes(value.data.typeDef, ctx, depth + 1, visited, budget))
           }
         }
         break // %fallback is terminal per the runtime's resolveIndices
@@ -78,7 +79,7 @@ function resolveDispatcher(
         : index.value
       const member = members[lookupKey]
       if (member && hasValidTypeDef(member.data)) {
-        resolvedMembers.push(resolveDynamicTypes(member.data.typeDef, ctx, depth + 1, new Set(), budget))
+        resolvedMembers.push(resolveDynamicTypes(member.data.typeDef, ctx, depth + 1, visited, budget))
       } else {
         // Member missing or typeDef is null — contribute unknown
         resolvedMembers.push({ kind: 'any' } as SpyglassType)
@@ -90,7 +91,7 @@ function resolveDispatcher(
       // editor the full set of options to branch on.
       for (const [, value] of Object.entries(members)) {
         if (hasValidTypeDef(value.data)) {
-          resolvedMembers.push(resolveDynamicTypes(value.data.typeDef, ctx, depth + 1, new Set(), budget))
+          resolvedMembers.push(resolveDynamicTypes(value.data.typeDef, ctx, depth + 1, visited, budget))
         }
       }
       break // one round of all-variants is sufficient
@@ -159,7 +160,11 @@ export interface NodeBudget {
  * `LootPoolEntry`) ever get a chance to run. We track active reference
  * paths + dispatcher registries on the current call stack and short-circuit
  * to the raw type when we re-enter one — this preserves structural info for
- * the caller (it can still see it's a union) without recursing.
+ * the caller (it can still see it's a union) without recursing. The set is
+ * copied per node (call-stack semantics) and threaded through
+ * `resolveDispatcher`, so sibling variants resolve shared references fully
+ * while structural cycles (e.g. LootPoolEntry → alternatives → children →
+ * LootPoolEntry) terminate at the re-entry point.
  *
  * Node budget: `budget.remaining` is decremented on every resolved node. When
  * it hits zero we stop expanding and return `any`, bounding total work.
@@ -182,7 +187,10 @@ export function resolveDynamicTypes(
   if (cycleKey && visited.has(cycleKey)) {
     return typeDef as SpyglassType
   }
-  const nextVisited = visited
+  // Copy the set so sibling branches don't poison each other: a reference
+  // resolved on one path must still resolve fully on a sibling path, while
+  // re-entry on the SAME path (a true cycle) is caught above.
+  const nextVisited = new Set(visited)
   if (cycleKey) nextVisited.add(cycleKey)
 
   switch (typeDef.kind) {
@@ -200,6 +208,14 @@ export function resolveDynamicTypes(
         const pairFields = typeDef.fields.filter(
           (f): f is Extract<typeof f, { kind: 'pair' }> => f.kind === 'pair',
         )
+        // Resolve the discriminator pair fields once, before the spread: the
+        // variant subtrees (functions/conditions dispatchers) are far larger
+        // and would exhaust the node budget before the merge, degrading the
+        // discriminator to `any`.
+        const resolvedPairFields = pairFields.map(f => ({
+          ...f,
+          type: resolveDynamicTypes(f.type, ctx, depth + 1, nextVisited, budget),
+        }))
         // Resolve each spread field's type
         for (const spread of spreads) {
           const resolvedSpread = resolveDynamicTypes(spread.type, ctx, depth + 1, nextVisited, budget)
@@ -209,14 +225,7 @@ export function resolveDynamicTypes(
             // the enriched union so the form shows a dropdown.
             const enrichedMembers = resolvedSpread.members.map(member => {
               if (member.kind === 'struct') {
-                const mergedFields = [
-                  ...pairFields.map(f => ({
-                    ...f,
-                    type: resolveDynamicTypes(f.type, ctx, depth + 1, nextVisited, budget),
-                  })),
-                  ...member.fields,
-                ]
-                return { ...member, fields: mergedFields } as SpyglassType
+                return { ...member, fields: [...resolvedPairFields, ...member.fields] } as SpyglassType
               }
               return member
             })
@@ -229,14 +238,7 @@ export function resolveDynamicTypes(
           }
           if (resolvedSpread.kind === 'struct') {
             // Spread resolved to a single struct — merge and return it
-            const mergedFields = [
-              ...pairFields.map(f => ({
-                ...f,
-                type: resolveDynamicTypes(f.type, ctx, depth + 1, nextVisited, budget),
-              })),
-              ...resolvedSpread.fields,
-            ]
-            return { ...resolvedSpread, fields: mergedFields } as SpyglassType
+            return { ...resolvedSpread, fields: [...resolvedPairFields, ...resolvedSpread.fields] } as SpyglassType
           }
         }
         // Spreads didn't resolve to useful types — fall through to pair-only
@@ -263,10 +265,23 @@ export function resolveDynamicTypes(
       // on recipe types. Fall back to our custom walk only when the runtime
       // crashes (null typeDef in resolveIndices — typeof null === 'object').
       try {
-        const resolved = mcdocRuntime.checker.simplify(typeDef, ctx).typeDef
+        // The overload for non-union typeDefs types the result as NoUnion,
+        // but the runtime can return a union (e.g. empty union for unknown
+        // dispatchers) — widen the type so the degenerate-result check below
+        // compiles.
+        const resolved = mcdocRuntime.checker.simplify(typeDef, ctx).typeDef as SpyglassType
+        // The runtime's resolveIndices returns `any` when a dynamic parallel
+        // index can't be resolved (no parsed JSON node context here) or a
+        // static lookup misses, and an empty union for unknown dispatchers.
+        // Accepting those would degrade the caller's spread to `any` and
+        // collapse loot entries to a map. Our custom resolveDispatcher
+        // handles dynamic indices by iterating all members — use it instead.
+        if (resolved.kind === 'any' || (resolved.kind === 'union' && resolved.members.length === 0)) {
+          return resolveDispatcher(typeDef, ctx, depth, nextVisited, budget)
+        }
         return resolveDynamicTypes(resolved, ctx, depth + 1, nextVisited, budget)
       } catch {
-        return resolveDispatcher(typeDef, ctx, depth, budget)
+        return resolveDispatcher(typeDef, ctx, depth, nextVisited, budget)
       }
     }
     case 'reference':
@@ -295,7 +310,7 @@ export function resolveDynamicTypes(
               const fieldInfo = td.fields?.map((f: any) => `${f.kind}:${f.key?.value?.value ?? f.desc ?? '?'}:${f.type?.kind ?? '?'}`)?.join(', ') ?? 'no-fields'
               console.warn(`[type-bridge] ref fallback: path=${refDef.path} kind=${td.kind} fields=[${fieldInfo}]`)
               if (data.typeDef.kind === 'dispatcher') {
-                return resolveDispatcher(data.typeDef, ctx, depth, budget)
+                return resolveDispatcher(data.typeDef, ctx, depth, nextVisited, budget)
               }
               return resolveDynamicTypes(data.typeDef, ctx, depth + 1, nextVisited, budget)
             }
@@ -382,7 +397,13 @@ function spyglassTypeNoUnionToEngine(
       const pairFields = type.fields.filter(
         (f): f is typeof f & { key: NonNullable<typeof f['key']> } => !!f.key,
       )
-      if (pairFields.length === 1 && pairFields[0].key.kind !== 'literal') {
+      // A struct with a single dynamic-key field is how mcdoc expresses maps
+      // (e.g. the recipe "key" field) — collapse it to the engine map kind.
+      // Plain-string keys (raw symbol-table structs like LootPoolEntry's
+      // "type" discriminator) are literal, not dynamic.
+      const singleKey = pairFields[0]?.key
+      const singleKeyIsDynamic = typeof singleKey !== 'string' && singleKey?.kind !== 'literal'
+      if (pairFields.length === 1 && singleKeyIsDynamic) {
         const f = pairFields[0]
         const fa = versionInfo(f.attributes)
         return {
@@ -395,7 +416,17 @@ function spyglassTypeNoUnionToEngine(
       const fields: SimplifiedMcdocField[] = []
       for (const f of pairFields) {
         const fa = versionInfo(f.attributes)
-        if (f.key.kind === 'literal') {
+        if (typeof f.key === 'string') {
+          // Raw symbol-table structs carry plain-string keys (e.g. the
+          // LootPoolEntry "type" discriminator) — treat them as literal.
+          fields.push({
+            key: f.key,
+            type: spyglassTypeToEngine(f.type as SpyglassType, budget),
+            required: !f.optional,
+            since: fa.since,
+            until: fa.until,
+          })
+        } else if (f.key.kind === 'literal') {
           const v = f.key.value
           const key = typeof v.value === 'string' ? v.value : String(v.value)
           fields.push({
