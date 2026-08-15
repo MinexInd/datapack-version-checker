@@ -90,24 +90,19 @@ function applyFetchProxy() {
     else if (input instanceof URL) url = input.toString()
     else url = input.url
 
-    // jsDelivr CORS preflight rejects cache-validation headers like
-    // `if-none-match` / `if-modified-since`. Strip them from every request so
-    // both Spyglass's fetches and api.ts's revalidation become simple CORS
-    // requests and succeed. Spyglass's fetchWithCache and api.ts's IndexedDB
-    // cache already handle caching, so losing HTTP revalidation is acceptable.
-    const headers = new Headers((input as Request)?.headers ?? init?.headers)
-    headers.delete('if-none-match')
-    headers.delete('if-modified-since')
-
+    // Spyglass's fetchWithCache sets non-simple headers (if-none-match,
+    // if-modified-since, user-agent) that force a CORS preflight. External
+    // CDNs (jsDelivr, raw.githubusercontent) reject preflights, so drop ALL
+    // custom headers and send a plain GET. No CDN needs these headers, and
+    // Spyglass's own cache handles revalidation.
     const method = (input as Request)?.method ?? init?.method ?? 'GET'
     const body = (input as Request)?.body ?? (init as any)?.body
     const signal = (input as Request)?.signal ?? (init as any)?.signal
 
     if (!url.startsWith(`https://${SPYGLASS_HOST}/`)) {
       // Non-Spyglass request (e.g. api.ts → jsDelivr/raw.githubusercontent):
-      // forward with stripped headers. Build a fresh Request so the stripped
-      // headers actually win (passing `init` would re-add the deleted headers).
-      return original(new Request(url, { method, headers, body, signal }))
+      // forward as a plain request with no custom headers.
+      return original(new Request(url, { method, body, signal }))
     }
 
     let rewritten: string | undefined
@@ -117,13 +112,12 @@ function applyFetchProxy() {
       rewritten = resolveSpyglassRewrite(url)
     }
     if (!rewritten) {
-      return original(new Request(url, { method, headers, body, signal }))
+      return original(new Request(url, { method, body, signal }))
     }
 
     try {
       const req = new Request(rewritten, {
         method,
-        headers,
         body,
         signal,
         credentials: 'omit',
@@ -133,8 +127,8 @@ function applyFetchProxy() {
       if (res.ok) return res
       throw new Error(`rewrite response ${res.status}`)
     } catch {
-      // Rewrite failed (e.g. jsDelivr hiccup): fall back to the original API.
-      return original(new Request(url, { method, headers, body, signal }))
+      // Rewrite failed (e.g. CDN hiccup): fall back to the original API.
+      return original(new Request(url, { method, body, signal }))
     }
   }
 }
