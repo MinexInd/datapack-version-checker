@@ -40,7 +40,7 @@ function applyFetchProxy() {
         mode: 'cors',
       })
       const res = await original(req, init)
-      if (res.ok || res.status < 500) return res
+      if (res.ok) return res
       throw new Error(`proxy response ${res.status}`)
     } catch {
       return original(input as RequestInfo, init)
