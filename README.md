@@ -240,16 +240,18 @@ The "Outside declared load range" line shows versions where the pack would load 
 
 ## Data sources
 
-All data is fetched from authoritative sources and cached for 24 hours:
+All data is fetched from authoritative sources and cached locally:
 
-| Source | What it provides |
-|--------|-----------------|
-| **Spyglass API** | Command trees and registries for every Minecraft version |
-| **vanilla-mcdoc** | Structural schemas for 70+ datapack and resource pack types |
-| **misode/technical-changes** | Community-curated breaking-change notes per version |
-| **Built-in knowledge base** | Porting rules, command rewrites, registry renames |
+| Source | What it provides | Fetch method |
+|--------|-----------------|--------------|
+| **Spyglass API** | Command trees and registries for every Minecraft version | jsDelivr CDN mirror (CORS-enabled) |
+| **vanilla-mcdoc** | Structural schemas for 70+ datapack and resource pack types | Bundled as static asset (same-origin) |
+| **misode/technical-changes** | Community-curated breaking-change notes per version | GitHub raw |
+| **Built-in knowledge base** | Porting rules, command rewrites, registry renames | Embedded |
 
-Use `--refresh` to re-download everything.
+In production (GitHub Pages), Spyglass API requests are transparently redirected to CORS-friendly CDN mirrors (jsDelivr for versions data, same-origin for mcdoc schemas). This avoids intermittent CORS failures from the upstream BunnyCDN edge. Dev mode uses the local Vite proxy as before.
+
+Use `--refresh` to re-download version data.
 
 ---
 

@@ -637,12 +637,12 @@ Then rebuild (`npm run build`) and test against a real datapack.
 
 All version data comes from these live sources (fetched at runtime, cached locally):
 
-- **Spyglass API** — command trees and registries:
-  - `GET https://api.spyglassmc.com/mcje/versions`
-  - `GET https://api.spyglassmc.com/mcje/versions/{id}/commands`
-  - `GET https://api.spyglassmc.com/mcje/versions/{id}/registries`
-- **vanilla-mcdoc** — structural schemas for 70+ datapack and resource pack types
-- **misode/technical-changes** — community-curated breaking-change notes per version
+- **Spyglass API** — command trees and registries, fetched via CORS-friendly CDN mirrors:
+  - Production: `cdn.jsdelivr.net/gh/misode/mcmeta@<version>-summary/{blocks,commands,registries}/data.json`
+  - Dev mode: local Vite proxy to `api.spyglassmc.com`
+  - Fallback: direct `api.spyglassmc.com` if CDN is unreachable
+- **vanilla-mcdoc** — structural schemas for 70+ datapack and resource pack types, bundled as a static asset (`web/public/vanilla-mcdoc.tar.gz`, ~138 KB, same-origin)
+- **misode/technical-changes** — community-curated breaking-change notes per version, fetched from GitHub
 
 ---
 
