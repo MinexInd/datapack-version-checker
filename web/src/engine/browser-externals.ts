@@ -71,7 +71,26 @@ function applyFetchProxy() {
     if (typeof input === 'string') url = input
     else if (input instanceof URL) url = input.toString()
     else url = input.url
-    if (!url.startsWith(`https://${SPYGLASS_HOST}/`)) return original(input as RequestInfo, init)
+
+    // jsDelivr CORS preflight rejects cache-validation headers like
+    // `if-none-match` / `if-modified-since`. Strip them from every request so
+    // both Spyglass's fetches and api.ts's revalidation become simple CORS
+    // requests and succeed. Spyglass's fetchWithCache and api.ts's IndexedDB
+    // cache already handle caching, so losing HTTP revalidation is acceptable.
+    const headers = new Headers((input as Request)?.headers ?? init?.headers)
+    headers.delete('if-none-match')
+    headers.delete('if-modified-since')
+
+    const method = (input as Request)?.method ?? init?.method ?? 'GET'
+    const body = (input as Request)?.body ?? (init as any)?.body
+    const signal = (input as Request)?.signal ?? (init as any)?.signal
+
+    if (!url.startsWith(`https://${SPYGLASS_HOST}/`)) {
+      // Non-Spyglass request (e.g. api.ts → jsDelivr/raw.githubusercontent):
+      // forward with stripped headers. Build a fresh Request so the stripped
+      // headers actually win (passing `init` would re-add the deleted headers).
+      return original(new Request(url, { method, headers, body, signal }))
+    }
 
     let rewritten: string | undefined
     if (isLocalhost) {
@@ -79,22 +98,25 @@ function applyFetchProxy() {
     } else {
       rewritten = resolveSpyglassRewrite(url)
     }
-    if (!rewritten) return original(input as RequestInfo, init)
+    if (!rewritten) {
+      return original(new Request(url, { method, headers, body, signal }))
+    }
 
     try {
       const req = new Request(rewritten, {
-        method: (input as Request)?.method ?? init?.method ?? 'GET',
-        headers: (input as Request)?.headers ?? init?.headers,
-        body: (input as Request)?.body,
-        signal: (input as Request)?.signal ?? (init as any)?.signal,
+        method,
+        headers,
+        body,
+        signal,
         credentials: 'omit',
         mode: 'cors',
       })
-      const res = await original(req, init)
+      const res = await original(req)
       if (res.ok) return res
       throw new Error(`rewrite response ${res.status}`)
     } catch {
-      return original(input as RequestInfo, init)
+      // Rewrite failed (e.g. jsDelivr hiccup): fall back to the original API.
+      return original(new Request(url, { method, headers, body, signal }))
     }
   }
 }

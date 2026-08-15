@@ -3,14 +3,16 @@ import type { CacheLike } from './idb-cache'
 import type { McmetaVersion, CommandTreeNode } from './types'
 
 /**
- * Data source: misode/mcmeta via jsDelivr CDN.
- * CORS-enabled (Access-Control-Allow-Origin: *), no server-side proxy needed.
- * The SpyglassMC API (api.spyglassmc.com) has intermittent CORS issues —
- * its BunnyCDN origin sometimes returns 502 without CORS headers, and
- * OPTIONS preflight consistently fails. jsDelivr serves the same data
- * directly from GitHub with proper CORS support.
+ * Data source: misode/mcmeta.
+ * - Version-specific data (registries, commands) uses jsDelivr CDN tags
+ *   (`@{version}-summary/...`), which are reliably cached and CORS-enabled.
+ * - The versions list lives on the `summary` *branch* (not a tag). jsDelivr can
+ *   404 on cold edges for branch refs, so it is fetched from raw.githubusercontent.com
+ *   (CORS-enabled, serves branches directly).
+ * The SpyglassMC API (api.spyglassmc.com) is avoided in production: its BunnyCDN
+ * origin intermittently drops CORS headers (502s) and OPTIONS preflight fails.
  */
-const VERSIONS_URL = 'https://cdn.jsdelivr.net/gh/misode/mcmeta@summary/versions/data.json'
+const VERSIONS_URL = 'https://raw.githubusercontent.com/misode/mcmeta/summary/versions/data.json'
 function registriesUrl(versionId: string): string {
   return `https://cdn.jsdelivr.net/gh/misode/mcmeta@${versionId}-summary/registries/data.json`
 }
