@@ -7,34 +7,80 @@ import type {
 } from '@spyglassmc/core'
 import { gunzipBytes, parseTar } from './tar'
 
-/**
- * Rewrite Spyglass API requests through a local dev proxy.
- *
- * The api.ts module now fetches versions/registries/commands from jsDelivr
- * (CORS-enabled CDN). This proxy is only needed in the Vite dev sandbox for
- * Spyglass core's internal fetches (vanilla tarballs, mcdoc symbols) which
- * still go through api.spyglassmc.com and time out without the Vite proxy.
- *
- * In production (GH Pages), no proxy route exists, so we skip the rewrite
- * entirely to avoid the 404→CORS failure chain.
- */
 const SPYGLASS_HOST = 'api.spyglassmc.com'
 const PROXY_PREFIX = '/api/spyglassmc'
+const JDELIVR_BASE = 'https://cdn.jsdelivr.net/gh/misode/mcmeta'
+
+/**
+ * Resolve a Spyglass API URL to a CORS-friendly mirror, or undefined to keep
+ * the original request.
+ *
+ * api.spyglassmc.com is unreliable in production: it intermittently drops
+ * CORS headers (BunnyCDN 502s) and the OPTIONS preflight always fails. jsDelivr
+ * serves the same misode/mcmeta data with proper CORS headers, so production
+ * requests are redirected there. The vanilla mcdoc tarball is bundled into the
+ * build (web/public/vanilla-mcdoc.tar.gz) and served same-origin.
+ */
+function resolveSpyglassRewrite(url: string): string | undefined {
+  const prefix = `https://${SPYGLASS_HOST}`
+
+  // Vanilla mcdoc tarball → same-origin bundled asset
+  if (url === `${prefix}/vanilla-mcdoc/tarball`) {
+    return '/vanilla-mcdoc.tar.gz'
+  }
+
+  // Version-specific endpoints: /mcje/versions/:v/...
+  const versionMatch = url.match(
+    new RegExp(`^${prefix.replace('.', '\\.')}/mcje/versions/([^/]+)/(.+)$`),
+  )
+  if (versionMatch) {
+    const [, version, rest] = versionMatch
+
+    if (rest === 'vanilla-data/tarball') {
+      return `${JDELIVR_BASE}@${version}-data/pack.mcmeta`
+    }
+    if (rest === 'vanilla-assets-tiny/tarball') {
+      return `${JDELIVR_BASE}@${version}-assets-tiny/pack.mcmeta`
+    }
+
+    // Summary JSONs: block_states, commands, registries
+    const summaryMap: Record<string, string> = {
+      block_states: 'blocks',
+      commands: 'commands',
+      registries: 'registries',
+    }
+    for (const [apiName, dirName] of Object.entries(summaryMap)) {
+      if (rest === apiName) {
+        return `${JDELIVR_BASE}@${version}-summary/${dirName}/data.json`
+      }
+    }
+  }
+
+  return undefined
+}
+
 let fetchPatched = false
 function applyFetchProxy() {
   if (fetchPatched || typeof window === 'undefined' || typeof globalThis.fetch !== 'function') return
-  // Only apply in the Vite dev sandbox (localhost). In production (GH Pages)
-  // there is no proxy server, so rewriting would 404 and trigger CORS errors.
-  if (window.location.hostname !== 'localhost') return
   fetchPatched = true
   const original = globalThis.fetch
+  const isLocalhost = window.location.hostname === 'localhost'
+
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     let url: string
     if (typeof input === 'string') url = input
     else if (input instanceof URL) url = input.toString()
     else url = input.url
     if (!url.startsWith(`https://${SPYGLASS_HOST}/`)) return original(input as RequestInfo, init)
-    const rewritten = PROXY_PREFIX + url.slice(`https://${SPYGLASS_HOST}`.length)
+
+    let rewritten: string | undefined
+    if (isLocalhost) {
+      rewritten = PROXY_PREFIX + url.slice(`https://${SPYGLASS_HOST}`.length)
+    } else {
+      rewritten = resolveSpyglassRewrite(url)
+    }
+    if (!rewritten) return original(input as RequestInfo, init)
+
     try {
       const req = new Request(rewritten, {
         method: (input as Request)?.method ?? init?.method ?? 'GET',
@@ -46,7 +92,7 @@ function applyFetchProxy() {
       })
       const res = await original(req, init)
       if (res.ok) return res
-      throw new Error(`proxy response ${res.status}`)
+      throw new Error(`rewrite response ${res.status}`)
     } catch {
       return original(input as RequestInfo, init)
     }
