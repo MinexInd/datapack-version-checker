@@ -10,6 +10,7 @@ import type { PackFileMap, Mode, McmetaVersion, CheckResponse, FixPreview } from
 import { toFixPreviewV2, type FixPreviewV2, type FixFileChange } from '../../../src/fix-preview'
 import { applyFixPreview } from '../../../src/fix-apply'
 import { computeLineDiff } from '../ide/fix-diff'
+import { useResolvedMcdocType } from '../ide/use-mcdoc-type'
 import { fetchRecipeIds, fetchRecipePreset } from '../ide/presets'
 import type { JsonValue, SimplifiedMcdocType } from '../ide/mcdoc-edit'
 import { exportZip } from '../api'
@@ -128,6 +129,31 @@ function pathFromUri(uri: { path: string }): string {
 // use a broader gate here: any namespace, any depth under recipe/.
 function isRecipePath(path: string): boolean {
   return /^data\/[^/]+\/recipe\/.+\.json$/.test(path)
+}
+
+// M3.2–3.4 — enable loot tables, predicates, and advancements through the same
+// generic McdocEditor that recipes use. The gates mirror the recipe one: any
+// namespace, any depth under the category folder.
+function isLootTablePath(path: string): boolean {
+  return /^data\/[^/]+\/loot_table\/.+\.json$/.test(path)
+}
+
+function isPredicatePath(path: string): boolean {
+  return /^data\/[^/]+\/predicate\/.+\.json$/.test(path)
+}
+
+function isAdvancementPath(path: string): boolean {
+  return /^data\/[^/]+\/advancement\/.+\.json$/.test(path)
+}
+
+function isMcdocFormatPath(path: string | null): boolean {
+  if (!path) return false
+  return (
+    isRecipePath(path) ||
+    isLootTablePath(path) ||
+    isPredicatePath(path) ||
+    isAdvancementPath(path)
+  )
 }
 
 // Monaco 0.56 dropped editor.getTheme() from the standalone API, so the
@@ -457,6 +483,7 @@ export default function IdePage({
   const [recipeView, setRecipeView] = useState<'form' | 'json'>('form')
   const [recipeType, setRecipeType] = useState<SimplifiedMcdocType | null>(null)
   const [recipeTypeState, setRecipeTypeState] = useState<'idle' | 'resolving' | 'ready'>('idle')
+
 
   // 3.1 — Vanilla recipe preset picker: the ID list for the current version is
   // fetched lazily when a recipe file is open. presetSelected is the dropdown's
@@ -883,6 +910,22 @@ export default function IdePage({
     })()
     return () => { cancelled = true }
   }, [activePath, recipeView, spyglassReady, recipeDiscriminator])
+  // M3.2–3.4 — Generic mcdoc format view for loot/predicate/advancement. These
+  // reuse the same McdocEditor + resolved type machinery as recipes, but have no
+  // vanilla preset picker. A single form/json toggle + resolved type covers all
+  // three; dispatch picks the right gate at render time.
+  const [formatView, setFormatView] = useState<'form' | 'json'>('form')
+  const isGenericFormat = !!activePath && isMcdocFormatPath(activePath) && !isRecipePath(activePath)
+  const { type: formatType, state: formatTypeState } = useResolvedMcdocType({
+    path: isGenericFormat ? activePath : null,
+    formView: formatView === 'form',
+    spyglassReady,
+    serviceRef,
+    content: activeContent,
+  })
+  const formatFormActive =
+    isGenericFormat && formatView === 'form' &&
+    (formatTypeState === 'resolving' || formatType !== null)
 
   const openFile = useCallback((path: string) => {
     setOpenTabs(prev => (prev.includes(path) ? prev : [...prev, path]))
@@ -2039,6 +2082,53 @@ export default function IdePage({
                   </>
                 )}
               </>
+            ) : isGenericFormat ? (
+                <>
+                  {formatFormActive ? (
+                    <McdocEditor
+                      content={activeContent}
+                      type={formatType}
+                      version={selectedVersions[0] ?? selectedGameVersion}
+                      onChange={(next) => handleEdited(activePath, next)}
+                      onShowJson={() => setFormatView('json')}
+                    />
+                  ) : (
+                    <>
+                      {formatView === 'json' && (
+                        <div className="ide-form-toggle">
+                          <span className="ide-form-toggle-label">Editing raw JSON</span>
+                          <button
+                            type="button"
+                            className="ide-form-toggle-btn"
+                            onClick={() => setFormatView('form')}
+                          >Show Form</button>
+                        </div>
+                      )}
+                      <Editor
+                        key={`${activePath}::${spyglassReady ? 'ready' : 'init'}`}
+                        path={`file:///pack/${activePath}`}
+                        beforeMount={beforeMount}
+                        onMount={handleMount}
+                        language={langFor(activePath)}
+                        value={activeContent}
+                        onChange={(value) => handleEdited(activePath, value)}
+                        theme="minex-dark"
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 13,
+                          tabSize: 4,
+                          insertSpaces: true,
+                          wordWrap: 'off',
+                          renderWhitespace: 'boundary',
+                          scrollBeyondLastLine: false,
+                          automaticLayout: true,
+                          padding: { top: 8, bottom: 8 },
+                          'semanticHighlighting.enabled': true,
+                        }}
+                      />
+                    </>
+                  )}
+                </>
             ) : activePath === 'pack.mcmeta' && mcmetaView === 'form' ? (
               <McmetaEditor
                 content={activeContent}
