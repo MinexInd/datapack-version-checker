@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url'
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'https://minexind.github.io'
 const FIXTURE_ZIP = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'sample-pack.zip')
 
+test.setTimeout(180_000)
+
 interface NetworkFailure {
   url: string
   status: number
@@ -34,8 +36,10 @@ async function collectFailures(page: Page) {
 test('Spyglass bootstraps with zero CORS failures', async ({ page }) => {
   const { failures, consoleErrors } = await collectFailures(page)
 
-  // The IDE lives at /datapack-editor. Load it directly.
-  await page.goto(`${BASE_URL}/datapack-editor`, { waitUntil: 'domcontentloaded' })
+  // Load the hub and click through — the real user flow (deep links depend on
+  // the 404.html redirect).
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: 'Open Datapack Editor' }).click()
 
   // Upload a minimal datapack through the hidden zip input.
   const zipInput = page.locator('input[accept=".zip"]')
@@ -45,8 +49,18 @@ test('Spyglass bootstraps with zero CORS failures', async ({ page }) => {
   // The pack loads and the explorer shows a non-zero file count.
   await expect(page.locator('.ide-explorer-count').first()).toHaveText(/[1-9]/, { timeout: 15000 })
 
-  // Spyglass init downloads vanilla data on first load — give it room.
-  await expect(page.getByText('Spyglass ✓')).toBeVisible({ timeout: 120000 })
+  // Spyglass init downloads vanilla data on first load — give it room. Wait
+  // for either ready (✓) or failed (✗) so a failure is reported, not a hang.
+  const statusbar = page.locator('.ide-statusbar, [class*="statusbar"]').first()
+  await expect
+    .poll(async () => {
+      const text = await statusbar.textContent().catch(() => '')
+      return text ?? ''
+    }, { timeout: 150_000, message: 'Spyglass never reached ready or failed state' })
+    .toMatch(/Spyglass [✓✗]/)
+
+  const statusText = await statusbar.textContent()
+  expect(statusText).toContain('✓')
 
   // No CORS/network failures on the critical paths.
   const corsFailures = failures.filter(
