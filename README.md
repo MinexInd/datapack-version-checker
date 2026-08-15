@@ -3,6 +3,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+![Live Site](https://img.shields.io/badge/Live%20Site-https%3A%2F%2Fminexind.github.io-blue)
 
 **Check Minecraft datapack compatibility across versions — with a visual editor, CLI, and auto-fix.**
 
@@ -274,6 +275,20 @@ npx tsc --noEmit        # Type check
 ## License
 
 MIT — see [LICENSE.md](LICENSE.md) for details.
+
+## Credits
+
+This project would not be possible without the following tools and data sources:
+
+- **SpyglassMC** (`@spyglassmc/core`, `@spyglassmc/java-edition`, `@spyglassmc/json`, `@spyglassmc/mcdoc`, `@spyglassmc/nbt`, `@spyglassmc/locales`, `@spyglassmc/mcfunction`) — command trees, registries, and vanilla-mcdoc structural schemas for 70+ datapack and resource pack types
+- **misode/mcmeta** — preset data for recipes, loot tables, and other datapack types via CDN (`https://cdn.jsdelivr.net/gh/misode/mcmeta@${version}-summary/data/...`)
+- **misode/technical-changes** — community-curated breaking-change notes per version, fetched with `--refresh`
+- **React** (`^19.0.0`) — UI library for the web interface
+- **Vite** (`^6.0.0`) — build tool and development server
+- **monaco-editor** (`^0.56.0`) — code editor component for raw JSON editing
+- **TypeScript** (`^5.5.0`) — type-safe development across CLI and web
+- **vitest** (`^4.1.10`) — test runner for unit and integration tests
+- **Playwright** — browser end-to-end testing for workflow verification
 
 ---
 

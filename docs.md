@@ -646,4 +646,20 @@ All version data comes from these live sources (fetched at runtime, cached local
 
 ---
 
+## Credits and Acknowledgments
+
+This project uses the following open-source libraries and data sources:
+
+- **SpyglassMC** (`@spyglassmc/core`, `@spyglassmc/java-edition`, `@spyglassmc/json`, `@spyglassmc/mcdoc`, `@spyglassmc/nbt`, `@spyglassmc/locales`, `@spyglassmc/mcfunction`) — command trees, registries, and vanilla-mcdoc structural schemas
+- **misode/mcmeta** — preset data for recipes, loot tables, and other datapack types via CDN
+- **misode/technical-changes** — community-curated breaking-change notes per version
+- **React** (`^19.0.0`) — UI library for the web interface
+- **Vite** (`^6.0.0`) — build tool and development server
+- **monaco-editor** (`^0.56.0`) — code editor component for raw JSON editing
+- **TypeScript** (`^5.5.0`) — type-safe development across CLI and web
+- **vitest** (`^4.1.10`) — test runner for unit and integration tests
+- **Playwright** — browser end-to-end testing for workflow verification
+
+---
+
 *Happy porting!*
