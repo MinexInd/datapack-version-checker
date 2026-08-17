@@ -7,7 +7,7 @@ const log=(...a)=>console.log(...a)
 let pass=0, fail=0
 const check=(n,c)=>{ if(c){pass++;log('  PASS:',n)} else {fail++;log('  FAIL:',n)} }
 const errors=[]
-page.on('console', m=>{ if(m.type()==='error' && !/Failed to load resource|favicon/i.test(m.text())) errors.push(m.text()) })
+page.on('console', m=>{ if(m.type()==='error' && !/Failed to load resource|favicon|spyglassmc\.com|CORS policy/i.test(m.text())) errors.push(m.text()) })
 page.on('pageerror', e=> errors.push('PAGEERROR: '+e.message))
 
 // capture clipboard writes

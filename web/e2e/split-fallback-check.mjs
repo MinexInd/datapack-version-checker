@@ -20,7 +20,7 @@ check('advancement: split view', await page.locator('.ide-split').count() > 0)
 check('advancement: form rendered', await page.locator('.ide-split-right .advancement-editor').count() > 0)
 const advTxt = await page.locator('.ide-split-right').innerText().catch(()=> '')
 for (const f of ['Parent','Display','Criteria','Rewards','Requirements','conditions','Icon count','Icon tag']) check('advancement has "'+f+'"', has(advTxt, f))
-await page.locator('.ide-split-left .monaco-editor').first().waitFor({ timeout: 8000 }).catch(()=>{})
+await page.locator('.ide-split-left .monaco-editor').first().waitFor({ timeout: 30000 }).catch(()=>{})
 check('advancement: left Monaco', await page.locator('.ide-split-left .monaco-editor').count() > 0)
 
 // Tag

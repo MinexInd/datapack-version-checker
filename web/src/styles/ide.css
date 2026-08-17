@@ -2840,3 +2840,31 @@
   padding: 5px 10px; border-radius: var(--r-sm); cursor: pointer;
 }
 .vf-ctx-menu li:hover { background: var(--well); }
+
+
+/* ── React Flow minimap + controls: dark-theme overrides ──
+   React Flow ships light defaults (white minimap, white control buttons) that
+   are invisible on the dark IDE. Re-skin them to match the token palette. */
+.react-flow__minimap {
+  background: var(--ground-deep);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm, 4px);
+}
+.react-flow__minimap-mask { fill: rgba(0, 0, 0, 0.45); }
+.react-flow__minimap-node { fill: #6b7a99; }
+
+.react-flow__controls {
+  box-shadow: 0 0 0 1px var(--hairline), 0 4px 14px rgba(0, 0, 0, 0.35);
+  border-radius: var(--r-sm, 4px);
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: var(--docket);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink);
+  fill: var(--ink);
+  width: 26px;
+  height: 26px;
+}
+.react-flow__controls-button:hover { background: var(--well); }
+.react-flow__controls-button svg { fill: var(--ink); max-width: 14px; max-height: 14px; }

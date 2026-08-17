@@ -320,7 +320,12 @@ function VisualEditorInner({ activePath, initialContent, version, onCommit, befo
               >
                 <Background />
                 <Controls />
-                <MiniMap />
+                <MiniMap
+                  bgColor="#0a0e14"
+                  maskColor="rgba(0, 0, 0, 0.45)"
+                  nodeColor="#6b7a99"
+                  nodeStrokeColor="#2a3650"
+                />
               </ReactFlow>
               {menu && (
                 <ul className="vf-ctx-menu" style={{ left: menu.x, top: menu.y }}>

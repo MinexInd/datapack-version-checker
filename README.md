@@ -135,12 +135,6 @@ Code editing provided by [Monaco Editor](https://microsoft.github.io/monaco-edit
 - IntelliSense
 - Multi-cursor editing
 
-### Datapack Studio
-The **Datapack Visual Editor** (semantic visual scripting graph that compiles to `.mcfunction`) is adapted from the [Datapack Studio](https://github.com/) project:
-- Framework-agnostic Minecraft knowledge / version model (`web/src/visual/core/minecraft`)
-- Data-driven node registry, layered validator, and graph compiler (`web/src/visual/core/{graph,compiler,ir,parser,decompiler}`)
-- The React Flow graph UI (`web/src/components/VisualEditor.tsx`) wraps this core inside the existing Spyglass-based datapack IDE.
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.

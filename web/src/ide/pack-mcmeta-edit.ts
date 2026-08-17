@@ -186,7 +186,10 @@ export function writeMcmeta(raw: unknown, state: McmetaFormState): string {
       delete pack.supported_formats
     } else {
       const { min, max } = state.supported
-      pack.supported_formats = min === max ? min : [min, max]
+      // A single version is written as a bare integer; a range is written as an
+      // inclusive object. A bare array [min, max] would be interpreted as two
+      // DISCRETE versions, not a continuous range.
+      pack.supported_formats = min === max ? min : { min_inclusive: min, max_inclusive: max }
     }
   } else if (state.style === 'new-style') {
     // ── New-style path ────────────────────────────────────────────────────

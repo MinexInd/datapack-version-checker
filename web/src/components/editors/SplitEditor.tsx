@@ -10,7 +10,6 @@ import LootTableEditor from './specialized/LootTableEditor'
 import PredicateEditor from './specialized/PredicateEditor'
 import TagEditor from './specialized/TagEditor'
 import McmetaEditor from './McmetaEditor'
-import McdocEditor from './McdocEditor'
 
 export type SplitKind = 'recipe' | 'advancement' | 'loot_table' | 'predicate' | 'tag' | 'mcmeta'
 export type ViewMode = 'split' | 'source' | 'gui'
@@ -130,7 +129,10 @@ export default function SplitEditor({
 
   // Resolve the mcdoc root type for this file (recipe / advancement / loot_table /
   // predicate / tag). This is the same type misode uses to build its form.
-  const { type: mcdocType } = useResolvedMcdocType({
+  // mcdoc type resolution is intentionally NOT consumed: the mcdoc-driven
+  // McdocEditor does not render reliably once Spyglass loads, so the editor
+  // keeps using the hand-written fallback editors (pre-Spyglass behaviour).
+  useResolvedMcdocType({
     path: activePath,
     formView: viewMode !== 'source',
     spyglassReady,
@@ -218,19 +220,10 @@ export default function SplitEditor({
         />
       )
     }
-    // Primary: complete, schema-accurate mcdoc-driven form.
-    if (mcdocType) {
-      return (
-        <McdocEditor
-          content={jsonText}
-          type={mcdocType}
-          version={version}
-          onChange={handleFormStringChange}
-          onShowJson={() => {}}
-        />
-      )
-    }
-    // Fallback: hand-written editor (used when the mcdoc type is unavailable).
+    // Hand-written editors for every specialized file kind. The mcdoc-driven
+    // McdocEditor is intentionally disabled: after Spyglass loads it does not
+    // render reliably, whereas these fallback editors behave exactly as they
+    // did before Spyglass loaded.
     switch (kind) {
       case 'recipe':
         return <RecipeEditor type={null} value={formDoc} path={[]} onChange={handleFormChange} onRemove={() => {}} />
