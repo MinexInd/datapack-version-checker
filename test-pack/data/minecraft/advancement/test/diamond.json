@@ -1,0 +1,23 @@
+{
+  "display": {
+    "title": "Diamonds!",
+    "description": "Obtain diamonds.",
+    "icon": {
+      "item": "minecraft:diamond"
+    }
+  },
+  "criteria": {
+    "diamond": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:diamond"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
