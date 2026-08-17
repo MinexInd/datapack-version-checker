@@ -148,6 +148,24 @@ export default function HubPage({ onOpenDatapackEditor }: HubPageProps) {
           />
 
           <ToolCase
+            caseNo="CASE 01B"
+            status="open"
+            title="Datapack Visual Editor"
+            description="Blueprints-style visual scripting that compiles to .mcfunction"
+            docket={[
+              { key: 'Mode', value: 'Visual graph' },
+              { key: 'Output', value: 'mcfunction' },
+              { key: 'Engine', value: 'Spyglass-validated' },
+            ]}
+            action={
+              <button type="button" className="hub-btn primary" onClick={onOpenDatapackEditor}>
+                Open Visual Editor
+                <span className="btn-arrow" aria-hidden="true">{'→'}</span>
+              </button>
+            }
+          />
+
+          <ToolCase
             caseNo="CASE 02"
             status="sealed"
             title="Resourcepack Studio"

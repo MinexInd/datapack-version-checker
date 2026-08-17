@@ -19,6 +19,7 @@
     "@spyglassmc/mcdoc": "0.3.56",
     "@spyglassmc/mcfunction": "0.2.55",
     "@spyglassmc/nbt": "0.3.58",
+    "@xyflow/react": "^12.11.3",
     "jszip": "^3.10.1",
     "monaco-editor": "^0.56.0",
     "react": "^19.0.0",

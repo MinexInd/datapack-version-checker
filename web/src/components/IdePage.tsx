@@ -8,6 +8,7 @@ import McmetaEditor from './editors/McmetaEditor'
 import LiveEditor from './editors/LiveEditor'
 import SplitEditor from './editors/SplitEditor'
 import McdocEditor from './editors/McdocEditor'
+import VisualEditor from './VisualEditor'
 import AdvancementEditor from './editors/specialized/AdvancementEditor'
 import RecipeEditor from './editors/specialized/RecipeEditor'
 import LootTableEditor from './editors/specialized/LootTableEditor'
@@ -2563,6 +2564,19 @@ const handleContextMenuAction = useCallback((action: string) => {
                       onMount={handleMount}
                     />
                   </>
+                )
+              }
+              if (activePath.endsWith('.mcfunction')) {
+                return (
+                  <VisualEditor
+                    key={activePath}
+                    activePath={activePath}
+                    initialContent={activeContent}
+                    version={recipePresetVersion}
+                    onCommit={(next) => handleEdited(activePath, next)}
+                    beforeMount={beforeMount}
+                    onMount={handleMount}
+                  />
                 )
               }
               return (
