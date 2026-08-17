@@ -2822,3 +2822,21 @@
 .vnode-input { height: 24px; padding: 0 6px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--well); color: var(--ink); font-size: 0.74rem; font-family: var(--font-mono); }
 .vnode-cat-flow .vnode-head { border-left: 3px solid var(--stamp); }
 .vnode-unknown { padding: 8px; color: var(--ink-dim); }
+
+
+/* ── Visual editor: execution vs data sockets ── */
+.vf-handle { width: 11px; height: 11px; border: 2px solid var(--ground-deep); }
+.vf-handle-flow { background: var(--stamp); }
+.vf-handle-data { background: var(--warn, #c08a2d); border-radius: 2px; }
+.react-flow__handle.vf-handle-flow { box-shadow: 0 0 0 2px rgba(120,160,255,0.25); }
+
+/* ── Visual editor context menu ── */
+.vf-ctx-menu {
+  position: fixed; z-index: 50; min-width: 150px; list-style: none; margin: 0; padding: 4px;
+  background: var(--docket); border: 1px solid var(--hairline); border-radius: var(--r-sm);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4); font-size: 0.78rem; color: var(--ink);
+}
+.vf-ctx-menu li {
+  padding: 5px 10px; border-radius: var(--r-sm); cursor: pointer;
+}
+.vf-ctx-menu li:hover { background: var(--well); }
