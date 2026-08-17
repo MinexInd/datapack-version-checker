@@ -111,6 +111,7 @@ export default function McdocEditor({
   const contentRef = useRef(content)
   contentRef.current = content
   const lastCommittedRef = useRef(content)
+  const lastTypeRef = useRef(type)
 
   const rootRef = useRef<JsonValue>(parsed.value ?? null)
   const [root, setRoot] = useState<JsonValue>(parsed.value ?? null)
@@ -190,13 +191,15 @@ export default function McdocEditor({
   // switch that rewrote the doc) but never while a local edit is in flight.
   useEffect(() => {
     if (pendingRef.current.timer !== undefined) return
-    if (content === lastCommittedRef.current) return
+    const contentChanged = content !== lastCommittedRef.current
+    const typeChanged = type !== lastTypeRef.current
+    if (!contentChanged && !typeChanged) return
     const fresh = buildFormState(content, type)
     if (fresh.error) return
     rootRef.current = fresh.value
     setRoot(fresh.value)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content])
+    lastTypeRef.current = type
+  }, [content, type])
 
   // Flush any pending edit on unmount so the last keystrokes are not lost.
   useEffect(() => {
@@ -302,6 +305,7 @@ function renderNode(
   value: JsonValue,
   path: JsonPath,
   ctx: EditorCtx,
+  optional: boolean = false,
 ) {
   // A missing/null value gets a schema-conforming placeholder so every input
   // has something controlled to bind to.
@@ -327,7 +331,7 @@ function renderNode(
     case 'map':
       return renderMap(type, v, path, ctx)
     case 'primitive':
-      return renderPrimitive(type, v, path, ctx, false)
+      return renderPrimitive(type, v, path, ctx, optional)
   }
 }
 
@@ -400,7 +404,7 @@ function renderFieldGroup(
               </span>
             </div>
             {present ? (
-              renderNode(field.type, obj[field.key], fieldPath, ctx)
+              renderNode(field.type, obj[field.key], fieldPath, ctx, !field.required)
             ) : (
               <div className="mcdoc-muted">absent</div>
             )}

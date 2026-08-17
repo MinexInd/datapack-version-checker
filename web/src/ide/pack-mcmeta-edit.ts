@@ -27,8 +27,8 @@ export interface McmetaFormState {
   minFormat: [number, number] | null
   /** new-style pack.max_format tuple [major, minor] */
   maxFormat: [number, number] | null
-  /** pack.description — raw string; for JSON components we store JSON.stringify */
-  description: string
+  /** pack.description — plain string or JSON text-component object */
+  description: string | Record<string, unknown>
   /** Normalised from any supported_formats shape; null means "omit key" */
   supported: { min: number; max: number } | null
 }
@@ -95,12 +95,15 @@ export function readMcmeta(content: string): McmetaParseResult {
 
   // ── description ──────────────────────────────────────────────────────────
   const descRaw = pack.description
-  let description = ''
+  let description: string | Record<string, unknown> = ''
   if (typeof descRaw === 'string') {
     description = descRaw
   } else if (descRaw !== undefined && descRaw !== null) {
-    // JSON text component object — store as serialised string for the form
-    description = JSON.stringify(descRaw)
+    // JSON text component object — store as object for the form
+    description = descRaw as Record<string, unknown>
+  } else {
+    // undefined or null - keep as empty string
+    description = ''
   }
 
   // ── supported_formats → normalised {min, max} ───────────────────────────
@@ -157,8 +160,12 @@ export function writeMcmeta(raw: unknown, state: McmetaFormState): string {
   }
   const pack = data.pack as Record<string, unknown>
 
-  // Always write description.
-  pack.description = state.description
+  // Always write description (string or JSON text-component object).
+  if (typeof state.description === 'object') {
+    pack.description = state.description
+  } else {
+    pack.description = state.description
+  }
 
   // ── Legacy path ─────────────────────────────────────────────────────────
   const useLegacy =
@@ -168,7 +175,12 @@ export function writeMcmeta(raw: unknown, state: McmetaFormState): string {
   if (useLegacy) {
     if (typeof state.packFormat === 'number' && Number.isFinite(state.packFormat)) {
       pack.pack_format = state.packFormat
+    } else {
+      delete pack.pack_format
     }
+    // New-style fields must not leak into a legacy pack.
+    delete pack.min_format
+    delete pack.max_format
     // supported_formats
     if (state.supported === null) {
       delete pack.supported_formats
@@ -178,11 +190,20 @@ export function writeMcmeta(raw: unknown, state: McmetaFormState): string {
     }
   } else if (state.style === 'new-style') {
     // ── New-style path ────────────────────────────────────────────────────
-    // Always write tuples; fall back to [0, 0] when form value is null.
-    pack.min_format = state.minFormat ?? [0, 0]
-    pack.max_format = state.maxFormat ?? [0, 0]
-    // NEVER write pack_format — and do NOT delete it if it happens to exist
-    // (surgical: leave unknowns alone).
+    if (state.minFormat !== null) {
+      pack.min_format = state.minFormat
+    } else {
+      delete pack.min_format
+    }
+    if (state.maxFormat !== null) {
+      pack.max_format = state.maxFormat
+    } else {
+      delete pack.max_format
+    }
+    // Legacy pack_format must not leak into a new-style pack.
+    if (state.packFormat === null) {
+      delete pack.pack_format
+    }
     // Do NOT touch supported_formats.
   }
   // If style is null and packFormat is not a number, only description was

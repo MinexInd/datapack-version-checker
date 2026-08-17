@@ -1,0 +1,47 @@
+/* Context Menu — uses the IDE's dark "stamp" theme tokens */
+.context-menu {
+  position: fixed;
+  background: var(--docket, #161d27);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  box-shadow: var(--lift-sm, 0 3px 10px -3px rgba(0, 0, 0, 0.62));
+  padding: 4px 0;
+  min-width: 180px;
+  z-index: 10001;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink, #e6ebf2);
+  transition: background var(--dur-quick, 0.15s);
+}
+
+.context-menu-item:hover {
+  background: var(--docket-raised, #1d2532);
+}
+
+.context-menu-item.disabled {
+  color: var(--ink-faint, #8692a5);
+  cursor: default;
+}
+
+.context-menu-item.disabled:hover {
+  background: transparent;
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: var(--hairline, #252e3c);
+  margin: 4px 0;
+}
+
+.context-menu-shortcut {
+  color: var(--ink-faint, #8692a5);
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+}

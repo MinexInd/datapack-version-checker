@@ -39,6 +39,30 @@ export function isPathTraversal(path: string): boolean {
 }
 
 /**
+ * Validate a relative file path (e.g. `data/minecraft/advancement/foo.json`).
+ *
+ * Segments are validated like `validateFileName`; in addition this rejects
+ * absolute paths (leading `/` or `\`) and any `..` traversal segment, while
+ * allowing `/` separators between segments.
+ *
+ * Returns a human-readable error string, or `null` when the path is usable.
+ */
+export function validateFilePath(input: string): string | null {
+  const raw = input.trim()
+  if (!raw) return 'Path must not be empty'
+  if (raw.startsWith('/') || raw.startsWith('\\')) return 'Path must not be absolute'
+  if (raw.endsWith('/')) return 'Path must not end with "/"'
+  const segments = raw.split('/')
+  if (segments.some(s => s === '')) return 'Path must not contain empty segments'
+  if (segments.some(s => s === '..')) return 'Path must not contain ".."'
+  for (const seg of segments) {
+    const err = validateFileName(seg)
+    if (err) return err
+  }
+  return null
+}
+
+/**
  * Cheap reference scan: given a file path, derive likely resource-location
  * ids and search every file's text for mentions.
  *

@@ -52,6 +52,8 @@ export default function McmetaEditor({
   onShowJson,
 }: McmetaEditorProps) {
   const parsed = useMemo(() => readMcmeta(content), [content])
+  const parsedRef = useRef(parsed)
+  parsedRef.current = parsed
 
   const isRp = mode === 'resourcepack'
   const fmtOf = (v: McmetaVersion) => (isRp ? v.resource_pack_version : v.data_pack_version)
@@ -68,28 +70,32 @@ export default function McmetaEditor({
         packFormat: null,
         minFormat: null,
         maxFormat: null,
-        description: '',
+        description: '' as string | Record<string, unknown>,
         supported: null,
       }
 
   const commit = (patch: Partial<McmetaFormState>) => {
-    if (!parsed.ok) return
-    const nextState: McmetaFormState = { ...parsed.state, ...patch }
-    onChange(writeMcmeta(parsed.raw, nextState))
+    const current = parsedRef.current
+    if (!current.ok) return
+    const nextState: McmetaFormState = { ...current.state, ...patch }
+    onChange(writeMcmeta(current.raw, nextState))
   }
 
   // Free-text inputs are locally controlled so a keystroke never round-trips
   // through App state (which re-renders the whole IDE before the input can
   // update — the source of the "laggy" feel). Commits are debounced and
   // flushed on blur/unmount, keeping the live write-back semantics.
-  const [descText, setDescText] = useState(() =>
-    parsed.ok ? parsed.state.description : '',
-  )
+  const [descText, setDescText] = useState(() => {
+    const desc = parsed.ok ? parsed.state.description : ''
+    return typeof desc === 'object' ? JSON.stringify(desc, null, 2) : desc
+  })
   const [customText, setCustomText] = useState(() =>
     parsed.ok ? formatToText(parsed.state) : '',
   )
   const [descFocused, setDescFocused] = useState(false)
   const [customFocused, setCustomFocused] = useState(false)
+  const [versionError, setVersionError] = useState<string | null>(null)
+
   const commitRef = useRef(commit)
   commitRef.current = commit
   const descTextRef = useRef(descText)
@@ -100,16 +106,17 @@ export default function McmetaEditor({
   const customTimer = useRef<number | undefined>(undefined)
 
   const commitCustomValue = (text: string) => {
-    if (!parsed.ok) return
+    const current = parsedRef.current
+    if (!current.ok) return
     const parsedVal = parseFormatInput(text)
     if (parsedVal === null) return
     if (Array.isArray(parsedVal)) {
-      if (parsed.state.style === 'new-style') {
+      if (current.state.style === 'new-style') {
         commit({ minFormat: parsedVal, maxFormat: parsedVal })
       } else {
-        commit({ packFormat: parsedVal[0] })
+        commit({ style: 'new-style', packFormat: null, minFormat: parsedVal, maxFormat: parsedVal })
       }
-    } else if (parsed.state.style === 'new-style') {
+    } else if (current.state.style === 'new-style') {
       commit({ minFormat: [parsedVal, 0], maxFormat: [parsedVal, 0] })
     } else {
       commit({ packFormat: parsedVal })
@@ -132,11 +139,13 @@ export default function McmetaEditor({
   // Re-sync local text when content changes externally (e.g. JSON toggle
   // round-trip), but never while the user is actively typing in that field.
   useEffect(() => {
-    if (!parsed.ok) return
-    if (!descFocused) setDescText(parsed.state.description)
-    if (!customFocused) setCustomText(formatToText(parsed.state))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content])
+    if (!parsedRef.current.ok) return
+    if (!descFocused) {
+      const desc = parsedRef.current.state.description
+      setDescText(typeof desc === 'object' ? JSON.stringify(desc, null, 2) : desc)
+    }
+    if (!customFocused) setCustomText(formatToText(parsedRef.current.state))
+  }, [content, descFocused, customFocused])
 
   // Flush pending edits when the form unmounts so the last keystrokes
   // (e.g. just before clicking "Show JSON") are not lost.
@@ -144,14 +153,23 @@ export default function McmetaEditor({
     return () => {
       if (descTimer.current !== undefined) {
         clearTimeout(descTimer.current)
-        commitRef.current({ description: descTextRef.current })
+        // Try to parse as JSON text component; fall back to plain string.
+      let descCommit: string | Record<string, unknown> = descTextRef.current
+      try {
+        const parsed = JSON.parse(descTextRef.current)
+        if (typeof parsed === 'object' && parsed !== null) {
+          descCommit = parsed as Record<string, unknown>
+        }
+      } catch {
+        // keep as plain string
+      }
+      commitRef.current({ description: descCommit })
       }
       if (customTimer.current !== undefined) {
         clearTimeout(customTimer.current)
         commitCustomRef.current(customTextRef.current)
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const matchedVersion = useMemo(() => {
@@ -175,10 +193,13 @@ export default function McmetaEditor({
     if (!v) return
     const major = fmtOf(v)
     const minor = minorOf(v)
-    if (state.style === 'new-style') {
-      commit({ minFormat: [major, minor], maxFormat: [major, minor] })
+    // 25w31a+ (1.21.9) introduced the new-style format. Cutoffs: datapack
+    // major >= 82, resource pack major >= 65.
+    const isNewStyle = isRp ? major >= 65 : major >= 82
+    if (isNewStyle) {
+      commit({ style: 'new-style', packFormat: null, minFormat: [major, minor], maxFormat: [major, minor] })
     } else {
-      commit({ packFormat: major })
+      commit({ style: 'legacy', minFormat: null, maxFormat: null, packFormat: major })
     }
   }
 
@@ -199,7 +220,8 @@ export default function McmetaEditor({
 
   const handleDescChange = (text: string) => {
     setDescText(text)
-    debounceCommit(descTimer, () => commitRef.current({ description: text }))
+    // Don't commit here - wait for blur to parse JSON properly
+    // Just update the debounced timer to commit on blur
   }
 
   const handleDescBlur = () => {
@@ -207,7 +229,17 @@ export default function McmetaEditor({
     if (descTimer.current !== undefined) {
       clearTimeout(descTimer.current)
       descTimer.current = undefined
-      commitRef.current({ description: descTextRef.current })
+      // Try to parse as JSON text component; fall back to plain string.
+      let descCommit: string | Record<string, unknown> = descTextRef.current
+      try {
+        const parsed = JSON.parse(descTextRef.current)
+        if (typeof parsed === 'object' && parsed !== null) {
+          descCommit = parsed as Record<string, unknown>
+        }
+      } catch {
+        // keep as plain string
+      }
+      commitRef.current({ description: descCommit })
     }
   }
 

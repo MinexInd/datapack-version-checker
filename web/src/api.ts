@@ -1,5 +1,5 @@
 import { fetchVersions as engineFetchVersions } from './engine/api'
-import { checkCompatibilityContentBased, checkResourcePack, type ProgressCallback } from './engine/engine'
+import { checkCompatibilityContentBased, checkResourcePack } from './engine/engine'
 import { fixDatapack, fixResourcePack } from './engine/fixer'
 import type { PackFileMap as EngineFileMap } from './engine/engine'
 import type { AnalysisResult } from './engine/analyzer'
@@ -130,6 +130,8 @@ export interface CheckRequest {
   /** Workspace revision the files were captured at (provenance). */
   revision?: number
 }
+
+export type ProgressCallback = (msg: string) => void
 
 export interface CheckResponse {
   result: CheckResult

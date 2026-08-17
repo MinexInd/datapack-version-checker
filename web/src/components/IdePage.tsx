@@ -5,14 +5,26 @@ import PackSelector from './PackSelector'
 import CheckPanel from './CheckPanel'
 import Results from './Results'
 import McmetaEditor from './editors/McmetaEditor'
+import LiveEditor from './editors/LiveEditor'
+import SplitEditor from './editors/SplitEditor'
 import McdocEditor from './editors/McdocEditor'
+import AdvancementEditor from './editors/specialized/AdvancementEditor'
+import RecipeEditor from './editors/specialized/RecipeEditor'
+import LootTableEditor from './editors/specialized/LootTableEditor'
+import PredicateEditor from './editors/specialized/PredicateEditor'
+import TagEditor from './editors/specialized/TagEditor'
+import { CommandPalette } from './CommandPalette'
+import { Breadcrumbs } from './Breadcrumbs'
+import { QuickOpen } from './QuickOpen'
+import { TerminalPanel } from './TerminalPanel'
+import { ContextMenu } from './ContextMenu'
 import type { PackFileMap, Mode, McmetaVersion, CheckResponse, FixPreview } from '../api'
 import { toFixPreviewV2, type FixPreviewV2, type FixFileChange } from '../../../src/fix-preview'
 import { applyFixPreview } from '../../../src/fix-apply'
 import { computeLineDiff } from '../ide/fix-diff'
 import { useResolvedMcdocType } from '../ide/use-mcdoc-type'
 import { fetchRecipeIds, fetchRecipePreset } from '../ide/presets'
-import type { JsonValue, SimplifiedMcdocType } from '../ide/mcdoc-edit'
+import type { JsonValue, JsonPath, SimplifiedMcdocType } from '../ide/mcdoc-edit'
 import { exportZip } from '../api'
 import { SpyglassService, type IdeMarker } from '../engine/spyglass-service'
 import { registerSpyglassMonaco } from '../ide/monaco-spyglass'
@@ -27,7 +39,7 @@ import {
   type DraftSnapshot,
   type DraftStoreLike,
 } from '../ide/idb-draft'
-import { findReferencesTo, isPathTraversal, validateFileName } from '../ide/file-lifecycle'
+import { findReferencesTo, isPathTraversal, validateFileName, validateFilePath } from '../ide/file-lifecycle'
 
 interface Props {
   originalFiles: PackFileMap | null
@@ -78,11 +90,11 @@ interface TreeNode {
 
 interface LogEntry {
   time: string
-  kind: 'info' | 'success' | 'error' | 'run'
+  kind: 'info' | 'success' | 'error' | 'run' | 'command'
   message: string
 }
 
-function buildTree(paths: string[]): TreeNode {
+function buildTree(paths: string[], virtualFolders: Set<string> = new Set()): TreeNode {
   const root: TreeNode = { name: '', path: '', isDir: true, children: [] }
   for (const p of paths.sort()) {
     const parts = p.split('/')
@@ -92,10 +104,13 @@ function buildTree(paths: string[]): TreeNode {
       const part = parts[i]
       const isLast = i === parts.length - 1
       acc = acc ? acc + '/' + part : part
+      const isDir = !isLast || virtualFolders.has(acc)
       let child = node.children.find(c => c.name === part)
       if (!child) {
-        child = { name: part, path: acc, isDir: !isLast, children: [] }
+        child = { name: part, path: acc, isDir, children: [] }
         node.children.push(child)
+      } else if (isDir) {
+        child.isDir = true
       }
       node = child
     }
@@ -107,6 +122,53 @@ function buildTree(paths: string[]): TreeNode {
     }
   }
   return root
+}
+
+// Produce a minimal, valid starting document for a newly created file based on
+// its Minecraft resource location, so users can build a datapack from scratch.
+function scaffoldContent(path: string): string {
+  const lower = path.toLowerCase()
+  if (lower.endsWith('pack.mcmeta')) {
+    return JSON.stringify({ pack: { pack_format: 48, description: 'My Pack' } }, null, 2)
+  }
+  if (!lower.endsWith('.json')) return ''
+  const parts = lower.split('/')
+  // data/<ns>/<type>/<name>.json
+  if (parts.length >= 4 && parts[0] === 'data') {
+    const type = parts[2]
+    switch (type) {
+      case 'advancement':
+        return JSON.stringify({
+          display: {
+            icon: { id: 'minecraft:diamond' },
+            title: 'Advancement',
+            description: '',
+          },
+          criteria: { tick: { trigger: 'minecraft:tick' } },
+        }, null, 2)
+      case 'recipe':
+        return JSON.stringify({
+          type: 'minecraft:crafting_shaped',
+          pattern: ['#'],
+          key: { '#': { item: 'minecraft:stick' } },
+          result: { item: 'minecraft:diamond' },
+        }, null, 2)
+      case 'loot_table':
+        return JSON.stringify({
+          pools: [{
+            rolls: 1,
+            entries: [{ type: 'minecraft:item', name: 'minecraft:diamond' }],
+          }],
+        }, null, 2)
+      case 'predicate':
+        return JSON.stringify({ condition: 'minecraft:always_true' }, null, 2)
+      case 'tag':
+        return JSON.stringify({ values: [] }, null, 2)
+      default:
+        return '{}'
+    }
+  }
+  return '{}'
 }
 
 function langFor(path: string): string {
@@ -155,6 +217,32 @@ function isMcdocFormatPath(path: string | null): boolean {
     isAdvancementPath(path)
   )
 }
+
+function getSpecializedEditor(path: string | null): 'advancement' | 'recipe' | 'loot_table' | 'predicate' | 'tag' | null {
+  if (!path) return null
+  if (isAdvancementPath(path)) return 'advancement'
+  if (isRecipePath(path)) return 'recipe'
+  if (isLootTablePath(path)) return 'loot_table'
+  if (isPredicatePath(path)) return 'predicate'
+  if (path.startsWith('data/') && path.endsWith('.json')) {
+    // Check for tag files
+    const tagMatch = path.match(/^data\/[^/]+\/tags\/([^/]+)\/.+\.json$/)
+    if (tagMatch) return 'tag'
+  }
+  return null
+}
+
+// Whether a path should open in the misode-style split view (JSON left, visual
+// form right). Covers every file type that has a dedicated visual editor.
+function getSplitKind(path: string | null): 'recipe' | 'advancement' | 'loot_table' | 'predicate' | 'tag' | 'mcmeta' | null {
+  if (!path) return null
+  if (isRecipePath(path)) return 'recipe'
+  if (path === 'pack.mcmeta') return 'mcmeta'
+  const sp = getSpecializedEditor(path)
+  if (sp === 'advancement' || sp === 'loot_table' || sp === 'predicate' || sp === 'tag') return sp
+  return null
+}
+
 
 // Monaco 0.56 dropped editor.getTheme() from the standalone API, so the
 // readonly flag below replaces that guard (defineTheme itself is idempotent).
@@ -417,6 +505,9 @@ export default function IdePage({
   // Bottom panel: height in px once the user drags the divider (null = the
   // CSS default of 22%), plus a collapsed state that hides the body.
   const [panelHeight, setPanelHeight] = useState<number | null>(null)
+  // Persisted width (%) of the JSON pane in the split view, so dragging the
+  // divider keeps its position when switching between files.
+  const [splitLeftPct, setSplitLeftPct] = useState(50)
   const [panelCollapsed, setPanelCollapsed] = useState(false)
   // Slim status bar: cursor position follows the editor.
   const [cursor, setCursor] = useState({ lineNumber: 1, column: 1 })
@@ -441,9 +532,23 @@ export default function IdePage({
   const [newFileTarget, setNewFileTarget] = useState<string | null>(null) // null = root; string = folder path
   const [newFileName, setNewFileName] = useState('')
   const newFileInputRef = useRef<HTMLInputElement | null>(null)
+  // Virtual empty folders (no files yet) so the tree can show structure built from scratch.
+  const [virtualFolders, setVirtualFolders] = useState<Set<string>>(new Set())
+
+  // Inline "new folder" creation (VSCode-like). Mirrors the new-file flow.
+  const [newFolderTarget, setNewFolderTarget] = useState<string | null>(null)
+  const [newFolderName, setNewFolderName] = useState('')
+  const newFolderInputRef = useRef<HTMLInputElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
+  // VSCode-like overlay state
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false)
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(260)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; kind: 'file' | 'folder' | 'empty' } | null>(null)
 
   // 2b.5 — Drag-to-move state
   const [dragPath, setDragPath] = useState<string | null>(null)
@@ -748,6 +853,11 @@ export default function IdePage({
   const handleMount: OnMount = useCallback((editor, monacoInstance) => {
     monacoRef.current = monacoInstance
     editorRef.current = editor
+    // Clear the ref on dispose so global undo/redo never targets a stale instance
+    // after the editor unmounts (e.g. when switching to a schema-form view).
+    editor.onDidDispose(() => {
+      if (editorRef.current === editor) editorRef.current = null
+    })
     // Status bar line/col follows the cursor.
     editor.onDidChangeCursorPosition(e => {
       setCursor({ lineNumber: e.position.lineNumber, column: e.position.column })
@@ -760,6 +870,22 @@ export default function IdePage({
   // from the pointer up to the top of the panel (inverse of clientY relative
   // to the container). Clamp to keep both the editor and the panel usable.
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const startSidebarResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = sidebarWidth
+    const onMove = (ev: PointerEvent) => {
+      const w = Math.min(Math.max(startW + (ev.clientX - startX), 180), 540)
+      setSidebarWidth(w)
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [sidebarWidth])
+
   const startResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     const panelEl = panelRef.current
@@ -809,9 +935,11 @@ export default function IdePage({
       if (!originalFiles) return null
       const merged = { ...originalFiles, ...editedFiles }
       for (const d of deletedFiles) delete merged[d]
-      return buildTree(Object.keys(merged))
+      const paths = new Set(Object.keys(merged))
+      for (const vf of virtualFolders) paths.add(vf)
+      return buildTree([...paths], virtualFolders)
     },
-    [originalFiles, editedFiles, deletedFiles],
+    [originalFiles, editedFiles, deletedFiles, virtualFolders],
   )
 
   // M1.5 — flattened, depth-first, render-order list of currently visible
@@ -945,6 +1073,75 @@ export default function IdePage({
     onEditedFilesChange({ ...editedFiles, [path]: value ?? '' })
   }, [editedFiles, onEditedFilesChange])
 
+  // Parsed JSON for the specialized (misode-like) visual editors. Falls back to
+  // {} when the active file isn't valid JSON yet (the editor shows its own form).
+  const parsedDoc = useMemo<JsonValue>(() => {
+    if (!activeContent) return {}
+    try {
+      const v = JSON.parse(activeContent)
+      return v as JsonValue
+    } catch {
+      return {}
+    }
+  }, [activeContent])
+
+  // Immutably set a value at a JSON path, returning the updated root. Merges the
+  // partial (path, value) edits emitted by the specialized editors back into the
+  // full document so we never overwrite the surrounding fields.
+  const setAtPath = useCallback((root: JsonValue, segments: JsonPath, value: JsonValue): JsonValue => {
+    if (segments.length === 0) return value
+    const [head, ...rest] = segments
+    if (typeof head === 'number') {
+      const arr: JsonValue[] = Array.isArray(root) ? (root as JsonValue[]).slice() : []
+      while (arr.length <= head) arr.push(null)
+      arr[head] = setAtPath((arr[head] as JsonValue) ?? null, rest, value)
+      return arr
+    }
+    const obj: Record<string, JsonValue> =
+      root && typeof root === 'object' && !Array.isArray(root)
+        ? { ...(root as Record<string, JsonValue>) }
+        : {}
+    obj[head] = setAtPath((obj[head] as JsonValue) ?? null, rest, value)
+    return obj
+  }, [])
+
+  // Shared commit handler for specialized editors: merge the partial edit into the
+  // parsed document at the given path, then serialize the full object back to a
+  // formatted JSON string and push it through the normal edit path.
+  const handleSpecializedChange = useCallback(
+    (p: JsonPath, value: JsonValue) => {
+      if (!activePath) return
+      const next = setAtPath(parsedDoc, p, value)
+      handleEdited(activePath, JSON.stringify(next, null, 2))
+    },
+    [activePath, handleEdited, parsedDoc, setAtPath],
+  )
+
+  // misode-style toolbar actions for the active file.
+  const handleCopyActive = useCallback(async () => {
+    if (!activePath) return
+    const text = editedFiles[activePath] ?? originalFiles?.[activePath] ?? ''
+    try {
+      await navigator.clipboard.writeText(text)
+      addLog('info', `Copied ${activePath} to clipboard`)
+    } catch {
+      addLog('error', 'Clipboard access was denied by the browser')
+    }
+  }, [activePath, editedFiles, originalFiles, addLog])
+
+  const handleFormatActive = useCallback(() => {
+    if (!activePath) return
+    const text = editedFiles[activePath] ?? originalFiles?.[activePath] ?? ''
+    if (!text.trim()) return
+    try {
+      const pretty = JSON.stringify(JSON.parse(text), null, 2)
+      handleEdited(activePath, pretty)
+      addLog('info', `Formatted ${activePath}`)
+    } catch {
+      addLog('error', `${activePath} is not valid JSON — cannot format`)
+    }
+  }, [activePath, editedFiles, originalFiles, handleEdited, addLog])
+
   const toggleFolder = useCallback((path: string) => {
     setCollapsed(prev => {
       const next = new Set(prev)
@@ -1017,6 +1214,8 @@ export default function IdePage({
     draftPromptedRef.current = null
 
     await onLoad(entries, name)
+    setCollapsed(new Set())
+    setVirtualFolders(new Set())
     addLog('success', `loaded ${name} (${Object.keys(entries).length} files)`)
   }, [addLog, onLoad])
 
@@ -1028,6 +1227,8 @@ export default function IdePage({
     setRenamingPath(null)
     setNewFileTarget(null)
     setNewFileName('')
+    setCollapsed(new Set())
+    setVirtualFolders(new Set())
     onClear()
     draftStoreRef.current?.clear().catch(() => {})
     addLog('info', 'pack cleared')
@@ -1166,6 +1367,24 @@ export default function IdePage({
     if (selectedGameVersion === 'Auto') return sortedVersions[0]?.id ?? ''
     return sortedVersions.find(v => v.name === selectedGameVersion)?.id ?? selectedGameVersion
   }, [selectedGameVersion, sortedVersions])
+
+  const handleCreateDatapack = useCallback((namespace: string, opts?: { minFormat?: number; maxFormat?: number }) => {
+    const version = versions.find(v => v.id === recipePresetVersion)
+    const packFormat = version ? version.data_pack_version : 48
+    const packObj: Record<string, unknown> = { pack_format: packFormat, description: 'My Datapack' }
+    if (opts && (opts.minFormat !== undefined || opts.maxFormat !== undefined)) {
+      const lo = Math.min(opts.minFormat ?? packFormat, opts.maxFormat ?? packFormat)
+      const hi = Math.max(opts.minFormat ?? packFormat, opts.maxFormat ?? packFormat)
+      packObj.supported_formats = { min_inclusive: lo, max_inclusive: hi }
+    }
+    const pack = JSON.stringify({ pack: packObj }, null, 2)
+    const files: PackFileMap = { 'pack.mcmeta': pack }
+    const skeleton = ['advancement', 'recipe', 'loot_table', 'predicate', 'tag', 'functions']
+      .map(t => `data/${namespace}/${t}`)
+    onLoad(files, `${namespace}-datapack`)
+    setVirtualFolders(new Set(skeleton))
+    addLog('success', `created datapack ${namespace}-datapack (pack_format ${packFormat})`)
+  }, [versions, recipePresetVersion, onLoad, addLog])
 
   // 3.1 — Lazily fetch the vanilla recipe ID list for the current version
   // whenever a recipe file is opened or the version changes. Failures surface
@@ -1366,12 +1585,18 @@ export default function IdePage({
       return
     }
 
-    const incoming = await readDroppedFiles(e.dataTransfer)
-    if (!incoming) {
+    const dropped = await readDroppedFiles(e.dataTransfer)
+    if (!dropped) {
       addLog('error', 'Drop a .zip or a folder')
       return
     }
 
+    // When dropped onto a specific folder, nest the incoming files under it.
+    const incoming: PackFileMap = dropFolderPath
+      ? Object.fromEntries(Object.entries(dropped).map(([k, v]) => [`${dropFolderPath}/${k}`, v]))
+      : dropped
+
+    setDropFolderPath(null)
     const current = mergedFiles ?? { ...originalFiles, ...editedFiles }
     const conflicts = Object.keys(incoming).filter(k => k in current)
 
@@ -1432,6 +1657,51 @@ export default function IdePage({
       const isEditableField =
         tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable
 
+      // --- VSCode-like navigation shortcuts (work even from inside the editor) ---
+      // Ctrl/Cmd+Shift+P (or F1) — command palette.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        setCommandPaletteOpen(true)
+        return
+      }
+      if (e.key === 'F1') {
+        e.preventDefault()
+        setCommandPaletteOpen(true)
+        return
+      }
+      // Ctrl/Cmd+P — quick open (file picker). Steal from the browser print dialog.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        setQuickOpenOpen(true)
+        return
+      }
+      // Ctrl/Cmd+` — toggle integrated terminal.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === '`') {
+        e.preventDefault()
+        setTerminalOpen(prev => !prev)
+        return
+      }
+      // Ctrl/Cmd+B — toggle sidebar (explorer).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        setSidebarCollapsed(prev => !prev)
+        return
+      }
+
+      // Ctrl/Cmd+D — duplicate the active file.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'd') {
+        if (isEditableField) return
+        if (activePath) { e.preventDefault(); handleDuplicateFile(activePath) }
+        return
+      }
+
+      // Ctrl/Cmd+Shift+C — copy the active file's path.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'c') {
+        if (isEditableField) return
+        if (activePath) { e.preventDefault(); handleCopyPath(activePath) }
+        return
+      }
+
       // Ctrl/Cmd+S — export the pack. Never steal from text fields.
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') {
         if (isEditableField) return
@@ -1448,6 +1718,34 @@ export default function IdePage({
         if (isEditableField) return
         e.preventDefault()
         handleRun()
+        return
+      }
+
+      // Ctrl/Cmd+Z — undo; Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z — redo.
+      // When focus is inside the editor (or any input) Monaco/inputs handle it
+      // natively, so we step aside. When focus is elsewhere we focus the live
+      // Monaco editor and trigger its undo/redo so the shortcuts work globally
+      // (VSCode-like) without stealing from form fields.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'z') {
+        if (isEditableField) return
+        if (editorRef.current) {
+          e.preventDefault()
+          editorRef.current.focus()
+          editorRef.current.trigger('keyboard', 'undo', null)
+        }
+        return
+      }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.altKey &&
+        (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))
+      ) {
+        if (isEditableField) return
+        if (editorRef.current) {
+          e.preventDefault()
+          editorRef.current.focus()
+          editorRef.current.trigger('keyboard', 'redo', null)
+        }
         return
       }
 
@@ -1470,7 +1768,7 @@ export default function IdePage({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleExport, handleRun, pendingDelete, activePath, closeTab, addLog])
+  }, [handleExport, handleRun, pendingDelete, activePath, closeTab, addLog, handleDuplicateFile, handleCopyPath])
 
   // --- 1.2 File operations: create / rename / delete --------------------
 
@@ -1478,6 +1776,7 @@ export default function IdePage({
   const folderPaths = useMemo(() => {
     if (!originalFiles) return []
     const folders = new Set<string>()
+    for (const vf of virtualFolders) folders.add(vf)
     for (const p of Object.keys({ ...originalFiles, ...editedFiles })) {
       const parts = p.split('/')
       let acc = ''
@@ -1498,6 +1797,13 @@ export default function IdePage({
   }, [newFileTarget])
 
   /** Focus the rename input when a file enters rename mode. */
+
+  useEffect(() => {
+    if (newFolderTarget !== null) {
+      queueMicrotask(() => newFolderInputRef.current?.focus())
+    }
+  }, [newFolderTarget])
+
   useEffect(() => {
     if (renamingPath !== null) {
       queueMicrotask(() => renameInputRef.current?.focus())
@@ -1507,39 +1813,92 @@ export default function IdePage({
   const handleCreateFile = useCallback(() => {
     const raw = newFileName.trim()
     if (!raw) return
-    const nameErr = validateFileName(raw)
-    if (nameErr) {
-      addLog('error', nameErr)
-      return
-    }
-    if (isPathTraversal(raw)) {
-      addLog('error', 'File name must not traverse paths')
-      return
-    }
     const folder = newFileTarget ?? ''
-    const path = folder ? `${folder}/${raw}` : raw
+    const relPath = folder ? `${folder}/${raw}` : raw
+    // Support typing a relative path (e.g. data/minecraft/advancement/foo.json).
+    const pathErr = validateFilePath(relPath)
+    if (pathErr) {
+      addLog('error', pathErr)
+      return
+    }
+    const path = relPath
     // Ensure uniqueness across merged set
     const all = { ...originalFiles, ...editedFiles }
     if (all[path] !== undefined || deletedFiles.has(path)) {
       addLog('error', `File "${path}" already exists`)
       return
     }
-    // Determine content from extension
-    const ext = raw.split('.').pop()?.toLowerCase()
-    let content = ''
-    if (path.endsWith('pack.mcmeta')) {
-      content = JSON.stringify({ pack: { pack_format: 48, description: 'My Pack' } }, null, 2)
-    } else if (ext === 'mcmeta') {
-      content = JSON.stringify({ pack: { pack_format: 1, description: '' } }, null, 2)
-    } else if (ext === 'json') {
-      content = '{}'
+    // Auto-create any parent folders implied by the typed path.
+    const segments = path.split('/')
+    const parents: string[] = []
+    for (let k = 0; k < segments.length - 1; k++) {
+      parents.push(segments.slice(0, k + 1).join('/'))
     }
+    if (parents.length > 0) {
+      setVirtualFolders(prev => {
+        const next = new Set(prev)
+        for (const p of parents) next.add(p)
+        return next
+      })
+    }
+    const content = scaffoldContent(path)
     onEditedFilesChange({ ...editedFiles, [path]: content })
     setNewFileTarget(null)
     setNewFileName('')
     openFile(path)
     addLog('success', `created ${path}`)
   }, [newFileName, newFileTarget, originalFiles, editedFiles, deletedFiles, onEditedFilesChange, openFile, addLog])
+
+  const handleCreateFolder = useCallback(() => {
+    const raw = newFolderName.trim()
+    if (!raw) return
+    const nameErr = validateFileName(raw)
+    if (nameErr) {
+      addLog('error', nameErr)
+      return
+    }
+    const folder = newFolderTarget ?? ''
+    const path = folder ? `${folder}/${raw}` : raw
+    const all = { ...originalFiles, ...editedFiles }
+    if (all[path] !== undefined || virtualFolders.has(path) || deletedFiles.has(path)) {
+      addLog('error', `Folder "${path}" already exists`)
+      return
+    }
+    setVirtualFolders(prev => new Set(prev).add(path))
+    setNewFolderTarget(null)
+    setNewFolderName('')
+    addLog('success', `created folder ${path}`)
+  }, [newFolderName, newFolderTarget, originalFiles, editedFiles, virtualFolders, deletedFiles, addLog])
+
+  const handleDeleteFolder = useCallback((folderPath: string) => {
+    const all = { ...originalFiles, ...editedFiles }
+    const childFiles = Object.keys(all).filter(p => p === folderPath || p.startsWith(folderPath + '/'))
+    const childFolders = [...virtualFolders].filter(p => p === folderPath || p.startsWith(folderPath + '/'))
+    if (childFiles.length > 0) {
+      const next = new Set(deletedFiles)
+      for (const f of childFiles) next.add(f)
+      onDeletedFilesChange(next)
+    }
+    if (childFolders.length > 0) {
+      setVirtualFolders(prev => {
+        const next = new Set(prev)
+        for (const f of childFolders) next.delete(f)
+        return next
+      })
+    }
+    addLog('info', `deleted folder ${folderPath} (${childFiles.length} file(s))`)
+  }, [originalFiles, editedFiles, virtualFolders, deletedFiles, onDeletedFilesChange, addLog])
+
+  const handleCollapseAll = useCallback(() => {
+    if (!originalFiles) return
+    const folders = new Set<string>()
+    const paths = [...Object.keys({ ...originalFiles, ...editedFiles }), ...virtualFolders]
+    for (const p of paths) {
+      const parts = p.split('/')
+      for (let i = 0; i < parts.length - 1; i++) folders.add(parts.slice(0, i + 1).join('/'))
+    }
+    setCollapsed(folders)
+  }, [originalFiles, editedFiles, virtualFolders])
 
   const handleRenameCommit = useCallback((oldPath: string, newName: string) => {
     setRenamingPath(null)
@@ -1653,6 +2012,7 @@ export default function IdePage({
     }
   }, [originalFiles, editedFiles, addLog])
 
+
   const confirmDelete = useCallback(() => {
     const path = pendingDelete
     if (!path) return
@@ -1673,6 +2033,85 @@ export default function IdePage({
     })
     addLog('info', `deleted ${path}`)
   }, [pendingDelete, originalFiles, editedFiles, deletedFiles, activePath, onEditedFilesChange, onDeletedFilesChange, addLog])
+
+  // VSCode-like handlers
+  const handleContextMenu = useCallback((e: React.MouseEvent, path: string, kind: 'file' | 'folder' | 'empty') => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, path, kind })
+  }, [])
+
+  const handleTerminalCommand = useCallback((command: string) => {
+    addLog('command', command)
+  }, [addLog])
+
+    function handleDuplicateFile(path: string) {
+    const merged = { ...originalFiles, ...editedFiles }
+    const content = merged[path]
+    if (content === undefined) return
+    const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+    const base = dir ? path.slice(dir.length + 1) : path
+    const dot = base.lastIndexOf('.')
+    const name = dot > 0 ? base.slice(0, dot) : base
+    const ext = dot > 0 ? base.slice(dot) : ''
+    const prefix = dir ? dir + '/' : ''
+    let candidate = prefix + name + '-copy' + ext
+    let n = 1
+    while (candidate in merged) {
+      candidate = prefix + name + '-copy' + (n++) + ext
+    }
+    onEditedFilesChange({ ...editedFiles, [candidate]: content })
+    openFile(candidate)
+    addLog('success', `duplicated "${path}" → "${candidate}"`)
+  }
+
+  function handleCopyPath(path: string) {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(path).then(
+        () => addLog('success', `copied path: ${path}`),
+        () => addLog('error', 'clipboard write failed')
+      )
+    } else {
+      addLog('info', path)
+    }
+  }
+
+
+const handleContextMenuAction = useCallback((action: string) => {
+    if (!contextMenu) return
+    const { path, kind } = contextMenu
+    setContextMenu(null)
+
+    switch (action) {
+      case 'open':
+        if (kind === 'file') openFile(path)
+        break
+      case 'rename':
+        setRenamingPath(path)
+        break
+      case 'delete':
+        if (kind === 'folder') handleDeleteFolder(path)
+        else handleDeleteFile(path)
+        break
+      case 'newFile':
+        if (kind === 'folder' || kind === 'empty') {
+          setNewFileTarget(path)
+          setNewFileName('')
+        }
+        break
+      case 'newFolder':
+        if (kind === 'folder' || kind === 'empty') {
+          setNewFolderTarget(path)
+          setNewFolderName('')
+        }
+        break
+      case 'duplicate':
+        if (kind === 'file') handleDuplicateFile(path)
+        break
+      case 'copyPath':
+        handleCopyPath(path)
+        break
+    }
+  }, [contextMenu, openFile, handleDeleteFile, handleDuplicateFile, handleCopyPath, newFileInputRef])
 
   const cancelDelete = useCallback(() => {
     setPendingDelete(null)
@@ -1697,6 +2136,7 @@ export default function IdePage({
               onDragOver={e => handleFolderDragOver(e, child.path)}
               onDragLeave={handleFolderDragLeave}
               onDrop={() => handleMoveFile(child.path)}
+              onContextMenu={e => { e.preventDefault(); handleContextMenu(e, child.path, 'folder') }}
             >
               <span className="ide-caret">{isCollapsed ? '▶' : '▼'}</span>
               <span className="ide-folder-icon">{isDropTarget ? '📂' : '📁'}</span>
@@ -1711,6 +2151,7 @@ export default function IdePage({
       const isRenaming = renamingPath === child.path
       const isBeingDragged = dragPath === child.path
       const fileName = child.name
+      const ext = fileName.includes('.') ? fileName.split('.').pop()!.toLowerCase() : 'file'
 
       if (isRenaming) {
         return (
@@ -1755,8 +2196,10 @@ export default function IdePage({
           onClick={() => openFile(child.path)}
           onDoubleClick={() => setRenamingPath(child.path)}
           title={child.path}
+          onContextMenu={e => { e.preventDefault(); handleContextMenu(e, child.path, 'file') }}
         >
-          <span className="ide-file-icon">{isEdited ? '●' : '·'}</span>
+          <span className={`ide-file-badge ide-file-ext-${ext}`}>{ext}</span>
+          {isEdited && <span className="ide-file-edited" title="Unsaved changes">●</span>}
           <span className="ide-file-name">{fileName}</span>
           <span className="ide-file-actions">
             <span
@@ -1886,12 +2329,24 @@ export default function IdePage({
       </div>
 
       <div className="ide-main">
-        <aside className="ide-explorer">
+        <aside
+          className={`ide-explorer${sidebarCollapsed ? ' collapsed' : ''}`}
+          style={{ flex: `0 0 ${sidebarWidth}px`, width: `${sidebarWidth}px` }}
+        >
           <div className="ide-explorer-head">
-            <span>Explorer</span>
-            {originalFiles && (
-              <span className="ide-explorer-count">{fileCount}</span>
-            )}
+            <span className="ide-explorer-title">Explorer</span>
+            <span className="ide-explorer-head-actions">
+              {originalFiles && (
+                <>
+                  <button type="button" className="ide-explorer-btn" title="New File" aria-label="New File" onClick={() => { setNewFileTarget(''); setNewFileName('') }}>📄</button>
+                  <button type="button" className="ide-explorer-btn" title="New Folder" aria-label="New Folder" onClick={() => { setNewFolderTarget(''); setNewFolderName('') }}>📁</button>
+                  <button type="button" className="ide-explorer-btn" title="Collapse All" aria-label="Collapse All" onClick={handleCollapseAll}>⊟</button>
+                </>
+              )}
+              {originalFiles && (
+                <span className="ide-explorer-count">{fileCount}</span>
+              )}
+            </span>
           </div>
 
           {!originalFiles ? (
@@ -1902,6 +2357,8 @@ export default function IdePage({
                 fileName=""
                 onLoad={handleLoad}
                 onClear={handleClear}
+                onCreate={handleCreateDatapack}
+        defaultFormat={versions.find(v => v.id === recipePresetVersion)?.data_pack_version}
               />
             </div>
           ) : (
@@ -1922,7 +2379,7 @@ export default function IdePage({
                   {tree.children.length > 0 ? renderTree(tree, 0) : (
                     <div className="ide-tree-empty">Empty pack</div>
                   )}
-                  {/* New file row */}
+                                    {/* New file / new folder row */}
                   {newFileTarget !== null ? (
                     <div className="ide-tree-newfile">
                       <span className="ide-file-icon">{'·'}</span>
@@ -1941,7 +2398,7 @@ export default function IdePage({
                         ref={newFileInputRef}
                         className="ide-newfile-input"
                         type="text"
-                        placeholder="name.ext"
+                        placeholder="name.json or path/to/name.json"
                         aria-label="New file name"
                         value={newFileName}
                         onChange={e => setNewFileName(e.target.value)}
@@ -1951,31 +2408,47 @@ export default function IdePage({
                         }}
                       />
                       <span className="ide-file-actions visible">
-                        <span
-                          className="ide-file-action"
-                          role="button"
-                          tabIndex={-1}
-                          title="Create"
-                          aria-label="Create file"
-                          onClick={handleCreateFile}
-                        >✓</span>
-                        <span
-                          className="ide-file-action"
-                          role="button"
-                          tabIndex={-1}
-                          title="Cancel"
-                          aria-label="Cancel"
-                          onClick={() => { setNewFileTarget(null); setNewFileName('') }}
-                        >✕</span>
+                        <span className="ide-file-action" role="button" tabIndex={-1} title="Create" aria-label="Create file" onClick={handleCreateFile}>✓</span>
+                        <span className="ide-file-action" role="button" tabIndex={-1} title="Cancel" aria-label="Cancel" onClick={() => { setNewFileTarget(null); setNewFileName('') }}>✕</span>
+                      </span>
+                    </div>
+                  ) : newFolderTarget !== null ? (
+                    <div className="ide-tree-newfile">
+                      <span className="ide-folder-icon">📁</span>
+                      <select
+                        className="ide-newfile-folder"
+                        value={newFolderTarget}
+                        aria-label="Target folder"
+                        onChange={e => setNewFolderTarget(e.target.value)}
+                      >
+                        <option value="">Root</option>
+                        {folderPaths.map(fp => (
+                          <option key={fp} value={fp}>{fp}</option>
+                        ))}
+                      </select>
+                      <input
+                        ref={newFolderInputRef}
+                        className="ide-newfile-input"
+                        type="text"
+                        placeholder="folder-name"
+                        aria-label="New folder name"
+                        value={newFolderName}
+                        onChange={e => setNewFolderName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleCreateFolder()
+                          if (e.key === 'Escape') { setNewFolderTarget(null); setNewFolderName('') }
+                        }}
+                      />
+                      <span className="ide-file-actions visible">
+                        <span className="ide-file-action" role="button" tabIndex={-1} title="Create" aria-label="Create folder" onClick={handleCreateFolder}>✓</span>
+                        <span className="ide-file-action" role="button" tabIndex={-1} title="Cancel" aria-label="Cancel" onClick={() => { setNewFolderTarget(null); setNewFolderName('') }}>✕</span>
                       </span>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      className="ide-tree-newfile-btn"
-                      onClick={() => { setNewFileTarget(''); setNewFileName('') }}
-                      title="Create a new file"
-                    >+ New file</button>
+                    <div className="ide-tree-newfile-row">
+                      <button type="button" className="ide-tree-newfile-btn" onClick={() => { setNewFileTarget(''); setNewFileName('') }} title="Create a new file">+ New file</button>
+                      <button type="button" className="ide-tree-newfile-btn" onClick={() => { setNewFolderTarget(''); setNewFolderName('') }} title="Create a new folder">+ New folder</button>
+                    </div>
                   )}
                 </div>
               )}
@@ -1983,7 +2456,18 @@ export default function IdePage({
           )}
         </aside>
 
+        {!sidebarCollapsed && (
+          <div
+            className="ide-sidebar-resize"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize explorer"
+            onPointerDown={startSidebarResize}
+          />
+        )}
+
         <div className="ide-center">
+          <Breadcrumbs path={activePath} onNavigate={setActivePath} />
           <div className="ide-tabs">
             {openTabs.length === 0 && <span className="ide-tabs-hint">Select a file in the explorer to open it here</span>}
             {openTabs.map(path => (
@@ -2007,6 +2491,26 @@ export default function IdePage({
             ))}
           </div>
 
+
+
+
+
+          <div className="ide-editor-toolbar">
+            <button
+              type="button"
+              className="ide-tool-btn"
+              disabled={!activePath}
+              onClick={handleCopyActive}
+              title="Copy the active file's contents to the clipboard"
+            >Copy</button>
+            <button
+              type="button"
+              className="ide-tool-btn"
+              disabled={!activePath || (!activePath.endsWith('.json') && activePath !== 'pack.mcmeta')}
+              onClick={handleFormatActive}
+              title="Prettify the active JSON file"
+            >Format</button>
+          </div>
           <div className="ide-editor">
             {!activePath ? (
               <div className="ide-editor-empty">
@@ -2014,165 +2518,65 @@ export default function IdePage({
                   ? 'No file open — pick one from the explorer.'
                   : 'Load a datapack or resource pack to start editing.'}
               </div>
-            ) : isRecipe ? (
-              <>
-                <div className="ide-recipe-bar">
-                  <span className="ide-recipe-bar-label">Load preset</span>
-                  <select
-                    className="ide-recipe-select"
-                    value={presetSelected}
-                    disabled={presetLoading || presetIds.length === 0}
-                    onChange={e => handleLoadRecipePreset(e.target.value)}
-                    aria-label="Load a vanilla recipe preset"
-                  >
-                    <option value="">
-                      {presetLoading
-                        ? 'Loading presets…'
-                        : presetIds.length === 0
-                          ? 'No presets available'
-                          : 'Choose a vanilla recipe…'}
-                    </option>
-                    {presetIds.map(id => (
-                      <option key={id} value={id}>{id}</option>
-                    ))}
-                  </select>
-                </div>
-                {recipeFormActive ? (
-                  <McdocEditor
-                    content={activeContent}
-                    type={recipeType}
-                    version={recipePresetVersion}
-                    onChange={(next) => handleEdited(activePath, next)}
-                    onShowJson={() => setRecipeView('json')}
-                  />
-                ) : (
+            ) : (() => {
+              const kind = getSplitKind(activePath)
+              if (kind) {
+                return (
                   <>
-                    {recipeView === 'json' && (
-                      <div className="ide-form-toggle">
-                        <span className="ide-form-toggle-label">Editing raw JSON</span>
-                        <button
-                          type="button"
-                          className="ide-form-toggle-btn"
-                          onClick={() => setRecipeView('form')}
-                        >Show Form</button>
+                    {kind === 'recipe' && (
+                      <div className="ide-recipe-bar">
+                        <span className="ide-recipe-bar-label">Load preset</span>
+                        <select
+                          className="ide-recipe-select"
+                          value={presetSelected}
+                          disabled={presetLoading || presetIds.length === 0}
+                          onChange={e => handleLoadRecipePreset(e.target.value)}
+                          aria-label="Load a vanilla recipe preset"
+                        >
+                          <option value="">
+                            {presetLoading
+                              ? 'Loading presets…'
+                              : presetIds.length === 0
+                                ? 'No presets available'
+                                : 'Choose a vanilla recipe…'}
+                          </option>
+                          {presetIds.map(id => (
+                            <option key={id} value={id}>{id}</option>
+                          ))}
+                        </select>
                       </div>
                     )}
-                    <Editor
-                      key={`${activePath}::${spyglassReady ? 'ready' : 'init'}`}
-                      path={`file:///pack/${activePath}`}
+                    <SplitEditor
+                      key={activePath}
+                      activePath={activePath}
+                      initialContent={activeContent}
+                      kind={kind}
+                      versions={versions}
+                      mode={mode}
+                      spyglassReady={spyglassReady}
+                      serviceRef={serviceRef}
+                      version={recipePresetVersion}
+                      leftPct={splitLeftPct}
+                      onLeftPctChange={setSplitLeftPct}
+                      onCommit={(next) => handleEdited(activePath, next)}
                       beforeMount={beforeMount}
                       onMount={handleMount}
-                      language={langFor(activePath)}
-                      value={activeContent}
-                      onChange={(value) => handleEdited(activePath, value)}
-                      theme="minex-dark"
-                      options={{
-                        minimap: { enabled: false },
-                        fontSize: 13,
-                        tabSize: 4,
-                        insertSpaces: true,
-                        wordWrap: 'off',
-                        renderWhitespace: 'boundary',
-                        scrollBeyondLastLine: false,
-                        automaticLayout: true,
-                        padding: { top: 8, bottom: 8 },
-                        'semanticHighlighting.enabled': true,
-                      }}
                     />
                   </>
-                )}
-              </>
-            ) : isGenericFormat ? (
-                <>
-                  {formatFormActive ? (
-                    <McdocEditor
-                      content={activeContent}
-                      type={formatType}
-                      version={selectedVersions[0] ?? selectedGameVersion}
-                      onChange={(next) => handleEdited(activePath, next)}
-                      onShowJson={() => setFormatView('json')}
-                    />
-                  ) : (
-                    <>
-                      {formatView === 'json' && (
-                        <div className="ide-form-toggle">
-                          <span className="ide-form-toggle-label">Editing raw JSON</span>
-                          <button
-                            type="button"
-                            className="ide-form-toggle-btn"
-                            onClick={() => setFormatView('form')}
-                          >Show Form</button>
-                        </div>
-                      )}
-                      <Editor
-                        key={`${activePath}::${spyglassReady ? 'ready' : 'init'}`}
-                        path={`file:///pack/${activePath}`}
-                        beforeMount={beforeMount}
-                        onMount={handleMount}
-                        language={langFor(activePath)}
-                        value={activeContent}
-                        onChange={(value) => handleEdited(activePath, value)}
-                        theme="minex-dark"
-                        options={{
-                          minimap: { enabled: false },
-                          fontSize: 13,
-                          tabSize: 4,
-                          insertSpaces: true,
-                          wordWrap: 'off',
-                          renderWhitespace: 'boundary',
-                          scrollBeyondLastLine: false,
-                          automaticLayout: true,
-                          padding: { top: 8, bottom: 8 },
-                          'semanticHighlighting.enabled': true,
-                        }}
-                      />
-                    </>
-                  )}
-                </>
-            ) : activePath === 'pack.mcmeta' && mcmetaView === 'form' ? (
-              <McmetaEditor
-                content={activeContent}
-                onChange={(next) => handleEdited('pack.mcmeta', next)}
-                versions={versions}
-                mode={mode}
-                onShowJson={() => setMcmetaView('json')}
-              />
-            ) : (
-              <>
-                {activePath === 'pack.mcmeta' && mcmetaView === 'json' && (
-                  <div className="ide-form-toggle">
-                    <span className="ide-form-toggle-label">Editing raw JSON</span>
-                    <button
-                      type="button"
-                      className="ide-form-toggle-btn"
-                      onClick={() => setMcmetaView('form')}
-                    >Show Form</button>
-                  </div>
-                )}
-                <Editor
-                  key={`${activePath}::${spyglassReady ? 'ready' : 'init'}`}
-                  path={`file:///pack/${activePath}`}
+                )
+              }
+              return (
+                <LiveEditor
+                  key={activePath}
+                  activePath={activePath}
+                  initialContent={activeContent}
+                  language={langFor(activePath)}
+                  onCommit={(next) => handleEdited(activePath, next)}
                   beforeMount={beforeMount}
                   onMount={handleMount}
-                  language={langFor(activePath)}
-                  value={activeContent}
-                  onChange={(value) => handleEdited(activePath, value)}
-                  theme="minex-dark"
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    tabSize: 4,
-                    insertSpaces: true,
-                    wordWrap: 'off',
-                    renderWhitespace: 'boundary',
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    padding: { top: 8, bottom: 8 },
-                    'semanticHighlighting.enabled': true,
-                  }}
                 />
-              </>
-            )}
+              )
+            })()}
           </div>
 
           <div
@@ -2649,6 +3053,58 @@ export default function IdePage({
           </div>
         </div>
       )}
+
+      {/* VSCode-like overlays */}
+      <ContextMenu
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        onClose={() => setContextMenu(null)}
+        onAction={handleContextMenuAction}
+        items={
+          contextMenu
+            ? [
+                { label: 'Open', action: 'open', shortcut: 'Enter' },
+                { label: 'Rename', action: 'rename', shortcut: 'F2' },
+                { label: 'Delete', action: 'delete', shortcut: 'Del' },
+                contextMenu.kind === 'folder' || contextMenu.kind === 'empty'
+                  ? { label: 'New File', action: 'newFile', shortcut: 'N' }
+                  : null,
+                contextMenu.kind === 'folder' || contextMenu.kind === 'empty'
+                  ? { label: 'New Folder', action: 'newFolder', shortcut: '⇧N' }
+                  : null,
+                contextMenu.kind === 'file'
+                  ? { label: 'Duplicate', action: 'duplicate', shortcut: 'Ctrl+D' }
+                  : null,
+                { label: 'Copy Path', action: 'copyPath', shortcut: 'Ctrl+Shift+C' },
+              ].filter(Boolean) as { label: string; action: string; shortcut?: string }[]
+            : []
+        }
+      />
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        commands={[
+          { id: 'export', label: 'Export Pack', shortcut: 'Ctrl+S', action: () => handleExport() },
+          { id: 'run', label: 'Run Check', shortcut: 'Ctrl+Shift+A', action: () => handleRun() },
+          { id: 'sidebar', label: 'Toggle Sidebar', shortcut: 'Ctrl+B', action: () => setSidebarCollapsed(prev => !prev) },
+          { id: 'closeTab', label: 'Close Tab', shortcut: 'Ctrl+W', action: () => { if (activePath) closeTab(activePath) } },
+          { id: 'newFile', label: 'New File', shortcut: 'Ctrl+N', action: () => { setNewFileTarget(''); setNewFileName('') } },
+          { id: 'openFile', label: 'Open File', shortcut: 'Ctrl+O', action: () => setQuickOpenOpen(true) },
+          { id: 'terminal', label: 'Toggle Terminal', shortcut: 'Ctrl+`', action: () => setTerminalOpen(prev => !prev) },
+        ]}
+      />
+      <QuickOpen
+        isOpen={quickOpenOpen}
+        onClose={() => setQuickOpenOpen(false)}
+        files={Object.keys({ ...originalFiles, ...editedFiles })}
+        onOpenFile={openFile}
+      />
+      <TerminalPanel
+        isOpen={terminalOpen}
+        onClose={() => setTerminalOpen(false)}
+        onCommand={handleTerminalCommand}
+        logs={log}
+      />
     </div>
   )
 }

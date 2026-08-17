@@ -1,0 +1,115 @@
+/* Terminal Panel — uses the IDE's dark "stamp" theme tokens */
+.terminal-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--well, #0a0f16);
+  border-top: 1px solid var(--hairline, #252e3c);
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--docket, #161d27);
+  border-bottom: 1px solid var(--hairline, #252e3c);
+}
+
+.terminal-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink, #e6ebf2);
+  text-transform: uppercase;
+  letter-spacing: var(--tr-head, 0.18em);
+}
+
+.terminal-close {
+  background: transparent;
+  border: none;
+  color: var(--ink-faint, #8692a5);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: var(--r-sm, 3px);
+}
+
+.terminal-close:hover {
+  background: var(--docket-raised, #1d2532);
+  color: var(--ink, #e6ebf2);
+}
+
+.terminal-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  font-family: var(--font-mono, 'JetBrains Mono', Consolas, monospace);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.terminal-empty {
+  color: var(--ink-faint, #8692a5);
+  font-style: italic;
+}
+
+.terminal-line {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.terminal-time {
+  color: var(--ink-faint, #8692a5);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.terminal-msg {
+  color: var(--ink, #e6ebf2);
+}
+
+.terminal-info .terminal-msg {
+  color: var(--sev-info, #78a9d8);
+}
+
+.terminal-success .terminal-msg {
+  color: var(--sev-ok, #5fc48a);
+}
+
+.terminal-error .terminal-msg {
+  color: var(--sev-error, #f2726d);
+}
+
+.terminal-warning .terminal-msg {
+  color: var(--sev-warn, #e0a233);
+}
+
+.terminal-command .terminal-msg {
+  color: var(--stamp-bright, #ff8f4d);
+}
+
+.terminal-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--hairline, #252e3c);
+  background: var(--well, #0a0f16);
+}
+
+.terminal-prompt {
+  color: var(--stamp, #f07a35);
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+}
+
+.terminal-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ink, #e6ebf2);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+}

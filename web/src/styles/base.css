@@ -177,13 +177,3 @@ a:hover {
   line-height: 1.5;
 }
 
-.spinner {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.22);
-  border-top-color: currentColor;
-  animation: spin 0.65s linear infinite;
-  display: inline-block;
-  flex-shrink: 0;
-}

@@ -852,6 +852,33 @@
   background: var(--stamp);
 }
 
+/* Draggable divider between the explorer and the editor (vertical). */
+.ide-sidebar-resize {
+  flex: 0 0 9px;
+  width: 9px;
+  position: relative;
+  z-index: 3;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.ide-sidebar-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--hairline);
+  transition: background var(--dur-quick) var(--ease-quick);
+}
+
+.ide-sidebar-resize:hover::after,
+.ide-sidebar-resize:active::after {
+  background: var(--stamp);
+}
+
 .ide-panel-tabs {
   flex: 0 0 30px;
   height: 30px;
@@ -2362,3 +2389,379 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* Sidebar collapse */
+.ide-explorer.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-right: none !important;
+}
+
+.ide-explorer.collapsed .ide-explorer-head,
+.ide-explorer.collapsed .ide-tree,
+.ide-explorer.collapsed .ide-packmeta {
+  display: none !important;
+}
+
+/* Breadcrumbs */
+.breadcrumbs {
+  flex: 0 0 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  font-size: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+
+.breadcrumbs-home {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary, #969696);
+  cursor: default;
+}
+
+.breadcrumbs-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-secondary, #969696);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  transition: background 0.1s, color 0.1s;
+}
+
+.breadcrumbs-item:hover:not(:disabled) {
+  background: var(--bg-hover, #2a2d2e);
+  color: var(--text-primary, #cccccc);
+}
+
+.breadcrumbs-item.active {
+  color: var(--text-primary, #cccccc);
+  cursor: default;
+}
+
+.breadcrumbs-item:disabled {
+  cursor: default;
+}
+
+.breadcrumbs-separator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.breadcrumbs-separator-icon {
+  color: var(--text-muted, #858585);
+  font-size: 11px;
+  user-select: none;
+}
+
+.breadcrumbs-icon {
+  font-size: 12px;
+}
+
+/* Editor toolbar (Copy / Format) — misode-like actions */
+.ide-editor-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--hairline, #252e3c);
+  background: var(--docket, #161d27);
+}
+.ide-tool-btn {
+  padding: 4px 12px;
+  background: var(--docket-raised, #1d2532);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 12px;
+  font-family: var(--font-sans, inherit);
+  cursor: pointer;
+}
+.ide-tool-btn:hover:not(:disabled) {
+  border-color: var(--stamp, #f07a35);
+  color: var(--stamp, #f07a35);
+}
+.ide-tool-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+
+/* ── misode-style split view (JSON left · visual form right) ───────────── */
+.ide-split {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ide-split-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 4px var(--s4);
+  background: var(--ground-deep);
+  border-bottom: 1px solid var(--hairline);
+}
+.ide-split-modes {
+  display: flex;
+  gap: var(--s2, 4px);
+}
+.ide-split-modes button {
+  margin: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-quick),
+    background var(--dur-quick) var(--ease-quick),
+    border-color var(--dur-quick) var(--ease-quick);
+}
+.ide-split-modes button:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+.ide-split-modes button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.ide-split-parse-error {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--sev-warn);
+}
+.ide-split-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.ide-split-left,
+.ide-split-right {
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+.ide-split-left > * {
+  height: 100%;
+}
+.ide-split-split .ide-split-left {
+  flex: 1 1 50%;
+}
+.ide-split-split .ide-split-right {
+  flex: 1 1 50%;
+  overflow-y: auto;
+}
+.ide-split-source .ide-split-left {
+  flex: 1 1 100%;
+}
+.ide-split-source .ide-split-right {
+  display: none;
+}
+.ide-split-gui .ide-split-left {
+  display: none;
+}
+.ide-split-gui .ide-split-right {
+  flex: 1 1 100%;
+  overflow-y: auto;
+}
+/* The embedded form editors already expose a "Show JSON" button; the split
+   view provides JSON on the left, so hide those redundant toggles. */
+.ide-split-right .mcmeta-btn-ghost,
+.ide-split-right .mcdoc-btn-ghost {
+  display: none;
+}
+
+/* Draggable divider between the JSON (left) and form (right) panes in split
+   view — mirrors the bottom panel resize handle but oriented vertically. */
+.ide-split-divider {
+  flex: 0 0 9px;
+  width: 9px;
+  position: relative;
+  z-index: 3;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+.ide-split-divider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--hairline);
+  transition: background var(--dur-quick) var(--ease-quick);
+}
+.ide-split-divider:hover::after,
+.ide-split-divider:active::after {
+  background: var(--stamp);
+}
+
+/* ===== VSCode-like Explorer toolbar (New File / New Folder / Collapse) ===== */
+.ide-explorer-head {
+  gap: var(--s2);
+}
+.ide-explorer-title {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ide-explorer-head-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.ide-explorer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-ghost);
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--dur-quick) var(--ease-quick), color var(--dur-quick) var(--ease-quick);
+}
+.ide-explorer-btn:hover {
+  background: var(--stamp-wash);
+  color: var(--ink);
+}
+.ide-explorer-btn:active {
+  background: var(--stamp);
+  color: var(--paper, #fff);
+}
+
+/* New-file / new-folder inline row (two buttons when nothing is being created) */
+.ide-tree-newfile-row {
+  display: flex;
+  gap: 4px;
+  padding: 2px var(--s3);
+}
+.ide-tree-newfile-row .ide-tree-newfile-btn {
+  flex: 1 1 0;
+  width: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
+}
+.ide-tree-newfile-row .ide-tree-newfile-btn:hover {
+  background: var(--stamp-wash);
+  color: var(--ink);
+}
+
+/* ===== VSCode-like file-type badges ===== */
+.ide-file-badge {
+  flex-shrink: 0;
+  min-width: 30px;
+  padding: 0 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 14px;
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+  background: var(--well);
+}
+.ide-file-ext-json { color: #e8c84a; border-color: #e8c84a55; }
+.ide-file-ext-mcmeta { color: #c792ea; border-color: #c792ea55; }
+.ide-file-ext-mcfunction { color: #7fd88a; border-color: #7fd88a55; }
+.ide-file-ext-nbt { color: #e0936b; border-color: #e0936b55; }
+.ide-file-ext-txt { color: #9aa7b4; }
+.ide-file-ext-lang { color: #6fb3e0; border-color: #6fb3e055; }
+.ide-file-ext-png,
+.ide-file-ext-jpg,
+.ide-file-ext-jpeg,
+.ide-file-ext-gif { color: #e08ab0; border-color: #e08ab055; }
+.ide-file-ext-yml,
+.ide-file-ext-yaml,
+.ide-file-ext-json5 { color: #6fb3e0; border-color: #6fb3e055; }
+
+.ide-file-edited {
+  flex-shrink: 0;
+  color: var(--stamp);
+  font-size: 0.55rem;
+}
+
+/* ===== Create-from-scratch form in PackSelector ===== */
+.dz-new-pack {
+  margin-top: var(--s4);
+  padding-top: var(--s3);
+  border-top: 1px dashed var(--hairline-soft);
+}
+.dz-new-pack-title {
+  margin-bottom: var(--s2);
+  font-size: var(--t-body-sm);
+  color: var(--ink-ghost);
+}
+.dz-new-pack-row {
+  display: flex;
+  gap: var(--s2);
+}
+.dz-new-pack-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  outline: none;
+  transition: border-color var(--dur-quick) var(--ease-quick);
+}
+.dz-new-pack-input:focus {
+  border-color: var(--stamp);
+}
+
+.dz-new-pack-range {
+  align-items: center;
+}
+.dz-new-pack-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+.dz-new-pack-num {
+  flex: 0 0 64px;
+  width: 64px;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+.dz-new-pack-dash {
+  color: var(--ink-dim);
+  user-select: none;
+}
+

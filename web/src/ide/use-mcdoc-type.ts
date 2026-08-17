@@ -62,7 +62,7 @@ export function useResolvedMcdocType(opts: Options): {
       setState('ready')
     })()
     return () => { cancelled = true }
-  }, [path, formView, spyglassReady, discriminator, serviceRef])
+  }, [path, formView, spyglassReady, serviceRef])
 
   return { type, state }
 }

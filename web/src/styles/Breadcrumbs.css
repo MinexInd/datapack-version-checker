@@ -1,0 +1,68 @@
+/* Breadcrumbs — matches the IDE's dark "stamp" theme tokens */
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 10px;
+  height: 30px;
+  font-size: var(--fs-xs, 0.8125rem);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  flex: 0 0 30px;
+  border-bottom: 1px solid var(--hairline, #252e3c);
+  background: var(--ground, #0e131b);
+}
+
+.breadcrumbs-home {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-dim, #9aa7ba);
+  cursor: default;
+}
+
+.breadcrumbs-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink-dim, #9aa7ba);
+  cursor: pointer;
+  font-size: var(--fs-xs, 0.8125rem);
+  font-family: var(--font-sans, inherit);
+  transition: background var(--dur-quick, 0.15s), color var(--dur-quick, 0.15s);
+}
+
+.breadcrumbs-item:hover:not(:disabled) {
+  background: var(--bg-hover, #222b39);
+  color: var(--ink, #e6ebf2);
+}
+
+.breadcrumbs-item.active {
+  color: var(--ink, #e6ebf2);
+  cursor: default;
+}
+
+.breadcrumbs-item:disabled {
+  cursor: default;
+}
+
+.breadcrumbs-separator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.breadcrumbs-separator-icon {
+  color: var(--ink-faint, #8692a5);
+  font-size: 11px;
+  user-select: none;
+}
+
+.breadcrumbs-icon {
+  font-size: 12px;
+}

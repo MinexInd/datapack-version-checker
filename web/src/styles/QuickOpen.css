@@ -1,0 +1,126 @@
+/* Quick Open — uses the IDE's dark "stamp" theme tokens */
+.quickopen-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 10000;
+}
+
+.quickopen {
+  width: 600px;
+  max-width: 90vw;
+  max-height: 60vh;
+  background: var(--docket, #161d27);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-lg, 6px);
+  box-shadow: var(--lift, 0 8px 22px -8px rgba(0, 0, 0, 0.7));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.quickopen-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hairline, #252e3c);
+}
+
+.quickopen-icon {
+  position: absolute;
+  color: var(--ink-faint, #8692a5);
+  font-size: 14px;
+}
+
+.quickopen-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 14px;
+  font-family: var(--font-sans, inherit);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.quickopen-input:focus {
+  border-color: var(--stamp, #f07a35);
+}
+
+.quickopen-input::placeholder {
+  color: var(--ink-faint, #8692a5);
+}
+
+.quickopen-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.quickopen-tab {
+  padding: 4px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink-dim, #9aa7ba);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-sans, inherit);
+  transition: background var(--dur-quick, 0.15s), color var(--dur-quick, 0.15s);
+}
+
+.quickopen-tab:hover {
+  background: var(--docket-raised, #1d2532);
+  color: var(--ink, #e6ebf2);
+}
+
+.quickopen-tab.active {
+  background: var(--stamp-wash, rgba(240, 122, 53, 0.12));
+  color: var(--stamp-bright, #ff8f4d);
+}
+
+.quickopen-list {
+  overflow-y: auto;
+  max-height: 400px;
+  padding: 8px 0;
+}
+
+.quickopen-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--ink, #e6ebf2);
+  font-size: 13px;
+  transition: background var(--dur-quick, 0.15s);
+}
+
+.quickopen-item:hover,
+.quickopen-item.selected {
+  background: var(--docket-raised, #1d2532);
+}
+
+.quickopen-item-icon {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.quickopen-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quickopen-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--ink-faint, #8692a5);
+  font-style: italic;
+}

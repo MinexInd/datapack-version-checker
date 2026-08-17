@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PackFileMap } from '../api'
 import { normalizePackFiles, readZipFile, readDirectoryEntry } from '../ide/pack-io'
 
@@ -8,11 +8,30 @@ interface Props {
   fileName: string
   onLoad: (entries: PackFileMap, name: string) => void
   onClear: () => void
+  onCreate?: (namespace: string, opts?: { minFormat?: number; maxFormat?: number }) => void
+  defaultFormat?: number
 }
 
-export default function PackSelector({ files, fileCount, fileName, onLoad, onClear }: Props) {
+export default function PackSelector({ files, fileCount, fileName, onLoad, onClear, onCreate, defaultFormat }: Props) {
   const folderRef = useRef<HTMLInputElement>(null)
   const zipRef = useRef<HTMLInputElement>(null)
+  const [ns, setNs] = useState('minecraft')
+  const [minF, setMinF] = useState('')
+  const [maxF, setMaxF] = useState('')
+  useEffect(() => {
+    if (defaultFormat != null) {
+      setMinF(String(defaultFormat))
+      setMaxF(String(defaultFormat))
+    }
+  }, [defaultFormat])
+
+  const doCreate = useCallback(() => {
+    const namespace = ns.trim() || 'minecraft'
+    const min = minF.trim() === '' ? undefined : Number(minF)
+    const max = maxF.trim() === '' ? undefined : Number(maxF)
+    const opts = (min !== undefined || max !== undefined) ? { minFormat: min, maxFormat: max } : undefined
+    if (onCreate) onCreate(namespace, opts)
+  }, [onCreate, ns, minF, maxF])
 
   const handleFolder = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const dir = e.target.files
@@ -109,6 +128,45 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
             <button type="button" className="browse-link" onClick={(e) => { e.stopPropagation(); folderRef.current?.click() }}>Browse folder</button>
             <span className="browse-sep">·</span>
             <button type="button" className="browse-link" onClick={(e) => { e.stopPropagation(); zipRef.current?.click() }}>Browse .zip</button>
+          </div>
+          <div className="dz-new-pack">
+            <div className="dz-new-pack-title">…or create a datapack from scratch</div>
+            <div className="dz-new-pack-row">
+              <input
+                className="dz-new-pack-input"
+                type="text"
+                placeholder="namespace (e.g. minecraft)"
+                aria-label="Namespace"
+                value={ns}
+                onChange={e => setNs(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') doCreate() }}
+              />
+              <button type="button" className="btn btn-primary btn-sm" onClick={doCreate}>Create</button>
+            </div>
+            <div className="dz-new-pack-row dz-new-pack-range">
+              <span className="dz-new-pack-label">supported formats</span>
+              <input
+                className="dz-new-pack-input dz-new-pack-num"
+                type="number"
+                min="1"
+                placeholder="min"
+                aria-label="Min pack format"
+                value={minF}
+                onChange={e => setMinF(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') doCreate() }}
+              />
+              <span className="dz-new-pack-dash">–</span>
+              <input
+                className="dz-new-pack-input dz-new-pack-num"
+                type="number"
+                min="1"
+                placeholder="max"
+                aria-label="Max pack format"
+                value={maxF}
+                onChange={e => setMaxF(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') doCreate() }}
+              />
+            </div>
           </div>
         </div>
       )}

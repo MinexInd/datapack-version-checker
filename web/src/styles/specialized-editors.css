@@ -1,0 +1,683 @@
+/* Specialized Editors — shared styles using the IDE's dark "stamp" theme tokens */
+.advancement-editor,
+.recipe-editor,
+.loot-table-editor,
+.predicate-editor,
+.tag-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px;
+  max-width: 820px;
+  max-height: 100%;
+  overflow-y: auto;
+  color: var(--ink, #e6ebf2);
+}
+
+.advancement-editor-header,
+.recipe-editor-header,
+.loot-table-editor-header,
+.predicate-editor-header,
+.tag-editor-header {
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hairline, #252e3c);
+}
+
+.advancement-editor-header h3,
+.recipe-editor-header h3,
+.loot-table-editor-header h3,
+.predicate-editor-header h3,
+.tag-editor-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink, #e6ebf2);
+}
+
+.advancement-editor-section,
+.recipe-editor-section,
+.loot-table-editor-section,
+.predicate-editor-section,
+.tag-editor-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--docket, #161d27);
+  border: 1px solid var(--hairline-soft, #1b222e);
+  border-radius: var(--r-md, 4px);
+}
+
+.advancement-editor-section h4,
+.recipe-editor-section h4,
+.loot-table-editor-section h4,
+.predicate-editor-section h4,
+.tag-editor-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-dim, #9aa7ba);
+  text-transform: uppercase;
+  letter-spacing: var(--tr-head, 0.18em);
+}
+
+.advancement-empty,
+.recipe-empty,
+.loot-table-empty,
+.predicate-empty,
+.tag-empty {
+  color: var(--ink-faint, #8692a5);
+  font-style: italic;
+  padding: 8px;
+}
+
+.advancement-field,
+.recipe-field,
+.tag-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.advancement-field label,
+.recipe-field label,
+.tag-field label {
+  font-size: 12px;
+  color: var(--ink-dim, #9aa7ba);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.advancement-field input,
+.recipe-field input,
+.tag-field input,
+.advancement-field select,
+.recipe-field select,
+.tag-field select {
+  padding: 6px 8px;
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 13px;
+  font-family: var(--font-sans, inherit);
+}
+
+.advancement-field input:focus,
+.recipe-field input:focus,
+.tag-field input:focus,
+.advancement-field select:focus,
+.recipe-field select:focus,
+.tag-field select:focus {
+  outline: none;
+  border-color: var(--stamp, #f07a35);
+}
+
+.advancement-display {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.advancement-criteria {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.advancement-criterion {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--well, #0a0f16);
+  border-radius: var(--r-sm, 3px);
+}
+
+.advancement-criterion-name {
+  font-weight: 500;
+  color: var(--ink, #e6ebf2);
+}
+
+.advancement-criterion-trigger {
+  font-size: 12px;
+  color: var(--ink-faint, #8692a5);
+}
+
+.advancement-json {
+  background: var(--well, #0a0f16);
+  padding: 8px;
+  border-radius: var(--r-sm, 3px);
+  font-size: 12px;
+  overflow-x: auto;
+  color: var(--ink, #e6ebf2);
+}
+
+.recipe-pattern {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.recipe-pattern-row {
+  display: flex;
+  gap: 2px;
+}
+
+.recipe-pattern-cell {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-xs, 2px);
+  font-size: 10px;
+  color: var(--ink, #e6ebf2);
+}
+
+.recipe-ingredient {
+  display: inline-flex;
+  padding: 4px 8px;
+  background: var(--well, #0a0f16);
+  border-radius: var(--r-sm, 3px);
+  margin: 2px;
+  font-size: 13px;
+  color: var(--ink, #e6ebf2);
+}
+
+.loot-pools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loot-pool {
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-md, 4px);
+  padding: 8px;
+}
+
+.loot-pool-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.loot-pool-name {
+  font-weight: 600;
+  color: var(--ink, #e6ebf2);
+}
+
+.loot-pool-rolls {
+  font-size: 12px;
+  color: var(--ink-faint, #8692a5);
+}
+
+.loot-pool-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.loot-entry {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--well, #0a0f16);
+  border-radius: var(--r-sm, 3px);
+  font-size: 13px;
+}
+
+.loot-entry-type {
+  color: var(--stamp, #f07a35);
+  font-weight: 500;
+}
+
+.loot-entry-name {
+  color: var(--ink, #e6ebf2);
+}
+
+.loot-entry-weight {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-faint, #8692a5);
+}
+
+.predicate-conditions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.predicate-condition {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--well, #0a0f16);
+  border-radius: var(--r-sm, 3px);
+}
+
+.predicate-condition-key {
+  font-weight: 500;
+  color: var(--ink, #e6ebf2);
+}
+
+.predicate-condition-type {
+  font-size: 12px;
+  color: var(--ink-faint, #8692a5);
+}
+
+.tag-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag-value {
+  padding: 4px 8px;
+  background: var(--well, #0a0f16);
+  border-radius: var(--r-sm, 3px);
+  font-size: 13px;
+}
+
+.tag-value-item {
+  color: var(--ink, #e6ebf2);
+}
+
+
+/* --- Editable controls for the specialized (misode-like) editors --- */
+
+/* Shared compact button used inside forms (add / remove row) */
+.recipe-pattern-add,
+.recipe-pattern-del,
+.recipe-key-add button,
+.recipe-ingredients button,
+.loot-table-editor-header button,
+.loot-pool-header button,
+.loot-pool-items button,
+.advancement-criteria button,
+.tag-values button,
+.recipe-key-row button,
+.recipe-ingredient-row button,
+.loot-entry-row button {
+  padding: 4px 8px;
+  background: var(--docket-raised, #1d2532);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.recipe-pattern-add:hover,
+.recipe-ingredients button:hover,
+.loot-table-editor-header button:hover,
+.loot-pool-header button:hover,
+.loot-pool-items button:hover,
+.advancement-criteria button:hover,
+.tag-values button:hover,
+.recipe-key-row button:hover,
+.recipe-ingredient-row button:hover,
+.loot-entry-row button:hover {
+  border-color: var(--stamp, #f07a35);
+  color: var(--stamp, #f07a35);
+}
+
+/* Item reference editor (item / tag / id selector + text input) */
+.recipe-itemref {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.recipe-itemref label {
+  font-size: 12px;
+  color: var(--ink-dim, #9aa7ba);
+}
+.recipe-itemref-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.recipe-itemref-row select,
+.recipe-itemref-row input {
+  padding: 6px 8px;
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 13px;
+  font-family: var(--font-sans, inherit);
+}
+.recipe-itemref-row input {
+  flex: 1;
+  min-width: 0;
+}
+.recipe-itemref-row select:focus,
+.recipe-itemref-row input:focus {
+  outline: none;
+  border-color: var(--stamp, #f07a35);
+}
+
+/* Shaped pattern rows */
+.recipe-pattern-row input {
+  flex: 1;
+  padding: 6px 8px;
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.15em;
+  font-size: 13px;
+}
+.recipe-pattern-row input:focus {
+  outline: none;
+  border-color: var(--stamp, #f07a35);
+}
+
+/* Key (ingredient map) rows */
+.recipe-key {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.recipe-key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recipe-key-sym {
+  width: 28px;
+  text-align: center;
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  color: var(--stamp, #f07a35);
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  padding: 4px 0;
+}
+.recipe-key-row .recipe-itemref {
+  flex: 1;
+  margin-bottom: 0;
+}
+.recipe-key-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.recipe-key-add input {
+  padding: 6px 8px;
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 13px;
+  width: 140px;
+}
+.recipe-key-hint {
+  font-size: 11px;
+  color: var(--ink-faint, #8692a5);
+}
+
+/* Ingredient list rows */
+.recipe-ingredients {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.recipe-ingredient-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recipe-ingredient-row .recipe-itemref {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+/* Checkbox rows */
+.recipe-checkbox label {
+  flex-direction: row;
+  gap: 8px;
+  cursor: pointer;
+}
+.recipe-checkbox input {
+  width: auto;
+}
+
+/* Loot table pool fields */
+.loot-pool-fields {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.loot-pool-fields .recipe-field {
+  margin-bottom: 0;
+}
+.loot-entry-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--well, #0a0f16);
+  border-radius: var(--r-sm, 3px);
+}
+.loot-entry-row select,
+.loot-entry-row input {
+  padding: 5px 7px;
+  background: var(--ground, #0e131b);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 13px;
+  font-family: var(--font-sans, inherit);
+}
+.loot-entry-row input {
+  flex: 1;
+  min-width: 0;
+}
+.loot-entry-weight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-faint, #8692a5);
+}
+.loot-entry-weight input {
+  width: 64px;
+  flex: none;
+}
+.loot-entry-row select:focus,
+.loot-entry-row input:focus {
+  outline: none;
+  border-color: var(--stamp, #f07a35);
+}
+
+/* Advancement criterion rows */
+.advancement-criterion select {
+  padding: 5px 7px;
+  background: var(--ground, #0e131b);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 13px;
+}
+.advancement-criterion select:focus {
+  outline: none;
+  border-color: var(--stamp, #f07a35);
+}
+
+/* Tag values editable rows */
+.tag-values {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tag-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+}
+.tag-value input {
+  flex: 1;
+  padding: 6px 8px;
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+}
+.tag-value input:focus {
+  outline: none;
+  border-color: var(--stamp, #f07a35);
+}
+
+/* --- Predicate editor controls --- */
+.predicate-condition-card {
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-md, 4px);
+  padding: 10px;
+  margin-bottom: 8px;
+  background: var(--docket, #161d27);
+}
+.predicate-condition-head select {
+  padding: 6px 8px;
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+}
+.predicate-condition-head select:focus {
+  outline: none;
+  border-color: var(--stamp, #f07a35);
+}
+.predicate-terms {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  border-left: 2px solid var(--hairline, #252e3c);
+  padding-left: 10px;
+}
+.predicate-term {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.predicate-term-del {
+  align-self: flex-end;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink-faint, #8692a5);
+  font-size: 11px;
+  cursor: pointer;
+}
+.predicate-term-del:hover {
+  border-color: var(--sev-error, #e5534b);
+  color: var(--sev-error, #e5534b);
+}
+.predicate-checks {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+.predicate-checks label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-dim, #9aa7ba);
+  cursor: pointer;
+}
+.predicate-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.predicate-extra label {
+  font-size: 12px;
+  color: var(--ink-dim, #9aa7ba);
+}
+.predicate-extra-text {
+  width: 100%;
+  min-height: 120px;
+  padding: 8px;
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.predicate-extra-text:focus {
+  outline: none;
+  border-color: var(--stamp, #f07a35);
+}
+.predicate-extra-error {
+  color: var(--sev-error, #e5534b);
+  font-size: 12px;
+}
+.predicate-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.predicate-score-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.predicate-score-row input {
+  padding: 5px 7px;
+  background: var(--well, #0a0f16);
+  border: 1px solid var(--hairline, #252e3c);
+  border-radius: var(--r-sm, 3px);
+  color: var(--ink, #e6ebf2);
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+}
+.predicate-score-row input:focus {
+  outline: none;
+  border-color: var(--stamp, #f07a35);
+}
+.recipe-fields-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.recipe-fields-row .recipe-field {
+  margin-bottom: 0;
+}
+
+.predicate-extra-text.invalid {
+  border-color: #e55 !important;
+  background: #2a1010 !important;
+}
+.field-error {
+  color: #e55;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  font-family: var(--font-mono, monospace);
+}
+

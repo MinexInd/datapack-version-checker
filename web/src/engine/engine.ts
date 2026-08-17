@@ -196,8 +196,10 @@ function buildResourceIndex(files: PackFileMap): ResourceIndex {
 function findJsonLineBrowser(content: string, searchValue: string): { line: number; code: string } | null {
   const lines = content.split('\n')
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes(searchValue)) {
-      return { line: i + 1, code: lines[i].trim() }
+    const line = lines[i]
+    // Skip comments and match the searchValue to reduce false positives.
+    if (line.includes(searchValue) && !line.trim().startsWith('//')) {
+      return { line: i + 1, code: line.trim() }
     }
   }
   return null
