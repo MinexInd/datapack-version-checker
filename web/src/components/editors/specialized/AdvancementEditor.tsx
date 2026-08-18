@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { SimplifiedMcdocType, JsonValue, JsonPath } from '../../../ide/mcdoc-edit'
+import { Icon } from "../../Icon";
 
 interface AdvancementEditorProps {
   type: SimplifiedMcdocType | null
@@ -152,7 +153,7 @@ export default function AdvancementEditor({ type, value, path, onChange, onRemov
                 <option value="minecraft:recipe_unlocked">recipe_unlocked</option>
                 <option value="minecraft:consume_item">consume_item</option>
               </select>
-              <button type="button" onClick={() => removeCriterion(k)}>✕</button>
+              <button type="button" onClick={() => removeCriterion(k)}><Icon name="x" size={14} /></button>
               <JsonTextarea
                 label={`${k} conditions (JSON)`}
                 value={JSON.stringify(asObj(v).conditions ?? {}, null, 2)}

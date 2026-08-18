@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { SimplifiedMcdocType, JsonValue, JsonPath } from '../../../ide/mcdoc-edit'
+import { Icon } from "../../Icon";
 
 interface TagEditorProps {
   type: SimplifiedMcdocType | null
@@ -66,7 +67,7 @@ export default function TagEditor({ type, value, path, onChange, onRemove }: Tag
                 placeholder="minecraft:stone"
                 onChange={e => setValue(idx, e.target.value)}
               />
-              <button type="button" onClick={() => removeValue(idx)}>✕</button>
+              <button type="button" onClick={() => removeValue(idx)}><Icon name="x" size={14} /></button>
             </div>
           ))}
           <button type="button" onClick={addValue}>+ Value</button>

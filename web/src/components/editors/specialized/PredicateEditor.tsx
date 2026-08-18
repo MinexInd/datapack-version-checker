@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { SimplifiedMcdocType, JsonValue, JsonPath } from '../../../ide/mcdoc-edit'
+import { Icon } from "../../Icon";
 
 interface PredicateEditorProps {
   type: SimplifiedMcdocType | null
@@ -162,7 +163,7 @@ function TermsEditor({ value, onChange }: { value: JsonValue; onChange: (v: Json
       {terms.map((t, i) => (
         <div key={i} className="predicate-term">
           <ConditionEditor value={t} onChange={v => setTerm(i, v)} depth={1} />
-          <button type="button" className="predicate-term-del" onClick={() => removeTerm(i)}>✕</button>
+          <button type="button" className="predicate-term-del" onClick={() => removeTerm(i)}><Icon name="x" size={14} /></button>
         </div>
       ))}
       <button type="button" onClick={addTerm}>+ Condition</button>
@@ -184,7 +185,7 @@ function ScoresEditor({ value, onChange }: { value: JsonValue; onChange: (v: Jso
         <div key={k} className="predicate-score-row">
           <input type="text" value={k} onChange={e => { const next = { ...scores }; delete next[k]; next[e.target.value] = v; onChange(next) }} />
           <input type="text" value={str(v)} placeholder="min..max" onChange={e => setScore(k, e.target.value)} />
-          <button type="button" onClick={() => removeScore(k)}>✕</button>
+          <button type="button" onClick={() => removeScore(k)}><Icon name="x" size={14} /></button>
         </div>
       ))}
       <button type="button" onClick={() => onChange({ ...scores, new_objective: '0..' })}>+ Score</button>

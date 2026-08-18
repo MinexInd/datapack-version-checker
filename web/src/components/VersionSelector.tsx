@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import type { McmetaVersion } from '../api'
+import { Icon } from "./Icon";
 
 interface Props {
   versions: McmetaVersion[]
@@ -66,7 +67,7 @@ export default function VersionSelector({ versions, loading, selected, onSelect 
                     }
                   }}
                 >
-                  <span className="scl-check">{isSel ? '✓' : ''}</span>
+                  <span className="scl-check">{isSel ? <Icon name="check" size={14} /> : ''}</span>
                   <span className="scl-name">{v.name}</span>
                   <span className={`scl-tag ${v.type === 'snapshot' ? 'snap' : 'rel'}`}>{v.type}</span>
                 </div>

@@ -13,6 +13,7 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 import type { PackFileMap } from '../api'
+import { Icon } from "./Icon";
 
 interface Props {
   versions: McmetaVersion[]
@@ -126,7 +127,7 @@ export default function FixPanel({
         </button>
         {fixPreview && (
           <button className="btn btn-success btn-lg" onClick={onDownload} disabled={loading} aria-busy={loading}>
-            {loading ? <><span className="spinner" /> Downloading…</> : '⬇ Download Ported .zip'}
+            {loading ? <><span className="spinner" /> Downloading…</> : <><Icon name="arrow-down" size={14} /> Download Ported .zip</>}
           </button>
         )}
       </div>
@@ -138,7 +139,7 @@ export default function FixPanel({
               {fixPreview.plan.direction === 'forward' ? 'Upgrade' : 'Backport'}
             </span>
             <span className="plan-versions">
-              {fixPreview.plan.sourceVersion} → {fixPreview.plan.targetVersion}
+              {fixPreview.plan.sourceVersion} <Icon name="arrow-right" size={14} /> {fixPreview.plan.targetVersion}
             </span>
             <span className="plan-file-count">{fixPreview.results.length} file{fixPreview.results.length !== 1 ? 's' : ''} changed</span>
           </div>
@@ -216,7 +217,7 @@ export default function FixPanel({
                         }
                       }}
                     >
-                      <span className="fix-file-icon">{isExpanded ? '▼' : '▶'}</span>
+                      <span className="fix-file-icon">{isExpanded ? <Icon name="chevron-down" size={14} /> : <Icon name="chevron-right" size={14} />}</span>
                       <span className="fix-file-path">{r.file}</span>
                       <span className="patch-count">({r.patches} patch{r.patches !== 1 ? 'es' : ''})</span>
                     </div>
@@ -229,9 +230,9 @@ export default function FixPanel({
                       const detailLabel = parts.length >= 2 ? parts.slice(1).join(': ') : d
                       return (
                         <div key={j} className={`fix-detail ${cls}`}>
-                          {isCmdChange && <span className="detail-arrow">→</span>}
-                          {isManual && <span className="detail-icon">⚠</span>}
-                          {isError && <span className="detail-icon">✗</span>}
+                          {isCmdChange && <span className="detail-arrow"><Icon name="arrow-right" size={14} /></span>}
+                          {isManual && <span className="detail-icon"><Icon name="warning" size={14} /></span>}
+                          {isError && <span className="detail-icon"><Icon name="x-circle" size={14} /></span>}
                           <span>{detailLabel}</span>
                         </div>
                       )
@@ -252,7 +253,7 @@ export default function FixPanel({
             </div>
           ) : (
             <div className="empty-ok">
-              <span className="ok-icon">✓</span>
+              <span className="ok-icon"><Icon name="check" size={14} /></span>
               <p>No changes needed — the pack is already compatible with <b>{fixTarget}</b>.</p>
             </div>
           )}

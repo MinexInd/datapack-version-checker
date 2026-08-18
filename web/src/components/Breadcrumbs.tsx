@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Icon } from "./Icon";
 
 interface BreadcrumbsProps {
   path: string | null
@@ -25,7 +26,7 @@ export function Breadcrumbs({ path, onNavigate }: BreadcrumbsProps) {
         className="breadcrumbs-item"
         onClick={() => onNavigate('')}
       >
-        <span className="breadcrumbs-icon">📁</span>
+        <span className="breadcrumbs-icon"><Icon name="folder" size={16} /></span>
         <span>Home</span>
       </button>
       {parts.map((part, index) => {

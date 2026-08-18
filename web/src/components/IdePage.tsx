@@ -41,6 +41,7 @@ import {
   type DraftStoreLike,
 } from '../ide/idb-draft'
 import { findReferencesTo, isPathTraversal, validateFileName, validateFilePath } from '../ide/file-lifecycle'
+import { Icon } from "./Icon";
 
 interface Props {
   originalFiles: PackFileMap | null
@@ -288,7 +289,7 @@ function FixFileDiffCard({
           padding: '6px 10px',
         }}
       >
-        <span className="fix-file-icon" style={{ fontSize: '0.75rem' }}>{isExpanded ? '▼' : '▶'}</span>
+        <span className="fix-file-icon" style={{ fontSize: '0.75rem' }}>{isExpanded ? <Icon name="chevron-down" size={14} /> : <Icon name="chevron-right" size={14} />}</span>
         <span className="fix-file-path" style={{ fontWeight: 600, fontFamily: 'monospace', fontSize: '0.85rem' }}>{change.file}</span>
         <span
           className={`fix-confidence-badge conf-${change.confidence}`}
@@ -367,7 +368,7 @@ function FixFileDiffCard({
                 border: '1px solid rgba(245, 158, 11, 0.25)',
               }}
             >
-              ⚠️ Skipped: {change.skipReason || 'Registry or format not supported in target version.'}
+              <Icon name="warning" size={14} /> Skipped: {change.skipReason || 'Registry or format not supported in target version.'}
             </div>
           ) : diff.rows.length === 0 ? (
             <div className="diff-empty" style={{ padding: '8px 12px', fontSize: '0.8rem', color: 'var(--ink-dim, #94a3b8)' }}>
@@ -2139,8 +2140,8 @@ const handleContextMenuAction = useCallback((action: string) => {
               onDrop={() => handleMoveFile(child.path)}
               onContextMenu={e => { e.preventDefault(); handleContextMenu(e, child.path, 'folder') }}
             >
-              <span className="ide-caret">{isCollapsed ? '▶' : '▼'}</span>
-              <span className="ide-folder-icon">{isDropTarget ? '📂' : '📁'}</span>
+              <span className="ide-caret">{isCollapsed ? <Icon name="chevron-right" size={14} /> : <Icon name="chevron-down" size={14} />}</span>
+              <span className="ide-folder-icon">{isDropTarget ? <Icon name="folder-open" size={16} /> : <Icon name="folder" size={16} />}</span>
               <span className="ide-folder-name">{child.name}</span>
             </button>
             {!isCollapsed && renderTree(child, depth + 1)}
@@ -2200,7 +2201,7 @@ const handleContextMenuAction = useCallback((action: string) => {
           onContextMenu={e => { e.preventDefault(); handleContextMenu(e, child.path, 'file') }}
         >
           <span className={`ide-file-badge ide-file-ext-${ext}`}>{ext}</span>
-          {isEdited && <span className="ide-file-edited" title="Unsaved changes">●</span>}
+          {isEdited && <span className="ide-file-edited" title="Unsaved changes"><Icon name="dot" size={8} /></span>}
           <span className="ide-file-name">{fileName}</span>
           <span className="ide-file-actions">
             <span
@@ -2210,7 +2211,7 @@ const handleContextMenuAction = useCallback((action: string) => {
               title="Rename"
               aria-label={`Rename ${fileName}`}
               onClick={e => { e.stopPropagation(); setRenamingPath(child.path) }}
-            >✎</span>
+            ><Icon name="pencil" size={14} /></span>
             <span
               className="ide-file-action"
               role="button"
@@ -2218,7 +2219,7 @@ const handleContextMenuAction = useCallback((action: string) => {
               title="Delete"
               aria-label={`Delete ${fileName}`}
               onClick={e => { e.stopPropagation(); handleDeleteFile(child.path) }}
-            >✕</span>
+            ><Icon name="x" size={14} /></span>
           </span>
         </button>
       )
@@ -2285,7 +2286,7 @@ const handleContextMenuAction = useCallback((action: string) => {
 
         {/* 1.6 — Version warning (inline, only when present) */}
         {versionWarning && (
-          <span className="ide-version-warning" title={versionWarning}>⚠ {versionWarning}</span>
+          <span className="ide-version-warning" title={versionWarning}><Icon name="warning" size={14} /> {versionWarning}</span>
         )}
 
         {/* 1.7 — Analyze button */}
@@ -2324,7 +2325,7 @@ const handleContextMenuAction = useCallback((action: string) => {
           {fileName ? `${fileName} — ${fileCount} files` : 'no pack loaded'}
           {hasUnsaved && <span className="ide-unsaved"> · unsaved edits</span>}
           <span className={`ide-spyglass-status ${spyglassStatus}`} title="Spyglass language service">
-            {spyglassStatus === 'ready' ? 'Spyglass ✓' : spyglassStatus === 'loading' ? 'Spyglass…' : spyglassStatus === 'failed' ? 'Spyglass ✗' : ''}
+            {spyglassStatus === 'ready' ? <>Spyglass <Icon name="check" size={14} /></> : spyglassStatus === 'loading' ? 'Spyglass…' : spyglassStatus === 'failed' ? <>Spyglass <Icon name="x-circle" size={14} /></> : ''}
           </span>
         </span>
       </div>
@@ -2339,8 +2340,8 @@ const handleContextMenuAction = useCallback((action: string) => {
             <span className="ide-explorer-head-actions">
               {originalFiles && (
                 <>
-                  <button type="button" className="ide-explorer-btn" title="New File" aria-label="New File" onClick={() => { setNewFileTarget(''); setNewFileName('') }}>📄</button>
-                  <button type="button" className="ide-explorer-btn" title="New Folder" aria-label="New Folder" onClick={() => { setNewFolderTarget(''); setNewFolderName('') }}>📁</button>
+                  <button type="button" className="ide-explorer-btn" title="New File" aria-label="New File" onClick={() => { setNewFileTarget(''); setNewFileName('') }}><Icon name="file" size={16} /></button>
+                  <button type="button" className="ide-explorer-btn" title="New Folder" aria-label="New Folder" onClick={() => { setNewFolderTarget(''); setNewFolderName('') }}><Icon name="folder" size={16} /></button>
                   <button type="button" className="ide-explorer-btn" title="Collapse All" aria-label="Collapse All" onClick={handleCollapseAll}>⊟</button>
                 </>
               )}
@@ -2367,7 +2368,7 @@ const handleContextMenuAction = useCallback((action: string) => {
               <div className="ide-packmeta">
                 <span className="ide-packmeta-name" title={fileName}>{fileName}</span>
                 <span className="ide-packmeta-actions">
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={handleClear}>✕</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={handleClear}><Icon name="x" size={14} /></button>
                 </span>
               </div>
               {tree && (
@@ -2409,13 +2410,13 @@ const handleContextMenuAction = useCallback((action: string) => {
                         }}
                       />
                       <span className="ide-file-actions visible">
-                        <span className="ide-file-action" role="button" tabIndex={-1} title="Create" aria-label="Create file" onClick={handleCreateFile}>✓</span>
-                        <span className="ide-file-action" role="button" tabIndex={-1} title="Cancel" aria-label="Cancel" onClick={() => { setNewFileTarget(null); setNewFileName('') }}>✕</span>
+                        <span className="ide-file-action" role="button" tabIndex={-1} title="Create" aria-label="Create file" onClick={handleCreateFile}><Icon name="check" size={14} /></span>
+                        <span className="ide-file-action" role="button" tabIndex={-1} title="Cancel" aria-label="Cancel" onClick={() => { setNewFileTarget(null); setNewFileName('') }}><Icon name="x" size={14} /></span>
                       </span>
                     </div>
                   ) : newFolderTarget !== null ? (
                     <div className="ide-tree-newfile">
-                      <span className="ide-folder-icon">📁</span>
+                      <span className="ide-folder-icon"><Icon name="folder" size={16} /></span>
                       <select
                         className="ide-newfile-folder"
                         value={newFolderTarget}
@@ -2441,8 +2442,8 @@ const handleContextMenuAction = useCallback((action: string) => {
                         }}
                       />
                       <span className="ide-file-actions visible">
-                        <span className="ide-file-action" role="button" tabIndex={-1} title="Create" aria-label="Create folder" onClick={handleCreateFolder}>✓</span>
-                        <span className="ide-file-action" role="button" tabIndex={-1} title="Cancel" aria-label="Cancel" onClick={() => { setNewFolderTarget(null); setNewFolderName('') }}>✕</span>
+                        <span className="ide-file-action" role="button" tabIndex={-1} title="Create" aria-label="Create folder" onClick={handleCreateFolder}><Icon name="check" size={14} /></span>
+                        <span className="ide-file-action" role="button" tabIndex={-1} title="Cancel" aria-label="Cancel" onClick={() => { setNewFolderTarget(null); setNewFolderName('') }}><Icon name="x" size={14} /></span>
                       </span>
                     </div>
                   ) : (
@@ -2480,14 +2481,14 @@ const handleContextMenuAction = useCallback((action: string) => {
                 onClick={() => setActivePath(path)}
                 onKeyDown={e => { if (e.key === 'Enter') setActivePath(path) }}
               >
-                <span className="ide-tab-dot">{editedFiles[path] !== undefined ? '●' : ''}</span>
+                <span className="ide-tab-dot">{editedFiles[path] !== undefined ? <Icon name="dot" size={8} /> : ''}</span>
                 <span className="ide-tab-name">{path.split('/').pop()}</span>
                 <button
                   type="button"
                   className="ide-tab-close"
                   title="Close tab"
                   onClick={e => { e.stopPropagation(); closeTab(path) }}
-                >✕</button>
+                ><Icon name="x" size={14} /></button>
               </span>
             ))}
           </div>
@@ -2654,7 +2655,7 @@ const handleContextMenuAction = useCallback((action: string) => {
                 title={panelCollapsed ? 'Expand panel' : 'Collapse panel'}
                 onClick={() => setPanelCollapsed(v => !v)}
               >
-                {panelCollapsed ? '▲' : '▼'}
+                {panelCollapsed ? <Icon name="chevron-up" size={14} /> : <Icon name="chevron-down" size={14} />}
               </button>
             </div>
 
@@ -2667,7 +2668,7 @@ const handleContextMenuAction = useCallback((action: string) => {
                       {!progress && !loading && (originalFiles ? <span className="kbd">Ctrl+Shift+A</span> : 'upload a pack first')}
                     </span>
                     <button className="btn btn-primary" onClick={handleRun} disabled={loading || !originalFiles} aria-busy={loading}>
-                      {loading ? <><span className="spinner" /> Running…</> : '▶ Run Check'}
+                      {loading ? <><span className="spinner" /> Running…</> : <><Icon name="play" size={14} /> Run Check</>}
                     </button>
                   </div>
                   {error && (
@@ -2765,7 +2766,7 @@ const handleContextMenuAction = useCallback((action: string) => {
                               onClick={handleConfirmApply}
                               disabled={loading}
                             >
-                              ⚠️ Confirm Apply
+                              <Icon name="warning" size={14} /> Confirm Apply
                             </button>
                             <button
                               className="btn btn-ghost"
@@ -2792,7 +2793,7 @@ const handleContextMenuAction = useCallback((action: string) => {
                         disabled={loading || !hasFixBackup}
                         title={hasFixBackup ? 'Rollback the last applied fix' : 'No previous fix to rollback'}
                       >
-                        ↩ Undo last fix
+                        <Icon name="undo" size={14} /> Undo last fix
                       </button>
 
                       {fixPreview && (
@@ -2803,7 +2804,7 @@ const handleContextMenuAction = useCallback((action: string) => {
                           aria-busy={loading}
                           style={{ marginLeft: 'auto' }}
                         >
-                          {loading ? <><span className="spinner" /> Downloading…</> : '⬇ Download Ported .zip'}
+                          {loading ? <><span className="spinner" /> Downloading…</> : <><Icon name="arrow-down" size={14} /> Download Ported .zip</>}
                         </button>
                       )}
                     </div>
@@ -2821,7 +2822,7 @@ const handleContextMenuAction = useCallback((action: string) => {
                             {fixPreview?.plan?.direction === 'forward' ? 'Upgrade' : 'Backport'}
                           </span>
                           <span className="plan-versions">
-                            {fixPreview?.plan?.sourceVersion || 'Current'} → {fixPreviewV2.version || fixTarget}
+                            {fixPreview?.plan?.sourceVersion || 'Current'} <Icon name="arrow-right" size={14} /> {fixPreviewV2.version || fixTarget}
                           </span>
                           <span className="plan-file-count">
                             {fixPreviewV2.changes.length} file{fixPreviewV2.changes.length !== 1 ? 's' : ''} changed
@@ -2876,7 +2877,7 @@ const handleContextMenuAction = useCallback((action: string) => {
                               fontSize: '0.82rem',
                             }}
                           >
-                            <strong style={{ color: '#f59e0b' }}>⚠️ {fixPreviewV2.skipped.length} file(s) skipped:</strong>
+                            <strong style={{ color: '#f59e0b' }}><Icon name="warning" size={14} /> {fixPreviewV2.skipped.length} file(s) skipped:</strong>
                             <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
                               {fixPreviewV2.skipped.map((s, idx) => (
                                 <li key={idx} style={{ color: 'var(--ink-dim, #cbd5e1)' }}>
@@ -2928,7 +2929,7 @@ const handleContextMenuAction = useCallback((action: string) => {
                           </>
                         ) : (
                           <div className="empty-ok">
-                            <span className="ok-icon">✓</span>
+                            <span className="ok-icon"><Icon name="check" size={14} /></span>
                             <p>No changes needed — the pack is already compatible with <b>{fixTarget}</b>.</p>
                           </div>
                         )}
@@ -2986,8 +2987,8 @@ const handleContextMenuAction = useCallback((action: string) => {
                                 return next
                               })}
                             >
-                              <span className="ide-problem-caret">{isGroupCollapsed ? '▸' : '▾'}</span>
-                              <span className="ide-problem-file-icon" aria-hidden>📄</span>
+                              <span className="ide-problem-caret">{isGroupCollapsed ? <Icon name="chevron-right" size={14} /> : <Icon name="chevron-down" size={14} />}</span>
+                              <span className="ide-problem-file-icon" aria-hidden><Icon name="file" size={16} /></span>
                               <span className="ide-problem-file-name" title={group.path}>
                                 {group.path.split('/').pop()}
                               </span>
@@ -3003,7 +3004,7 @@ const handleContextMenuAction = useCallback((action: string) => {
                                 title={`${marker.severity}: ${marker.message}`}
                               >
                                 <span className={`ide-problem-icon sev-${marker.severity}`}>
-                                  {marker.severity === 'error' ? '✕' : marker.severity === 'warning' ? '⚠' : marker.severity === 'info' ? 'ℹ' : '·'}
+                                  {marker.severity === 'error' ? <Icon name="x-circle" size={14} /> : marker.severity === 'warning' ? <Icon name="warning" size={14} /> : marker.severity === 'info' ? <Icon name="info" size={14} /> : '·'}
                                 </span>
                                 <span className="ide-problem-msg">{marker.message}</span>
                                 <span className="ide-problem-source">{group.path === 'pack.mcmeta' ? 'metadata' : 'spyglassmc'}</span>
@@ -3040,7 +3041,7 @@ const handleContextMenuAction = useCallback((action: string) => {
           <div className="ide-statusbar">
             <span className="ide-statusbar-item">
               <span className={`ide-statusbar-spyglass ${spyglassStatus}`}>
-                {spyglassStatus === 'ready' ? 'Spyglass ✓' : spyglassStatus === 'loading' ? 'Spyglass…' : spyglassStatus === 'failed' ? 'Spyglass ✗' : 'Spyglass'}
+                {spyglassStatus === 'ready' ? <>Spyglass <Icon name="check" size={14} /></> : spyglassStatus === 'loading' ? 'Spyglass…' : spyglassStatus === 'failed' ? <>Spyglass <Icon name="x-circle" size={14} /></> : 'Spyglass'}
               </span>
             </span>
             <span className="ide-statusbar-item ide-statusbar-version" title="Target Minecraft version">
@@ -3084,7 +3085,7 @@ const handleContextMenuAction = useCallback((action: string) => {
                   ? { label: 'New File', action: 'newFile', shortcut: 'N' }
                   : null,
                 contextMenu.kind === 'folder' || contextMenu.kind === 'empty'
-                  ? { label: 'New Folder', action: 'newFolder', shortcut: '⇧N' }
+                  ? { label: 'New Folder', action: 'newFolder', shortcut: 'Shift+N' }
                   : null,
                 contextMenu.kind === 'file'
                   ? { label: 'Duplicate', action: 'duplicate', shortcut: 'Ctrl+D' }

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { Icon } from "./Icon";
 
 interface TerminalPanelProps {
   isOpen: boolean
@@ -59,7 +60,7 @@ export function TerminalPanel({ isOpen, onClose, onCommand, logs }: TerminalPane
     <div className="terminal-panel">
       <div className="terminal-header">
         <span className="terminal-title">Terminal</span>
-        <button type="button" className="terminal-close" onClick={onClose}>✕</button>
+        <button type="button" className="terminal-close" onClick={onClose}><Icon name="x" size={14} /></button>
       </div>
       <div className="terminal-output" ref={outputRef}>
         {logs.length === 0 ? (

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { SimplifiedMcdocType, JsonValue, JsonPath } from '../../../ide/mcdoc-edit'
+import { Icon } from "../../Icon";
 
 interface RecipeEditorProps {
   type: SimplifiedMcdocType | null
@@ -127,7 +128,7 @@ export default function RecipeEditor({ type, value, path, onChange, onRemove }: 
                   placeholder="XXX"
                   onChange={e => setPatternRow(i, e.target.value)}
                 />
-                <button type="button" className="recipe-pattern-del" onClick={() => set('pattern', pattern.filter((_, j) => j !== i))}>✕</button>
+                <button type="button" className="recipe-pattern-del" onClick={() => set('pattern', pattern.filter((_, j) => j !== i))}><Icon name="x" size={14} /></button>
               </div>
             ))}
             <button type="button" className="recipe-pattern-add" onClick={() => set('pattern', [...pattern, ''])}>+ Row</button>
@@ -138,7 +139,7 @@ export default function RecipeEditor({ type, value, path, onChange, onRemove }: 
               <div key={k} className="recipe-key-row">
                 <span className="recipe-key-sym">{k}</span>
                 <ItemRefEditor label="" value={v} onChange={nv => setKeyEntry(k, nv)} />
-                <button type="button" onClick={() => removeKeyEntry(k)}>✕</button>
+                <button type="button" onClick={() => removeKeyEntry(k)}><Icon name="x" size={14} /></button>
               </div>
             ))}
             <div className="recipe-key-add">
@@ -176,7 +177,7 @@ export default function RecipeEditor({ type, value, path, onChange, onRemove }: 
             {ingredients.map((ing, i) => (
               <div key={i} className="recipe-ingredient-row">
                 <ItemRefEditor label="" value={ing} onChange={nv => setIngredient(i, nv)} />
-                <button type="button" onClick={() => removeIngredient(i)}>✕</button>
+                <button type="button" onClick={() => removeIngredient(i)}><Icon name="x" size={14} /></button>
               </div>
             ))}
             <button type="button" onClick={addIngredient}>+ Ingredient</button>

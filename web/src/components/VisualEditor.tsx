@@ -25,6 +25,7 @@ import { decompileFunction } from '../visual/core/decompiler/GraphDecompiler'
 import LiveEditor from './editors/LiveEditor'
 import type { BeforeMount, OnMount } from '@monaco-editor/react'
 import type { Diagnostic } from '../visual/core/minecraft/types'
+import { Icon } from "./Icon";
 
 interface VisualEditorProps {
   activePath: string
@@ -283,7 +284,7 @@ function VisualEditorInner({ activePath, initialContent, version, onCommit, befo
             <button type="button" className={mode === 'code' ? 'active' : ''} onClick={() => setMode('code')}>Code</button>
             <button type="button" className={mode === 'visual' ? 'active' : ''} onClick={() => setMode('visual')}>Visual</button>
           </div>
-          <button type="button" className="visual-compile" onClick={doCompile}>Compile ▶</button>
+          <button type="button" className="visual-compile" onClick={doCompile}>Compile <Icon name="play" size={14} /></button>
           <span className="visual-hint">Visual scripting compiles to .mcfunction</span>
         </div>
         {mode === 'code' ? (

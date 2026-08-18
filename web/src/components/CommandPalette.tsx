@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Icon } from "./Icon";
 
 interface Command {
   id: string
@@ -61,7 +62,7 @@ export function CommandPalette({ isOpen, onClose, commands, recentCommands = [] 
     <div className="command-palette-overlay" onClick={onClose}>
       <div className="command-palette" onClick={e => e.stopPropagation()}>
         <div className="command-palette-header">
-          <span className="command-palette-icon">⌘</span>
+          <span className="command-palette-icon"><Icon name="command" size={14} /></span>
           <input
             ref={inputRef}
             type="text"

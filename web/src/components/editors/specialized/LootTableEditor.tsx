@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { JsonPath, JsonValue, SimplifiedMcdocType } from '../../../ide/mcdoc-edit'
 import LootFunctionEditor from './LootFunctionEditor'
+import { Icon } from "../../Icon";
 
 interface LootTableEditorProps {
   type: SimplifiedMcdocType | null
@@ -98,7 +99,7 @@ export default function LootTableEditor({ type, value, path, onChange, onRemove 
             <div key={pIdx} className="loot-pool">
               <div className="loot-pool-header">
                 <strong>Pool {pIdx + 1}</strong>
-                <button type="button" onClick={() => removePool(pIdx)}>✕</button>
+                <button type="button" onClick={() => removePool(pIdx)}><Icon name="x" size={14} /></button>
               </div>
               <div className="loot-pool-fields">
                 <div className="recipe-field">
@@ -156,7 +157,7 @@ export default function LootTableEditor({ type, value, path, onChange, onRemove 
                             onChange={e => setEntry(pIdx, eIdx, { ...entry, weight: Math.max(1, parseInt(e.target.value || '1', 10)) })}
                           />
                         </span>
-                        <button type="button" onClick={() => removeEntry(pIdx, eIdx)}>✕</button>
+                        <button type="button" onClick={() => removeEntry(pIdx, eIdx)}><Icon name="x" size={14} /></button>
                       </div>
                       {functions.length > 0 && (
                         <div className="loot-entry-functions">
@@ -170,7 +171,7 @@ export default function LootTableEditor({ type, value, path, onChange, onRemove 
                                   setFunctions(pIdx, eIdx, funcs)
                                 }}
                               />
-                              <button type="button" className="predicate-term-del" onClick={() => removeFunction(pIdx, eIdx, fIdx)}>✕</button>
+                              <button type="button" className="predicate-term-del" onClick={() => removeFunction(pIdx, eIdx, fIdx)}><Icon name="x" size={14} /></button>
                             </div>
                           ))}
                         </div>

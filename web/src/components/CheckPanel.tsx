@@ -1,5 +1,6 @@
 import type { Mode, McmetaVersion } from '../api'
 import VersionSelector from './VersionSelector'
+import { Icon } from "./Icon";
 
 interface Props {
   mode: Mode
@@ -67,7 +68,7 @@ export default function CheckPanel({
           )}
         </span>
         <button className="btn btn-primary" onClick={onRun} disabled={loading || !hasFiles} aria-busy={loading}>
-          {loading ? <><span className="spinner" /> Running…</> : '▶ Run Check'}
+          {loading ? <><span className="spinner" /> Running…</> : <><Icon name="play" size={14} /> Run Check</>}
         </button>
       </div>
     </div>

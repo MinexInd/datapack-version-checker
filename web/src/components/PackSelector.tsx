@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PackFileMap } from '../api'
 import { normalizePackFiles, readZipFile, readDirectoryEntry } from '../ide/pack-io'
+import { Icon } from "./Icon";
 
 interface Props {
   files: PackFileMap | null
@@ -100,14 +101,14 @@ export default function PackSelector({ files, fileCount, fileName, onLoad, onCle
       </h2>
       {files ? (
         <div className="dz-loaded">
-          <div className="checkicon">✓</div>
+          <div className="checkicon"><Icon name="check" size={14} /></div>
           <div className="meta">
             <div className="name">{fileName}</div>
             <div className="count">{fileCount} files loaded</div>
           </div>
           <div className="dz-btns">
             <button className="btn btn-ghost" onClick={() => folderRef.current?.click()}>Replace</button>
-            <button className="btn btn-ghost" aria-label="Remove pack" onClick={onClear}>✕</button>
+            <button className="btn btn-ghost" aria-label="Remove pack" onClick={onClear}><Icon name="x" size={14} /></button>
           </div>
         </div>
       ) : (

@@ -11,6 +11,7 @@ import type {
   RegistryDeprecation,
   AnalysisResult,
 } from '../api'
+import { Icon } from "./Icon";
 
 interface Props {
   result: CheckResult
@@ -327,7 +328,7 @@ function VersionRow({ v, defaultOpen, index, filterKind, onFilterKind, onPortTo 
             </button>
           </>
         )}
-        <span className="chev">▶</span>
+        <span className="chev"><Icon name="chevron-right" size={14} /></span>
       </div>
       <div className="vbody">
         <div className="vbody-inner">
@@ -361,7 +362,7 @@ function KnowledgeCard({ h, idx }: { h: KnowledgeHit; idx: number }) {
   return (
     <div className="krule" style={{ animationDelay: `${Math.min(idx * 50, 400)}ms` }}>
       <div className="krule-top">
-        <span className="krule-icon">{typeIcons[rule.type] ?? '◈'}</span>
+        <span className="krule-icon">{typeIcons[rule.type] ?? <Icon name="diamond" size={14} />}</span>
         <div className="krule-info">
           <div className="kfeat">{rule.description}</div>
           <div className="kmin">Requires: ≥ {rule.minVersion}</div>
@@ -615,11 +616,11 @@ function generateReportText(result: CheckResult): string {
   }
   lines.push(``)
   for (const v of result.compatible ?? []) {
-    lines.push(`✓ ${v.version.name} — compatible`)
+    lines.push(`PASS ${v.version.name} — compatible`)
   }
   for (const v of result.incompatible ?? []) {
     const c = issueCounts(v)
-    lines.push(`✗ ${v.version.name} — ${c.total} issue(s)`)
+    lines.push(`FAIL ${v.version.name} — ${c.total} issue(s)`)
     for (const i of v.mcfunction_issues ?? []) lines.push(`  [cmd] ${i.file}:${i.line} — ${i.issue}`)
     for (const i of v.registry_issues ?? []) lines.push(`  [reg] ${i.file} — ${i.issue}`)
     for (const i of v.structural_issues ?? []) lines.push(`  [struct] ${i.file} — ${i.issue}`)
@@ -696,7 +697,7 @@ export default function Results({ result, mode, duration, onPortTo }: Props) {
           </h2>
           <div className="result-actions">
             <button className="btn btn-sm" onClick={() => setAllOpen(o => !o)}>
-              {allOpen ? '▲ Collapse All' : '▼ Expand All'}
+              {allOpen ? <><Icon name="chevron-up" size={14} /> Collapse All</> : <><Icon name="chevron-down" size={14} /> Expand All</>}
             </button>
             <button className="btn btn-ghost btn-sm" onClick={() => copyReport(result)}>Copy</button>
             <button className="btn btn-ghost btn-sm" onClick={() => exportJson(result)}>JSON</button>

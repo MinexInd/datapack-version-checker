@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { Icon } from "./Icon";
 
 interface QuickOpenProps {
   isOpen: boolean
@@ -93,7 +94,7 @@ export function QuickOpen({ isOpen, onClose, files, onOpenFile, recentFiles = []
     <div className="quickopen-overlay" onClick={onClose}>
       <div className="quickopen" onClick={e => e.stopPropagation()}>
         <div className="quickopen-header">
-          <span className="quickopen-icon">🔍</span>
+          <span className="quickopen-icon"><Icon name="search" size={16} /></span>
           <input
             ref={inputRef}
             type="text"
@@ -129,7 +130,7 @@ export function QuickOpen({ isOpen, onClose, files, onOpenFile, recentFiles = []
             <div className="quickopen-section">
               {gotoMatch ? (
                 <div className="quickopen-item selected" onClick={() => handleSelect('')}>
-                  <span className="quickopen-item-icon">📍</span>
+                  <span className="quickopen-item-icon"><Icon name="map-pin" size={14} /></span>
                   <span className="quickopen-item-label">Go to line {gotoMatch}</span>
                 </div>
               ) : (
@@ -153,7 +154,7 @@ export function QuickOpen({ isOpen, onClose, files, onOpenFile, recentFiles = []
                   onClick={() => handleSelect(file)}
                 >
                   <span className="quickopen-item-icon">
-                    {file.endsWith('.json') ? '📄' : file.endsWith('.mcmeta') ? '⚙️' : '📝'}
+                    {file.endsWith('.json') ? <Icon name="file" size={16} /> : file.endsWith('.mcmeta') ? <Icon name="gear" size={16} /> : <Icon name="file-text" size={16} />}
                   </span>
                   <span className="quickopen-item-label">{file}</span>
                 </div>
